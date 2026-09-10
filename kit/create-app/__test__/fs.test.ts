@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileList } from '../src/types';
-import { emptyDir, printFileTree } from '../src/utils/fs';
+import { emptyDir, printFileTree, writeFiles } from '../src/utils/fs';
 
 let logs: string[];
 
@@ -109,5 +109,85 @@ describe('emptyDir', () => {
 
   it('目录不存在时静默返回', () => {
     expect(() => emptyDir(path.join(dir, 'nope'))).not.toThrow();
+  });
+});
+
+/**
+ * writeFiles 的符号链接分支
+ *
+ * 产物里保住链接是「一份内容两个名字」这个约定能不能活下来的关键；
+ * 但建链接在 Windows 上可能没权限，所以失败必须回落成副本而不是打断整个生成。
+ */
+describe('writeFiles - 符号链接', () => {
+  let dest: string;
+
+  beforeEach(() => {
+    dest = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-writefiles-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(dest, { recursive: true, force: true });
+  });
+
+  it('带 symlinkTarget 的条目落盘为符号链接，且读得到目标内容', () => {
+    writeFiles(
+      [
+        { path: 'CLAUDE.md', content: '# 指南\n' },
+        { path: 'AGENTS.md', content: '# 指南\n', symlinkTarget: 'CLAUDE.md' },
+      ],
+      dest,
+    );
+
+    const link = path.join(dest, 'AGENTS.md');
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(link)).toBe('CLAUDE.md');
+    expect(fs.readFileSync(link, 'utf-8')).toBe('# 指南\n');
+  });
+
+  it('链接先于目标写入也不出问题（顺序无关）', () => {
+    writeFiles(
+      [
+        { path: 'AGENTS.md', content: '# 指南\n', symlinkTarget: 'CLAUDE.md' },
+        { path: 'CLAUDE.md', content: '# 指南\n' },
+      ],
+      dest,
+    );
+
+    expect(fs.readFileSync(path.join(dest, 'AGENTS.md'), 'utf-8')).toBe('# 指南\n');
+  });
+
+  it('目标路径已存在旧文件时先删再建链接（覆盖生成场景）', () => {
+    fs.writeFileSync(path.join(dest, 'AGENTS.md'), '上一次生成留下的副本\n');
+
+    writeFiles(
+      [
+        { path: 'CLAUDE.md', content: '# 新内容\n' },
+        { path: 'AGENTS.md', content: '# 新内容\n', symlinkTarget: 'CLAUDE.md' },
+      ],
+      dest,
+    );
+
+    expect(fs.lstatSync(path.join(dest, 'AGENTS.md')).isSymbolicLink()).toBe(true);
+  });
+
+  it('建链接失败时回落成静态副本，不抛错', () => {
+    const spy = vi.spyOn(fs, 'symlinkSync').mockImplementation(() => {
+      throw Object.assign(new Error('EPERM'), { code: 'EPERM' }); // 模拟 Windows 无权限
+    });
+
+    expect(() =>
+      writeFiles([{ path: 'AGENTS.md', content: '# 指南\n', symlinkTarget: 'CLAUDE.md' }], dest),
+    ).not.toThrow();
+
+    const out = path.join(dest, 'AGENTS.md');
+    expect(fs.lstatSync(out).isSymbolicLink()).toBe(false);
+    expect(fs.readFileSync(out, 'utf-8')).toBe('# 指南\n');
+    spy.mockRestore();
+  });
+
+  it('没有 symlinkTarget 的条目照旧写普通文件', () => {
+    writeFiles([{ path: 'plain.md', content: 'x\n', mode: 0o644 }], dest);
+
+    expect(fs.lstatSync(path.join(dest, 'plain.md')).isSymbolicLink()).toBe(false);
   });
 });

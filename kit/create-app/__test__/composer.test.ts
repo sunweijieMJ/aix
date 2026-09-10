@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Composer } from '../src/core/composer';
 import { TemplateResolver } from '../src/core/resolver';
 import type { FileList, ProjectConfig, TemplateConfig } from '../src/types';
@@ -525,5 +525,114 @@ describe('Composer - 排除路径的形态归一', () => {
     const patched: TemplateConfig = { ...manifest, exclude: ['./src/plugins/'] };
     const files = await composer.compose(FIXTURE_DIR, patched, makeConfig(['i18n', 'override']));
     expect(files.some((f) => f.path.startsWith('src/plugins/'))).toBe(false);
+  });
+});
+
+/**
+ * 符号链接：模板里 `AGENTS.md -> CLAUDE.md` 这类「一份内容两个名字」的约定，
+ * 落成两份静态副本后就会各自漂移，所以要原样带进产物。
+ * 但链接只在「目标同在产物内、且指向模板内部」时才有意义，其余一律解引用成副本。
+ */
+describe('Composer - 符号链接', () => {
+  const composer = new Composer();
+  const dirs: string[] = [];
+
+  /** 造一个临时模板：docs.md 是真文件，link.md 指向它 */
+  function makeTemplate(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'composer-symlink-'));
+    dirs.push(dir);
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: '{{project-name}}' }));
+    fs.writeFileSync(path.join(dir, 'docs.md'), '# 指南\n');
+    return dir;
+  }
+
+  const bare: TemplateConfig = {
+    id: 'template-symlink',
+    platform: 'web',
+    compatibleCliVersions: '>=0.1.0',
+    variables: {},
+    features: {},
+  };
+
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it('指向模板内文件的相对链接：记下 symlinkTarget，内容仍是解引用后的内容', async () => {
+    const dir = makeTemplate();
+    fs.symlinkSync('docs.md', path.join(dir, 'link.md'));
+
+    const files = await composer.compose(dir, bare, makeConfig([]));
+    const link = files.find((f) => f.path === 'link.md');
+
+    expect(link?.symlinkTarget).toBe('docs.md');
+    // 内容照常算：建链接失败时要拿它当副本回落
+    expect(link?.content).toBe('# 指南\n');
+  });
+
+  it('子目录里的链接：symlinkTarget 保持相对链接自身所在目录', async () => {
+    const dir = makeTemplate();
+    fs.mkdirSync(path.join(dir, 'sub'));
+    fs.writeFileSync(path.join(dir, 'sub/real.md'), 'x\n');
+    fs.symlinkSync('real.md', path.join(dir, 'sub/alias.md'));
+
+    const files = await composer.compose(dir, bare, makeConfig([]));
+
+    expect(files.find((f) => f.path === 'sub/alias.md')?.symlinkTarget).toBe('real.md');
+  });
+
+  it('链接目标被未选特性裁掉时退回副本（否则产物里是断链）', async () => {
+    const dir = makeTemplate();
+    fs.symlinkSync('docs.md', path.join(dir, 'link.md'));
+    const withFeature: TemplateConfig = {
+      ...bare,
+      features: { aiDocs: { label: 'AI 文档', files: ['docs.md'] } },
+    };
+
+    const files = await composer.compose(dir, withFeature, makeConfig([]));
+
+    expect(files.some((f) => f.path === 'docs.md')).toBe(false);
+    const link = files.find((f) => f.path === 'link.md');
+    expect(link).toBeDefined();
+    expect(link?.symlinkTarget).toBeUndefined();
+  });
+
+  it('绝对路径链接解引用成副本（指向的是维护者那台机器）', async () => {
+    const dir = makeTemplate();
+    fs.symlinkSync(path.join(dir, 'docs.md'), path.join(dir, 'link.md'));
+
+    const files = await composer.compose(dir, bare, makeConfig([]));
+
+    expect(files.find((f) => f.path === 'link.md')?.symlinkTarget).toBeUndefined();
+  });
+
+  it('指向模板目录之外的链接解引用成副本', async () => {
+    const dir = makeTemplate();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'composer-outside-'));
+    dirs.push(outside);
+    fs.writeFileSync(path.join(outside, 'external.md'), 'outside\n');
+    fs.symlinkSync(
+      path.relative(dir, path.join(outside, 'external.md')),
+      path.join(dir, 'link.md'),
+    );
+
+    const files = await composer.compose(dir, bare, makeConfig([]));
+    const link = files.find((f) => f.path === 'link.md');
+
+    expect(link?.symlinkTarget).toBeUndefined();
+    expect(link?.content).toBe('outside\n');
+  });
+
+  it('链接自身被裁掉时不出现在产物里（与普通文件同规则）', async () => {
+    const dir = makeTemplate();
+    fs.symlinkSync('docs.md', path.join(dir, 'link.md'));
+    const withFeature: TemplateConfig = {
+      ...bare,
+      features: { aiDocs: { label: 'AI 文档', files: ['docs.md', 'link.md'] } },
+    };
+
+    const files = await composer.compose(dir, withFeature, makeConfig([]));
+
+    expect(files.some((f) => f.path === 'link.md')).toBe(false);
   });
 });

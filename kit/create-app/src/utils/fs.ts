@@ -6,6 +6,9 @@ import { CreateAppError } from './errors';
 /**
  * 将 FileList 写入目标目录
  *
+ * 带 `symlinkTarget` 的条目先尝试建符号链接，失败则回落成 `content` 的静态副本
+ * （见 trySymlink）。
+ *
  * @param files   文件列表（path 相对于 destDir）
  * @param destDir 目标目录（必须已存在或会自动创建）
  */
@@ -16,6 +19,9 @@ export function writeFiles(files: FileList, destDir: string): void {
 
     try {
       fs.mkdirSync(dir, { recursive: true });
+
+      if (file.symlinkTarget && trySymlink(file.symlinkTarget, fullPath)) continue;
+
       fs.writeFileSync(fullPath, file.content, {
         mode: file.mode,
       });
@@ -27,6 +33,26 @@ export function writeFiles(files: FileList, destDir: string): void {
         err,
       );
     }
+  }
+}
+
+/**
+ * 尝试建符号链接，成功返回 true
+ *
+ * 建不了就返回 false 让调用方写静态副本，**不抛错**：Windows 上创建文件符号链接需要
+ * 管理员权限或开发者模式，普通用户会拿到 EPERM。为这个把整个生成流程打断不值得——
+ * 副本内容是对的，只是失去了「改一处两个名字同步」的性质。
+ *
+ * 目标路径可能已被上一次生成留下（覆盖场景），symlink(2) 遇到已存在会 EEXIST，
+ * 所以先删掉再建。
+ */
+function trySymlink(target: string, linkPath: string): boolean {
+  try {
+    fs.rmSync(linkPath, { force: true });
+    fs.symlinkSync(target, linkPath);
+    return true;
+  } catch {
+    return false;
   }
 }
 

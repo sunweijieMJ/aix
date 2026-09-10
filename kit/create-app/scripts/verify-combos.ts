@@ -160,14 +160,50 @@ function allCombos(features: string[]): (readonly [string, string[]])[] {
 // ---------------------------------------------------------------- 工具
 
 /** 递归收集相对路径（POSIX 分隔），跳过 node_modules / .git */
+/**
+ * 列出产物里的文件
+ *
+ * 符号链接要按解引用后的类型收进来：`Dirent.isFile()` 是 lstat 语义，对链接为 false，
+ * 只认它就会让产物里的链接（如 AGENTS.md -> CLAUDE.md）既不计数也不进 L2 静态体检 ——
+ * 校验工具凭空多出一块盲区。悬空链接不收进来，由 danglingLinks 单独报。
+ */
 function walk(root: string): string[] {
   const out: string[] = [];
   const rec = (dir: string, base: string): void => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (entry.name === 'node_modules' || entry.name === '.git') continue;
       const rel = base ? `${base}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) rec(path.join(dir, entry.name), rel);
+      const abs = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) out.push(rel);
+        continue;
+      }
+      if (entry.isDirectory()) rec(abs, rel);
       else if (entry.isFile()) out.push(rel);
+    }
+  };
+  rec(root, '');
+  return out.sort();
+}
+
+/**
+ * 找出产物里的悬空符号链接
+ *
+ * 典型成因：链接的目标被某个未选中的特性裁掉了，而链接自身没跟着裁（清单漏登记）。
+ * composer 对这种情况会退回成静态副本，所以这里报出来即说明那条兜底没生效。
+ */
+function danglingLinks(root: string): string[] {
+  const out: string[] = [];
+  const rec = (dir: string, base: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      const rel = base ? `${base}/${entry.name}` : entry.name;
+      const abs = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        if (!fs.existsSync(abs)) out.push(rel);
+      } else if (entry.isDirectory()) {
+        rec(abs, rel);
+      }
     }
   };
   rec(root, '');
@@ -209,6 +245,10 @@ function resolveSpecifier(spec: string, fromFile: string, root: string): boolean
 
 function staticCheck(outDir: string, realNames: string[]): string[] {
   const problems: string[] = [];
+
+  for (const rel of danglingLinks(outDir)) {
+    problems.push(`悬空符号链接 ${rel} → ${fs.readlinkSync(path.join(outDir, rel))}`);
+  }
 
   for (const rel of walk(outDir)) {
     const abs = path.join(outDir, rel);
@@ -318,7 +358,7 @@ interface ComboResult {
 const LEVELS: Record<string, string> = {
   'L1-FAIL': 'CLI 生成失败',
   'L2-FAIL': '生成成功但静态体检不通过',
-  L2: '文件级一致性（无标记/变量/真名残留、无死 import）',
+  L2: '文件级一致性（无标记/变量/真名残留、无死 import、无悬空链接）',
   L3: 'install 通过',
   L4: 'type-check 通过',
   L5: 'build 通过（全链路）',
@@ -367,7 +407,7 @@ function verify(name: string, selected: string[], opts: Options): ComboResult {
     problems.slice(0, 40).forEach((p) => console.log(`     - ${p}`));
     return { name, level: 'L2-FAIL', ok: false, fileCount };
   }
-  console.log(`  L2 静态体检：${pc.green('✓')} 无标记/变量/真名残留，无死 import`);
+  console.log(`  L2 静态体检：${pc.green('✓')} 无标记/变量/真名残留，无死 import，无悬空链接`);
 
   if (!opts.install) return { name, level: 'L2', ok: true, fileCount };
 

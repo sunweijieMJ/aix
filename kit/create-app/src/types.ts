@@ -18,14 +18,26 @@ export interface ProjectConfig {
   installDeps: boolean;
 }
 
-/** 文件条目（支持二进制和可执行权限） */
+/** 文件条目（支持二进制、可执行权限与符号链接） */
 export interface FileEntry {
   /** 相对项目根的路径 */
   path: string;
-  /** 文本或二进制内容 */
+  /**
+   * 文本或二进制内容
+   *
+   * 条目是符号链接时这里存的是**解引用后**的内容，仅在建链接失败时作为回落写入。
+   */
   content: string | Buffer;
   /** 文件权限（如 0o755 用于 shell 脚本） */
   mode?: number;
+  /**
+   * 模板里该条目是符号链接时的链接目标（相对本条目所在目录的 POSIX 路径）
+   *
+   * 用于把 `AGENTS.md -> CLAUDE.md` 这类「一份内容两个名字」的约定原样带进产物：
+   * 落成静态副本的话，产物里就是两份会各自漂移的文件。
+   * 只有链接目标同在产物内时才会带上本字段；写盘失败（如 Windows 无权限）会回落成副本。
+   */
+  symlinkTarget?: string;
 }
 
 export type FileList = FileEntry[];

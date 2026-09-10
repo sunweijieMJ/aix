@@ -6,6 +6,13 @@ import { applyConditionalBlocks } from './conditional';
 import { normalizeManifestPath } from './manifest-path';
 import { patchPackageJson } from './pkg-patcher';
 
+/** walkDir 的一条结果：模板内的绝对路径 + 它在模板里是不是符号链接 */
+interface WalkedFile {
+  fullPath: string;
+  /** 是符号链接且可原样保留时，链接目标（相对链接所在目录的 POSIX 路径） */
+  symlinkTarget?: string;
+}
+
 /**
  * 递归读取目录下所有文件
  *
@@ -13,12 +20,16 @@ import { patchPackageJson } from './pkg-patcher';
  * 任意层级都不该进产物。按根相对路径比对的话，模板一旦是 monorepo，
  * 子包下的 node_modules 与子模块的 `.git` 就会被整个打进新项目。
  *
- * 符号链接按解引用后的类型处理：指向文件的链接照旧当普通文件收进来（历史行为，
- * readFileSync 本就会跟随链接）；指向目录或悬空的链接跳过——前者会让 readFileSync
- * 直接 EISDIR 崩掉，后者读不到内容。不一律跳过，是为了不把原本可用的形态变成静默丢文件。
+ * 符号链接按解引用后的类型处理：指向文件的链接收进来（readFileSync 本就会跟随链接），
+ * 指向目录或悬空的链接跳过——前者会让 readFileSync 直接 EISDIR 崩掉，后者读不到内容。
+ *
+ * 指向**模板内**文件的相对链接会额外记下 symlinkTarget，写盘时重建成链接而不是副本：
+ * `AGENTS.md -> CLAUDE.md` 这类「一份内容两个名字」的约定，落成两份副本后就会各自漂移。
+ * 以下两种一律解引用成普通文件，因为链接本身在产物里没有意义、甚至会指向用户机器：
+ * 绝对路径链接、以及指向模板目录之外的相对链接。
  */
-function walkDir(dir: string, skipNames: string[] = []): string[] {
-  const results: string[] = [];
+function walkDir(dir: string, skipNames: string[] = []): WalkedFile[] {
+  const results: WalkedFile[] = [];
 
   function walk(current: string): void {
     const entries = fs.readdirSync(current, { withFileTypes: true });
@@ -33,20 +44,47 @@ function walkDir(dir: string, skipNames: string[] = []): string[] {
         } catch {
           continue; // 悬空链接
         }
-        if (target.isFile()) results.push(fullPath);
+        if (target.isFile()) {
+          results.push({ fullPath, symlinkTarget: portableLinkTarget(fullPath, dir) });
+        }
         continue;
       }
 
       if (entry.isDirectory()) {
         walk(fullPath);
       } else if (entry.isFile()) {
-        results.push(fullPath);
+        results.push({ fullPath });
       }
     }
   }
 
   walk(dir);
   return results;
+}
+
+/**
+ * 取可搬进产物的链接目标；不可搬则返回 undefined（调用方回落成解引用副本）
+ *
+ * @param linkPath    链接自身的绝对路径
+ * @param templateDir 模板根目录，用来判定目标是否还在模板内
+ */
+function portableLinkTarget(linkPath: string, templateDir: string): string | undefined {
+  let raw: string;
+  try {
+    raw = fs.readlinkSync(linkPath);
+  } catch {
+    return undefined;
+  }
+
+  // 绝对路径链接指向的是维护者这台机器，搬过去必然错
+  if (path.isAbsolute(raw)) return undefined;
+
+  const resolved = path.resolve(path.dirname(linkPath), raw);
+  const rel = path.relative(templateDir, resolved);
+  // 指到模板外（../ 开头）同样搬不过去
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return undefined;
+
+  return raw.split(path.sep).join('/');
 }
 
 /** 判断文件内容是否为文本（通过检测 null 字节） */
@@ -192,7 +230,7 @@ export class Composer {
     const subs = manifest.substitutions ?? [];
     const hits: SubstitutionHits = subs.map(() => new Map<string, number>());
 
-    for (const fullPath of allFiles) {
+    for (const { fullPath, symlinkTarget } of allFiles) {
       const relPath = path.relative(templateDir, fullPath);
       const outputPath = relPath.split(path.sep).join('/');
 
@@ -217,15 +255,29 @@ export class Composer {
       // 原样传给 writeFileSync 依赖的是 open(2) 对多余位的静默忽略，属未定义行为
       const mode = stat.mode & 0o777;
 
+      // 符号链接也照常算一遍内容：目标万一没进产物、或落盘时建不了链接，
+      // 就拿这份（同样经过裁剪与替换的）内容当副本写下去
       if (isTextFile(buf)) {
         // 顺序固定：substitutions → 条件注释块 → 变量替换（协议 1.2.4 / 1.3）
         const substituted = applySubstitutions(buf.toString('utf-8'), outputPath, subs, hits);
         const trimmed = applyConditionalBlocks(substituted, outputPath, selected, declared);
         const text = applyVariables(trimmed, variables);
-        fileList.push({ path: outputPath, content: text, mode });
+        fileList.push({ path: outputPath, content: text, mode, symlinkTarget });
       } else {
-        fileList.push({ path: outputPath, content: buf, mode });
+        fileList.push({ path: outputPath, content: buf, mode, symlinkTarget });
       }
+    }
+
+    // 链接目标必须也在产物里，否则会留下一个悬空链接（典型场景：目标被未选中的特性
+    // 裁掉了，而链接自身没跟着裁——清单漏登记）。这种情况退回成静态副本：
+    // 内容能用，总好过产物里躺一个断链。
+    const emitted = new Set(fileList.map((f) => f.path));
+    for (const entry of fileList) {
+      if (!entry.symlinkTarget) continue;
+      const targetRel = path.posix.normalize(
+        path.posix.join(path.posix.dirname(entry.path), entry.symlinkTarget),
+      );
+      if (!emitted.has(targetRel)) delete entry.symlinkTarget;
     }
 
     // 零命中说明真源改名/改写了而 config.ts 没跟着更新——此时产物会带着真名发出去，
@@ -234,7 +286,7 @@ export class Composer {
     // 例外：某个 file 被未选中的特性整体裁掉时，零命中是合法的，不能误报；
     // 但 file 在模板里压根不存在，则是失效路径，照样要报。
     const allRel = new Set(
-      allFiles.map((f) => path.relative(templateDir, f).split(path.sep).join('/')),
+      allFiles.map((f) => path.relative(templateDir, f.fullPath).split(path.sep).join('/')),
     );
     const problems: string[] = [];
     subs.forEach((sub, i) => {
