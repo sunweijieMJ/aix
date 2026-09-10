@@ -43,7 +43,7 @@ interface TestTask {
   targetType: 'component' | 'page' | 'element';
   variant: string;
   url: string;
-  baseline: string | { type: string; source: string; fileKey?: string };
+  baseline: BaselineRef;
   selector?: string;
   waitFor?: string;
   threshold?: number;
@@ -51,6 +51,9 @@ interface TestTask {
   browser?: 'chromium' | 'firefox' | 'webkit';
   theme?: 'light' | 'dark';
 }
+
+/** 配置中 variant.baseline 的形态（字符串路径或结构化来源） */
+type BaselineRef = VisualTestConfig['targets'][number]['variants'][number]['baseline'];
 
 /**
  * runTests 运行选项
@@ -316,6 +319,8 @@ export class VisualTestOrchestrator {
       baselineResult = await this.baselineProvider.fetch({
         source: task.baseline as string | BaselineSource,
         outputPath: baselinePath,
+        // Figma 位图导出倍率必须与截图 DPR 一致，否则尺寸不匹配导致比对必然失败
+        scale: this.config.screenshot.deviceScaleFactor,
       });
       timing.baseline = Date.now() - start;
 
@@ -678,16 +683,17 @@ export class VisualTestOrchestrator {
    * 为多 viewport 场景派生独立的 baseline 来源
    *
    * 字符串路径: `baselines/btn.png` → `baselines/btn@desktop.png`
-   * 结构化来源: 保持不变（Figma 节点不因 viewport 变化）
+   * 结构化来源: 有 perViewport 映射时切换到对应节点；否则保持不变
    */
-  private deriveViewportBaseline(
-    baseline: string | { type: string; source: string; fileKey?: string },
-    viewportName: string,
-  ): typeof baseline {
+  private deriveViewportBaseline(baseline: BaselineRef, viewportName: string): BaselineRef {
     if (typeof baseline === 'string') {
       const ext = path.extname(baseline);
       const base = baseline.slice(0, -ext.length);
       return `${base}@${viewportName}${ext}`;
+    }
+    const mapped = baseline.perViewport?.[viewportName];
+    if (mapped) {
+      return { ...baseline, source: mapped };
     }
     return baseline;
   }
@@ -695,10 +701,7 @@ export class VisualTestOrchestrator {
   /**
    * 为多浏览器场景派生独立的 baseline 来源
    */
-  private deriveBrowserBaseline(
-    baseline: string | { type: string; source: string; fileKey?: string },
-    browserType: string,
-  ): typeof baseline {
+  private deriveBrowserBaseline(baseline: BaselineRef, browserType: string): BaselineRef {
     if (typeof baseline === 'string') {
       const ext = path.extname(baseline);
       const base = baseline.slice(0, -ext.length);
@@ -713,10 +716,7 @@ export class VisualTestOrchestrator {
    * 字符串路径: `baselines/btn.png` → `baselines/btn@dark.png`
    * 结构化来源: 保持不变（与 viewport/browser 一致，结构化 baseline 由各 variant 自行指定）
    */
-  private deriveThemeBaseline(
-    baseline: string | { type: string; source: string; fileKey?: string },
-    theme: 'light' | 'dark',
-  ): typeof baseline {
+  private deriveThemeBaseline(baseline: BaselineRef, theme: 'light' | 'dark'): BaselineRef {
     if (typeof baseline === 'string') {
       const ext = path.extname(baseline);
       const base = baseline.slice(0, -ext.length);

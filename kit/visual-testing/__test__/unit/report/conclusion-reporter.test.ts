@@ -95,7 +95,6 @@ describe('ConclusionReporter', () => {
       expect(report.summary.acceptable).toBe(true);
       expect(report.issues).toHaveLength(0);
       expect(report.fixPlan.totalFixes).toBe(0);
-      expect(report.fixPlan.estimatedHours).toBe(0);
     });
 
     it('should calculate score and grade correctly with failures', () => {
@@ -126,21 +125,6 @@ describe('ConclusionReporter', () => {
       expect(report.issues[0]!.severity).toBe('critical');
       expect(report.issues[1]!.severity).toBe('major');
       expect(report.issues[2]!.severity).toBe('minor');
-    });
-
-    it('should generate fix plan with estimated hours', () => {
-      const results = [
-        createFailedResult('a', 'v1', 15, 'critical'),
-        createFailedResult('b', 'v1', 8, 'major'),
-        createFailedResult('c', 'v1', 2, 'minor'),
-      ];
-
-      const report = reporter.buildReport(results);
-
-      // totalFixes counts only issues with suggestions (none in this fixture)
-      expect(report.fixPlan.totalFixes).toBe(0);
-      // estimatedHours is based on all issues: critical=2h + major=1h + minor=0.5h = 3.5h
-      expect(report.fixPlan.estimatedHours).toBe(3.5);
     });
 
     it('should generate next actions', () => {

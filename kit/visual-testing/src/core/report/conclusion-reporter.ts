@@ -27,14 +27,6 @@ import type {
 
 const log = logger.child('ConclusionReporter');
 
-/** 工时估算常量 (小时) */
-const HOURS_BY_SEVERITY: Record<Severity, number> = {
-  critical: 2,
-  major: 1,
-  minor: 0.5,
-  trivial: 0.25,
-};
-
 /** 评分扣分权重 */
 const SCORE_PENALTY: Record<Severity, number> = {
   critical: 15,
@@ -264,7 +256,6 @@ export class ConclusionReporter implements Reporter {
 
     return {
       totalFixes: critical.length + major.length + minor.length,
-      estimatedHours: this.estimateHours(issues),
       byPriority: { critical, major, minor },
     };
   }
@@ -360,14 +351,6 @@ export class ConclusionReporter implements Reporter {
     const issueSummary =
       parts.length > 0 ? parts.join(', ') + ' issue(s)' : `${issues.length} issue(s)`;
 
-    return `${failed}/${total} tests failed with ${issueSummary}. Estimated ${this.estimateHours(issues)}h to fix.`;
-  }
-
-  private estimateHours(issues: Issue[]): number {
-    let hours = 0;
-    for (const issue of issues) {
-      hours += HOURS_BY_SEVERITY[issue.severity] ?? 0;
-    }
-    return Math.round(hours * 10) / 10;
+    return `${failed}/${total} tests failed with ${issueSummary}.`;
   }
 }

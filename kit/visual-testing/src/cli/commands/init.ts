@@ -44,7 +44,7 @@ async function runInit(options: { yes?: boolean }): Promise<void> {
     ? {
         projectName: path.basename(cwd),
         baselineProvider: 'local' as const,
-        enableLLM: true,
+        enableLLM: false,
         llmModel: 'gpt-4o',
       }
     : await promptInit();

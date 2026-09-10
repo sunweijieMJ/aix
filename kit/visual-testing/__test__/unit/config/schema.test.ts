@@ -14,7 +14,10 @@ describe('configSchema', () => {
       expect(result.data.directories.baselines).toBe('.visual-test/baselines');
       expect(result.data.comparison.threshold).toBe(0.01);
       expect(result.data.baseline.provider).toBe('local');
-      expect(result.data.llm.enabled).toBe(true);
+      expect(result.data.llm.enabled).toBe(false);
+      expect(result.data.ci.gate).toBe('pixel');
+      expect(result.data.screenshot.deviceScaleFactor).toBe(1);
+      expect(result.data.fidelity.tolerances.position).toBe(2);
     }
   });
 

@@ -5,23 +5,30 @@
  *   visual-test init            初始化配置
  *   visual-test sync            同步基准图
  *   visual-test test [targets]  运行视觉测试
+ *   visual-test fidelity        设计还原度校验（Figma 节点 ↔ 页面）
  */
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { registerInitCommand, registerSyncCommand, registerTestCommand } from './cli/commands';
+import {
+  registerFidelityCommand,
+  registerInitCommand,
+  registerSyncCommand,
+  registerTestCommand,
+} from './cli/commands';
 
 const program = new Command();
 
 program
   .name('visual-test')
-  .description('Visual regression testing with Figma baseline and LLM analysis')
+  .description('Visual regression testing and Figma design-fidelity checks')
   .version('0.1.0');
 
 // 注册子命令
 registerInitCommand(program);
 registerSyncCommand(program);
 registerTestCommand(program);
+registerFidelityCommand(program);
 
 // 子命令 action 均为 async，必须用 parseAsync 才会 await 它们；
 // 否则配置加载失败等逃逸异常会变成 unhandled rejection，且退出码不可靠（CI 误判）。

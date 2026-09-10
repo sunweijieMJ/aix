@@ -5,7 +5,7 @@
 /**
  * 基准图来源类型
  */
-export type BaselineSourceType = 'figma-mcp' | 'local';
+export type BaselineSourceType = 'figma-api' | 'figma-mcp' | 'local';
 
 /**
  * 结构化基准图来源
@@ -16,6 +16,8 @@ export interface BaselineSource {
   source: string;
   /** Figma 文件 Key (figma 类型必需) */
   fileKey?: string;
+  /** 多 viewport 时按 viewport.name 映射到不同 Figma 节点 */
+  perViewport?: Record<string, string>;
 }
 
 /**
@@ -56,7 +58,7 @@ export interface FetchBaselineOptions {
   source: string | BaselineSource;
   /** 输出路径 */
   outputPath: string;
-  /** 缩放比例 (默认 2) */
+  /** 位图缩放比例；应与截图的 deviceScaleFactor 一致（默认 1） */
   scale?: number;
   /** 超时时间 (ms) */
   timeout?: number;

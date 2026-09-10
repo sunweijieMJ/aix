@@ -5,3 +5,4 @@
 export { registerInitCommand } from './init';
 export { registerSyncCommand } from './sync';
 export { registerTestCommand } from './test';
+export { registerFidelityCommand } from './fidelity';

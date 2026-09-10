@@ -65,9 +65,40 @@ const browserSchema = z.object({
   channel: z.string().optional(),
 });
 
+const cookieSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+  domain: z.string().optional(),
+  path: z.string().optional(),
+  url: z.string().optional(),
+  httpOnly: z.boolean().optional(),
+  secure: z.boolean().optional(),
+  sameSite: z.enum(['Strict', 'Lax', 'None']).optional(),
+});
+
+/** BrowserContext 级配置：登录态注入、区域/时区固定，保证截图可复现 */
+const browserContextSchema = z.object({
+  /** Playwright storageState 文件路径（登录态） */
+  storageState: z.string().optional(),
+  /** 直接注入的 Cookie 列表 */
+  cookies: z.array(cookieSchema).default([]),
+  /** 附加请求头（如 Authorization） */
+  extraHTTPHeaders: z.record(z.string(), z.string()).optional(),
+  locale: z.string().default('zh-CN'),
+  timezoneId: z.string().default('Asia/Shanghai'),
+  /** 通过媒体查询让页面自行关闭动画，比注入 CSS 更早生效 */
+  reducedMotion: z.enum(['reduce', 'no-preference']).default('reduce'),
+});
+
 const screenshotSchema = z.object({
   viewport: viewportSchema.default({ width: 1280, height: 720 }),
   viewports: z.array(namedViewportSchema).default([]),
+  /**
+   * 设备像素比。Figma 位图导出的 scale 跟随此值，保证基线与截图尺寸一致。
+   * 默认 1；需要更清晰的裁图时可设 2（像素数 ×4）。
+   */
+  deviceScaleFactor: z.number().positive().max(4).default(1),
+  context: browserContextSchema.default(browserContextSchema.parse({})),
   stability: stabilitySchema.default(stabilitySchema.parse({})),
   browsers: z.array(browserSchema).default([browserSchema.parse({})]),
 });
@@ -83,7 +114,13 @@ const figmaConfigSchema = z.object({
 });
 
 const baselineSchema = z.object({
-  provider: z.enum(['figma-mcp', 'local']).default('local'),
+  /**
+   * 默认基准图来源。
+   * - local：本地文件
+   * - figma-api：Figma REST API（推荐）
+   * - figma-mcp：已废弃，通过 MCP 子进程下载，下个 major 移除
+   */
+  provider: z.enum(['figma-api', 'figma-mcp', 'local']).default('local'),
   figma: figmaConfigSchema.optional(),
 });
 
@@ -123,8 +160,8 @@ const llmEndpointSchema = z.object({
 });
 
 const llmSchema = z.object({
-  /** 是否启用 LLM 分析 */
-  enabled: z.boolean().default(true),
+  /** 是否启用 LLM 分析。默认关闭：测试工具不应默认发起付费外部调用 */
+  enabled: z.boolean().default(false),
   /** 默认 API 密钥（analyze/suggestFix 未指定时使用） */
   apiKey: z.string().optional(),
   /** 默认模型（analyze/suggestFix 未指定时使用） */
@@ -142,9 +179,14 @@ const llmSchema = z.object({
 const baselineSourceSchema = z.union([
   z.string(),
   z.object({
-    type: z.enum(['figma-mcp', 'local']),
+    type: z.enum(['figma-api', 'figma-mcp', 'local']),
     source: z.string(),
     fileKey: z.string().optional(),
+    /**
+     * 多 viewport 时每个 viewport 对应的 Figma 节点 ID（key 为 viewport.name）。
+     * 未配置的 viewport 回落到 source。
+     */
+    perViewport: z.record(z.string(), z.string()).optional(),
   }),
 ]);
 
@@ -172,7 +214,83 @@ const reportSchema = z.object({
 
 const ciSchema = z.object({
   failOnDiff: z.boolean().default(true),
+  /**
+   * 门禁判定依据。
+   * - pixel（默认）：像素比对未通过即失败，确定性
+   * - severity：按 LLM / 规则引擎给出的 severity 是否达到 failOnSeverity 判定（旧行为，非确定性）
+   */
+  gate: z.enum(['pixel', 'severity']).default('pixel'),
   failOnSeverity: z.enum(['critical', 'major', 'minor', 'trivial']).default('major'),
+});
+
+// ---- Fidelity（设计还原度）配置 ----
+
+const fidelityTolerancesSchema = z.object({
+  /** 位置 x / y 容差 (px) */
+  position: z.number().min(0).default(2),
+  /** 尺寸 width / height 容差 (px) */
+  size: z.number().min(0).default(2),
+  /** 颜色 ΔE2000 容差 */
+  colorDeltaE: z.number().min(0).default(3),
+  /** 颜色 ΔE2000 超过此值升为 major */
+  colorDeltaEMajor: z.number().min(0).default(6),
+  /** 位置 / 尺寸偏差超过此值升为 major (px) */
+  geometryMajor: z.number().min(0).default(8),
+  /** padding / gap 容差 (px) */
+  spacing: z.number().min(0).default(2),
+  /** 圆角容差 (px) */
+  radius: z.number().min(0).default(2),
+  /** 行高容差 (px) */
+  lineHeight: z.number().min(0).default(1),
+  /** 字距容差 (px) */
+  letterSpacing: z.number().min(0).default(1),
+  /** 描边宽度容差 (px) */
+  borderWidth: z.number().min(0).default(0.5),
+  /** 透明度容差 */
+  opacity: z.number().min(0).max(1).default(0.05),
+});
+
+const fidelitySchema = z.object({
+  /** 根元素选择器；未指定时依次尝试 [data-figma=<rootId>]、#app > *、body > * */
+  rootSelector: z.string().optional(),
+  /** 视口：'frame' 跟随 Figma Frame 尺寸，或显式指定 */
+  viewport: z.union([z.literal('frame'), viewportSchema]).default('frame'),
+  tolerances: fidelityTolerancesSchema.default(fidelityTolerancesSchema.parse({})),
+  /** 颜色 → CSS 变量映射来源 */
+  tokens: z
+    .object({
+      cssFile: z.string().optional(),
+      prefix: z.string().default('--'),
+    })
+    .default({ prefix: '--' }),
+  match: z
+    .object({
+      /** 文本相似度阈值，低于视为未匹配 */
+      textSimilarity: z.number().min(0).max(1).default(0.9),
+      /** 几何匹配 IoU 阈值 */
+      geometryIoU: z.number().min(0).max(1).default(0.6),
+    })
+    .default({ textSimilarity: 0.9, geometryIoU: 0.6 }),
+  extract: z
+    .object({
+      maxDepth: z.number().int().positive().default(12),
+      maxNodes: z.number().int().positive().default(2000),
+    })
+    .default({ maxDepth: 12, maxNodes: 2000 }),
+  crops: z
+    .object({
+      enabled: z.boolean().default(true),
+      padding: z.number().int().min(0).default(8),
+    })
+    .default({ enabled: true, padding: 8 }),
+  /** 对无法用结构化差异解释的区域做 LLM 视觉描述（默认关闭，需 llm 配置） */
+  vision: z.object({ enabled: z.boolean().default(false) }).default({ enabled: false }),
+  output: z
+    .object({
+      dir: z.string().default('.visual-test/fidelity'),
+      formats: z.array(z.enum(['md', 'json'])).default(['md', 'json']),
+    })
+    .default({ dir: '.visual-test/fidelity', formats: ['md', 'json'] }),
 });
 
 const concurrentSchema = z.object({
@@ -246,6 +364,8 @@ export const configSchema = z.object({
   report: reportSchema.default(reportSchema.parse({})),
   /** CI 配置 */
   ci: ciSchema.default(ciSchema.parse({})),
+  /** 设计还原度校验配置（fidelity 命令） */
+  fidelity: fidelitySchema.default(fidelitySchema.parse({})),
   /** 性能配置 */
   performance: performanceSchema.default(performanceSchema.parse({})),
   /** 日志配置 */

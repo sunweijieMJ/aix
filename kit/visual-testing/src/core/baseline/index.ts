@@ -5,7 +5,10 @@
  * 支持按 variant source type 动态路由到对应 provider。
  */
 
+import path from 'node:path';
+
 import type { VisualTestConfig } from '../config/schema';
+import { FigmaApiProvider } from './figma-api-provider';
 import { FigmaMcpProvider } from './figma-mcp-provider';
 import { LocalProvider } from './local-provider';
 import type {
@@ -89,15 +92,26 @@ function createProviderByType(
     case 'local':
       return new LocalProvider(config.directories.baselines);
 
+    case 'figma-api':
+      return new FigmaApiProvider({
+        fileKey: config.baseline.figma?.fileKey,
+        accessToken: config.baseline.figma?.accessToken,
+        cacheDir: path.join(config.directories.baselines, '..', 'cache', 'figma'),
+      });
+
     case 'figma-mcp':
       return new FigmaMcpProvider({
         fileKey: config.baseline.figma?.fileKey,
+        accessToken: config.baseline.figma?.accessToken,
       });
 
     default:
       throw new Error(`Unknown baseline provider type: ${type}`);
   }
 }
+
+export { FigmaApiProvider } from './figma-api-provider';
+export { LocalProvider } from './local-provider';
 
 // 导出类型
 export type {

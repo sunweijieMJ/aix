@@ -96,6 +96,40 @@ export function alignImages(
 }
 
 /**
+ * 将两张图片裁到交集尺寸（左上对齐，取较小值）
+ * 用于 fidelity 场景：几像素的尺寸差不应被计为差异区域
+ */
+export function cropToIntersection(
+  img1: PNG,
+  img2: PNG,
+): { aligned1: PNG; aligned2: PNG; width: number; height: number } {
+  const width = Math.min(img1.width, img2.width);
+  const height = Math.min(img1.height, img2.height);
+  return {
+    aligned1: cropImage(img1, width, height),
+    aligned2: cropImage(img2, width, height),
+    width,
+    height,
+  };
+}
+
+/**
+ * 裁剪到左上角起的指定尺寸
+ */
+export function cropImage(src: PNG, targetWidth: number, targetHeight: number): PNG {
+  if (src.width === targetWidth && src.height === targetHeight) {
+    return src;
+  }
+  const dst = new PNG({ width: targetWidth, height: targetHeight });
+  for (let row = 0; row < targetHeight; row++) {
+    const srcOffset = (row * src.width) << 2;
+    const dstOffset = (row * targetWidth) << 2;
+    src.data.copy(dst.data, dstOffset, srcOffset, srcOffset + (targetWidth << 2));
+  }
+  return dst;
+}
+
+/**
  * 将图片填充到指定尺寸（右下角填充透明像素）
  */
 function padImage(src: PNG, targetWidth: number, targetHeight: number): PNG {

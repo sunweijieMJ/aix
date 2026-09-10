@@ -65,11 +65,30 @@ export class PlaywrightScreenshotEngine implements ScreenshotEngine {
         channel: browserConfig.channel,
       });
 
-      // 创建上下文
+      // 创建上下文：DPR 必须与基准图导出倍率一致；locale / 时区 / reducedMotion 固定以保证可复现
       const { width, height } = this.config.screenshot.viewport;
+      const ctx = this.config.screenshot.context;
       const context = await browser.newContext({
         viewport: { width, height },
+        deviceScaleFactor: this.config.screenshot.deviceScaleFactor,
+        locale: ctx.locale,
+        timezoneId: ctx.timezoneId,
+        reducedMotion: ctx.reducedMotion,
+        storageState: ctx.storageState,
+        extraHTTPHeaders: ctx.extraHTTPHeaders,
       });
+
+      // 登录态：显式 Cookie 注入（storageState 之外的补充方式）
+      if (ctx.cookies.length > 0) {
+        await context.addCookies(
+          ctx.cookies.map((c) => ({
+            ...c,
+            // Playwright 要求 url 或 domain+path 二者之一；给了 domain 但没给 path 时补 '/'
+            path: c.url ? c.path : (c.path ?? '/'),
+          })),
+        );
+        log.debug(`Injected ${ctx.cookies.length} cookie(s)`);
+      }
 
       // 创建 Page 池
       const pagePool = new PagePool(this.config.performance.concurrent.poolSize);
@@ -184,6 +203,69 @@ export class PlaywrightScreenshotEngine implements ScreenshotEngine {
         await page.setViewportSize({ width, height }).catch(() => {});
       }
       // 归还到池而非关闭
+      pagePool.release(page);
+    }
+  }
+
+  /**
+   * 在一个已导航、已稳定化的 Page 上执行自定义逻辑（供 fidelity 等需要直接操作 DOM 的流程使用）
+   *
+   * 负责：从池中取 Page → 设置 theme / viewport → 导航 → 稳定化 → 执行 fn → 还原状态并归还。
+   * 不做截图，由 fn 自行决定。
+   */
+  async withPage<T>(
+    options: Pick<
+      CaptureOptions,
+      | 'url'
+      | 'viewport'
+      | 'browser'
+      | 'theme'
+      | 'waitStrategies'
+      | 'disableAnimations'
+      | 'waitForNetworkIdle'
+      | 'waitForAnimations'
+      | 'extraDelay'
+      | 'hideSelectors'
+      | 'maskSelectors'
+      | 'replaceSelectors'
+    >,
+    fn: (page: Page) => Promise<T>,
+  ): Promise<T> {
+    const browserType = (options.browser as BrowserType) ?? 'chromium';
+    const context = this.contexts.get(browserType);
+    const pagePool = this.pagePools.get(browserType);
+
+    if (!context || !pagePool) {
+      throw new Error(`Browser ${browserType} not initialized. Call initialize() first.`);
+    }
+
+    const page = await pagePool.acquire();
+
+    try {
+      if (options.theme) {
+        await page.emulateMedia({ colorScheme: options.theme });
+      }
+      if (options.viewport) {
+        await page.setViewportSize(options.viewport);
+      }
+
+      await this.navigateTo(page, options.url);
+
+      const stability = this.mergeStabilityOptions({
+        ...options,
+        outputPath: '',
+      } as CaptureOptions);
+      await new StabilityHandler(stability).stabilizePage(page);
+
+      return await fn(page);
+    } finally {
+      if (options.theme) {
+        await page.emulateMedia({ colorScheme: null }).catch(() => {});
+      }
+      if (options.viewport) {
+        const { width, height } = this.config.screenshot.viewport;
+        await page.setViewportSize({ width, height }).catch(() => {});
+      }
       pagePool.release(page);
     }
   }
