@@ -11,9 +11,10 @@
     ]"
     :type="htmlType"
     :disabled="disabled || loading"
+    :aria-busy="loading || undefined"
     @click="handleClick"
   >
-    <span v-if="loading" class="aix-button__loading">
+    <span v-if="loading" class="aix-button__loading" role="img" :aria-label="t.loadingText">
       <svg
         class="aix-button__loading-icon"
         viewBox="0 0 1024 1024"
@@ -41,10 +42,15 @@
  *
  * 用于触发操作和提交表单。支持多种类型、尺寸和状态。
  */
-import { useNamespace } from '@aix/hooks';
+import { useLocale, useNamespace } from '@aix/hooks';
+import { locale as buttonLocale } from './locale';
 import type { ButtonProps, ButtonEmits } from './types';
 
 const ns = useNamespace('button');
+
+// i18n：跟随 @aix/hooks 全局 locale（业务方通过 createLocale 注入），未设置时默认 zh-CN。
+// 按钮的可见文字由 <slot /> 提供，这里只需要 loading 态的无障碍标签
+const { t } = useLocale({ name: 'button', messages: buttonLocale });
 
 const props = withDefaults(defineProps<ButtonProps>(), {
   type: 'default',

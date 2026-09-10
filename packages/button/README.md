@@ -102,35 +102,50 @@ const handleClick = (event: MouseEvent) => {
 
 ### 多语言支持
 
-Button 组件内置了多语言支持。组件包含特有文案（`loadingText`、`clickMe`、`submitButton`）以及继承的公共文案（`confirm`、`cancel`、`add` 等）。
+按钮上的文字来自 `<slot />`，由业务侧提供，组件不参与。组件自己渲染的文案只有一处：
+loading 态加载图标的无障碍标签（`loadingText`），供屏幕阅读器播报。
+
+默认跟随 `@aix/hooks` 的全局语言（未配置时为 `zh-CN`），无需任何接入代码：
 
 ```vue
 <template>
-  <div>
-    <!-- 使用 Button 组件特有文案 -->
-    <Button type="primary">{{ t.clickMe }}</Button>
-    <Button type="primary" :loading="true">{{ t.loadingText }}</Button>
-    <Button type="primary">{{ t.submitButton }}</Button>
-
-    <!-- 使用公共文案 -->
-    <Button type="default">{{ t.confirm }}</Button>
-    <Button type="default">{{ t.cancel }}</Button>
-    <Button type="link">{{ t.add }}</Button>
-  </div>
+  <!-- 屏幕阅读器读到 "加载中"；语言切到 en-US 时读到 "Loading" -->
+  <Button type="primary" :loading="true">提交</Button>
 </template>
 
-<script setup>
-import { Button, buttonLocale } from '@aix/button';
-import { useLocale } from '@aix/hooks';
-
-// 获取多语言文案
-const { t } = useLocale({ name: 'button', messages: buttonLocale });
-
-// t.value 包含：
-// - Button 特有文案：loadingText, clickMe, submitButton
-// - 公共文案：confirm, cancel, add, save, delete, edit 等
+<script setup lang="ts">
+import { Button } from '@aix/button';
 </script>
 ```
+
+需要改这句文案时，在应用入口做覆盖：
+
+```ts
+import { createApp } from 'vue';
+import { createLocale } from '@aix/hooks';
+import App from './App.vue';
+
+const app = createApp(App);
+app.use(
+  createLocale('zh-CN', {
+    messages: {
+      button: { 'zh-CN': { loadingText: '处理中' } },
+    },
+  }),
+);
+app.mount('#app');
+```
+
+语言包也可以单独导入（自定义 `useLocale` 场景）：
+
+```ts
+import { buttonLocale, buttonZhCN, buttonEnUS } from '@aix/button';
+import type { ButtonLocale } from '@aix/button';
+```
+
+| 文案 key | zh-CN | en-US | 用途 |
+|----------|-------|-------|------|
+| `loadingText` | 加载中 | Loading | loading 态加载图标的 `aria-label` |
 
 ## API
 

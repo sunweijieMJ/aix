@@ -3,6 +3,10 @@ import Button from './Button.vue';
 
 export type { ButtonProps, ButtonEmits } from './types';
 
+// 语言包：业务侧可用 createLocale 做应用级覆盖
+export { locale as buttonLocale, zhCN as buttonZhCN, enUS as buttonEnUS } from './locale';
+export type { ButtonLocale } from './locale';
+
 // 支持单独导入
 export { Button };
 

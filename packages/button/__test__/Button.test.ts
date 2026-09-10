@@ -1,6 +1,7 @@
+import { createLocale } from '@aix/hooks';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { Button } from '../src';
+import { Button, buttonEnUS, buttonLocale, buttonZhCN } from '../src';
 
 describe('Button 组件', () => {
   describe('渲染测试', () => {
@@ -345,6 +346,50 @@ describe('Button 组件', () => {
 
       expect(wrapper.find('strong').exists()).toBe(true);
       expect(wrapper.find('em').exists()).toBe(true);
+    });
+  });
+
+  describe('国际化', () => {
+    it('loading 态应该带上无障碍标签，默认中文', () => {
+      const wrapper = mount(Button, { props: { loading: true } });
+      const icon = wrapper.find('.aix-button__loading');
+
+      expect(icon.attributes('aria-label')).toBe(buttonZhCN.loadingText);
+      expect(icon.attributes('role')).toBe('img');
+      expect(wrapper.attributes('aria-busy')).toBe('true');
+    });
+
+    it('非 loading 态不应该有 aria-busy', () => {
+      const wrapper = mount(Button);
+      expect(wrapper.attributes('aria-busy')).toBeUndefined();
+    });
+
+    it('应该跟随应用级 locale 切到英文', () => {
+      const wrapper = mount(Button, {
+        props: { loading: true },
+        global: { plugins: [createLocale('en-US')] },
+      });
+
+      expect(wrapper.find('.aix-button__loading').attributes('aria-label')).toBe(
+        buttonEnUS.loadingText,
+      );
+    });
+
+    it('应该接受 createLocale 的应用级文案覆盖', () => {
+      const wrapper = mount(Button, {
+        props: { loading: true },
+        global: {
+          plugins: [
+            createLocale('zh-CN', { messages: { button: { 'zh-CN': { loadingText: '处理中' } } } }),
+          ],
+        },
+      });
+
+      expect(wrapper.find('.aix-button__loading').attributes('aria-label')).toBe('处理中');
+    });
+
+    it('语言包应该覆盖 zh-CN / en-US 两种语言', () => {
+      expect(Object.keys(buttonLocale).sort()).toEqual(['en-US', 'zh-CN']);
     });
   });
 });
