@@ -36,7 +36,6 @@ describe('ComponentExtractor', () => {
       packagesDir: '/test/packages',
       outputDir: '/test/output',
       ignorePackages: [],
-      enableCache: true,
       verbose: false,
       maxConcurrentExtraction: 5,
     };

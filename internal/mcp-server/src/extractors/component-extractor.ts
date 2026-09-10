@@ -1,4 +1,4 @@
-import { COMPONENT_LIBRARY_CONFIG } from '../constants';
+import { COMPONENT_LIBRARY_CONFIG, DEFAULT_MAX_CONCURRENT_EXTRACTION } from '../constants';
 import { createParsers } from '../parsers/index';
 import type { ComponentExample, ComponentInfo, ExtractorConfig, PackageInfo } from '../types/index';
 import {
@@ -10,6 +10,7 @@ import {
 } from '../utils/index';
 import { log } from '../utils/logger';
 import { ConcurrencyController } from '../utils/performance';
+import { findRepoRoot, toRepoRelative } from '../utils/repo-root';
 import { IconsExtractor } from './icons-extractor';
 import type { IconInfo } from './icons-extractor';
 import { ReadmeExtractor } from './readme-extractor';
@@ -29,14 +30,45 @@ export class ComponentExtractor {
   private config: ExtractorConfig;
   private concurrencyController: ConcurrencyController;
   private dataManager: DataManager;
+  /** workspace 根，用于把绝对路径相对化后落盘 */
+  private repoRoot: string;
 
   constructor(config: ExtractorConfig) {
     this.config = config;
     this.readmeExtractor = new ReadmeExtractor();
     this.iconsExtractor = new IconsExtractor();
     this.parsers = createParsers();
-    this.concurrencyController = new ConcurrencyController(config.maxConcurrentExtraction || 5);
+    this.concurrencyController = new ConcurrencyController(
+      config.maxConcurrentExtraction || DEFAULT_MAX_CONCURRENT_EXTRACTION,
+    );
     this.dataManager = new DataManager(config.outputDir);
+
+    const repoRoot = findRepoRoot(config.packagesDir);
+    if (!repoRoot) {
+      log.warn(
+        `⚠️ 未找到 workspace 根（${config.packagesDir} 向上无 pnpm-workspace.yaml），路径将保持绝对路径`,
+      );
+    }
+    this.repoRoot = repoRoot ?? '';
+  }
+
+  /**
+   * 把绝对路径转成相对 workspace 根的路径
+   */
+  private relativize(absolutePath: string): string {
+    return this.repoRoot ? toRepoRelative(absolutePath, this.repoRoot) : absolutePath;
+  }
+
+  /**
+   * 读取可选文件，不存在返回 undefined
+   */
+  private async readOptional(filePath: string): Promise<string | undefined> {
+    try {
+      const { readFile } = await import('node:fs/promises');
+      return await readFile(filePath, 'utf8');
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -112,7 +144,7 @@ export class ComponentExtractor {
     icons: IconInfo[];
   }> {
     const result = await this.extractPackages({ includeIcons: true });
-    await this.dataManager.saveComponentsByPackage(result.components, result.icons);
+    await this.dataManager.saveComponents(result.components, result.icons);
     return result;
   }
 
@@ -225,6 +257,8 @@ export class ComponentExtractor {
 
     // 如果 README 提取失败，回退到传统方法
     let props: ComponentInfo['props'] = [];
+    let emits: ComponentInfo['emits'] = [];
+    let slots: ComponentInfo['slots'] = [];
     let examples: ComponentExample[];
     let description: string;
     let category: string;
@@ -233,6 +267,8 @@ export class ComponentExtractor {
     if (readmeData) {
       // 使用 README 提取的数据
       props = readmeData.props;
+      emits = readmeData.emits;
+      slots = readmeData.slots;
       examples = readmeData.examples;
       description = readmeData.description;
       category = readmeData.category;
@@ -241,6 +277,8 @@ export class ComponentExtractor {
       if (this.config.verbose) {
         log.info(`✅ 从 README 提取组件信息: ${readmeData.title}`);
         log.info(`  - Props: ${props.length} 个`);
+        log.info(`  - Emits: ${emits.length} 个`);
+        log.info(`  - Slots: ${slots.length} 个`);
         log.info(`  - Examples: ${examples.length} 个`);
         log.info(`  - Category: ${category}`);
         log.info(`  - Tags: ${tags.join(', ')}`);
@@ -260,7 +298,11 @@ export class ComponentExtractor {
       tags = this.extractTags(packageInfo, '');
     }
 
-    // 构建组件信息
+    // 文档快照：发布出去的包里没有 packages/ 源码，靠快照保证文档类能力可用
+    const { join } = await import('node:path');
+    const changelogContent = await this.readOptional(join(packagePath, 'CHANGELOG.md'));
+
+    // 构建组件信息（路径一律相对 workspace 根）
     const component: ComponentInfo = {
       name: getDisplayName(packageInfo.name),
       packageName: packageInfo.name,
@@ -271,15 +313,20 @@ export class ComponentExtractor {
       author: this.extractAuthor(packageInfo.author),
       license: packageInfo.license || 'MIT',
 
-      sourcePath: packagePath,
-      storiesPath: files.storyFiles[0],
-      readmePath: files.readmeFiles[0],
+      sourcePath: this.relativize(packagePath),
+      storiesPath: files.storyFiles[0] ? this.relativize(files.storyFiles[0]) : undefined,
+      readmePath: files.readmeFiles[0] ? this.relativize(files.readmeFiles[0]) : undefined,
 
       dependencies: Object.keys(packageInfo.dependencies || {}),
       peerDependencies: Object.keys(packageInfo.peerDependencies || {}),
 
       props,
+      emits,
+      slots,
       examples,
+
+      readmeContent: readmeData?.content,
+      changelogContent,
     };
 
     if (this.config.verbose) {

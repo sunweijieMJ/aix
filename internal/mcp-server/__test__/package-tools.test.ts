@@ -114,6 +114,29 @@ describe('Package MCP Tools', () => {
       expect(result.apiSections).toHaveLength(1);
     });
 
+    it('默认只返回 API 章节目录，不返回正文', async () => {
+      const tool = tools.find((t) => t.name === 'get-package-info')!;
+      const result = (await tool.execute({ name: '@kit/tracker' })) as any;
+
+      expect(result.apiSections[0]).toEqual({ title: 'API', chars: expect.any(Number) });
+      expect(result.apiSections[0].content).toBeUndefined();
+    });
+
+    it('传 section 时返回该章节正文', async () => {
+      const tool = tools.find((t) => t.name === 'get-package-info')!;
+      const result = (await tool.execute({ name: '@kit/tracker', section: 'api' })) as any;
+
+      expect(result.apiSections).toHaveLength(1);
+      expect(result.apiSections[0].content).toContain('createTrackerPlugin');
+    });
+
+    it('section 不匹配时返回空章节列表', async () => {
+      const tool = tools.find((t) => t.name === 'get-package-info')!;
+      const result = (await tool.execute({ name: '@kit/tracker', section: '不存在' })) as any;
+
+      expect(result.apiSections).toHaveLength(0);
+    });
+
     it('应该通过显示名获取', async () => {
       const tool = tools.find((t) => t.name === 'get-package-info')!;
       const result = (await tool.execute({
@@ -134,6 +157,17 @@ describe('Package MCP Tools', () => {
       const result = (await tool.execute({ query: '埋点' })) as any;
       expect(result.results.length).toBeGreaterThan(0);
       expect(result.results[0].package.packageName).toBe('@kit/tracker');
+    });
+
+    it('命中项应该是摘要，不带 apiSections 正文和 examples', async () => {
+      const tool = tools.find((t) => t.name === 'search-packages')!;
+      const result = (await tool.execute({ query: '埋点' })) as any;
+      const pkg = result.results[0].package;
+
+      expect(pkg).toMatchObject({ featuresCount: 2, apiSectionTitles: ['API'] });
+      expect(pkg.apiSections).toBeUndefined();
+      expect(pkg.examples).toBeUndefined();
+      expect(pkg.features).toBeUndefined();
     });
 
     it('应该支持 limit 参数', async () => {

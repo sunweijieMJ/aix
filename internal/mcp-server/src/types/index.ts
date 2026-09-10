@@ -24,9 +24,12 @@ export interface ComponentBasicInfo {
 
 /**
  * 组件文件路径信息
+ *
+ * 全部为相对 workspace 根的路径（如 `packages/button`），
+ * 使用前需用 findRepoRoot() 定位仓库再拼成绝对路径。
  */
 export interface ComponentPaths {
-  /** 源码路径 */
+  /** 源码路径（包根目录） */
   sourcePath: string;
   /** Stories 路径 */
   storiesPath?: string;
@@ -50,10 +53,41 @@ export interface ComponentDependencies {
 export interface ComponentInfo extends ComponentBasicInfo, ComponentPaths, ComponentDependencies {
   /** Props 定义 */
   props: PropDefinition[];
+  /**
+   * Emits 定义
+   *
+   * 可选：索引是从磁盘 JSON 反序列化来的，早于本字段生成的数据没有它。
+   */
+  emits?: EmitDefinition[];
+  /** Slots 定义，可选原因同 emits */
+  slots?: SlotDefinition[];
   /** 组件示例 */
   examples: ComponentExample[];
   /** 变更日志 */
   changelog?: ChangelogEntry[];
+
+  /**
+   * README 正文快照（已剥离 frontmatter）
+   *
+   * 仅在提取阶段短暂存在，DataManager 落盘时会剥离到 docs-index.json，
+   * 不会进入 components-index.json，避免撑大主索引和 get-component-info 的返回值。
+   */
+  readmeContent?: string;
+  /** CHANGELOG 正文快照，去向同 readmeContent */
+  changelogContent?: string;
+}
+
+/**
+ * 文档快照索引
+ *
+ * 发布到 npm 的包里没有 packages/ 源码，靠这份快照让文档类工具和资源
+ * 在使用方机器上依然可用。
+ */
+export interface DocsIndex {
+  /** 最后更新时间 */
+  lastUpdated: string;
+  /** 包名 -> 文档正文 */
+  docs: Record<string, { readme?: string; changelog?: string }>;
 }
 
 /**
@@ -72,6 +106,40 @@ export interface PropDefinition {
   description?: string;
   /** 可选值枚举 */
   enum?: string[];
+  /**
+   * 所属章节
+   *
+   * 一个包的 README 里常有多个子组件各自的属性表，靠它区分这条 prop 属于谁。
+   */
+  group?: string;
+}
+
+/**
+ * Emits 定义接口
+ */
+export interface EmitDefinition {
+  /** 事件名 */
+  name: string;
+  /** 回调参数 */
+  params?: string;
+  /** 描述 */
+  description?: string;
+  /** 所属章节，含义同 PropDefinition.group */
+  group?: string;
+}
+
+/**
+ * Slots 定义接口
+ */
+export interface SlotDefinition {
+  /** 插槽名 */
+  name: string;
+  /** 描述 */
+  description?: string;
+  /** 作用域参数 */
+  scope?: string;
+  /** 所属章节，含义同 PropDefinition.group */
+  group?: string;
 }
 
 /**
@@ -138,14 +206,10 @@ export interface ExtractorConfig {
   outputDir: string;
   /** 忽略的包 */
   ignorePackages?: string[];
-  /** 缓存启用 */
-  enableCache?: boolean;
   /** 详细输出 */
   verbose?: boolean;
   /** 最大并发提取数 */
   maxConcurrentExtraction?: number;
-  /** 提取超时时间 */
-  extractionTimeout?: number;
 }
 
 // ==================== 索引和搜索类型 ====================
@@ -176,8 +240,32 @@ export interface IconIndexItem {
   category: string;
   iconCategory: string;
   tags: string[];
+  /** 检索关键词，含中文别名 */
   keywords: string[];
-  dataFile: string;
+}
+
+/**
+ * 图标搜索结果
+ *
+ * 图标不是组件，早先复用 SearchResult 伪造了一个 ComponentInfo
+ * （props 空数组、version 写死 1.0.0、sourcePath 空串），
+ * 这些假字段会被 LLM 当真，所以给图标单独一套结构。
+ */
+export interface IconSearchResult {
+  /** 图标组件名 */
+  name: string;
+  /** 所属包名 */
+  packageName: string;
+  /** 图标分类 */
+  category: string;
+  /** 描述 */
+  description: string;
+  /** 可直接使用的导入语句 */
+  importStatement: string;
+  /** 匹配分数 */
+  score: number;
+  /** 匹配的字段 */
+  matchedFields: string[];
 }
 
 /**
@@ -204,6 +292,56 @@ export interface SearchResult {
   score: number;
   /** 匹配的字段 */
   matchedFields: string[];
+}
+
+/**
+ * 组件摘要
+ *
+ * 列表/搜索场景专用。完整的 ComponentInfo 携带 props 和 examples，
+ * 单次 list-components 会产生上百 KB 的 JSON，直接撑爆 LLM 上下文，
+ * 因此列表类工具只返回摘要，详情由 get-component-info 按需获取。
+ */
+export interface ComponentSummary extends ComponentBasicInfo {
+  /** Props 数量 */
+  propsCount: number;
+  /** Emits 数量 */
+  emitsCount: number;
+  /** Slots 数量 */
+  slotsCount: number;
+  /** 示例数量 */
+  examplesCount: number;
+}
+
+/**
+ * 摘要形式的搜索结果
+ */
+export interface SearchResultSummary {
+  /** 组件摘要 */
+  component: ComponentSummary;
+  /** 匹配分数 */
+  score: number;
+  /** 匹配的字段 */
+  matchedFields: string[];
+}
+
+/**
+ * 把完整组件信息压成摘要
+ */
+export function toComponentSummary(component: ComponentInfo): ComponentSummary {
+  return {
+    name: component.name,
+    packageName: component.packageName,
+    version: component.version,
+    description: component.description,
+    category: component.category,
+    tags: component.tags,
+    author: component.author,
+    license: component.license,
+    propsCount: component.props?.length ?? 0,
+    emitsCount: component.emits?.length ?? 0,
+    slotsCount: component.slots?.length ?? 0,
+    examplesCount: component.examples?.length ?? 0,
+  };
 }
 
 // ==================== MCP 协议类型 ====================

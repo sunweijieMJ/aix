@@ -4,7 +4,27 @@
 
 import { MCP_TOOLS } from '../constants';
 import type { ToolArguments, ToolPackageIndex, ToolPackageInfo } from '../types/index';
-import { BaseTool } from './base';
+import { BaseTool, clampLimit, requireString } from './base';
+
+/**
+ * 工具包摘要
+ *
+ * 列表/搜索场景专用。完整的 ToolPackageInfo 带着 apiSections 的 markdown 原文，
+ * 单次 search-packages 可达 40KB+，因此这两类工具只返回摘要。
+ */
+function toPackageSummary(pkg: ToolPackageInfo) {
+  return {
+    name: pkg.name,
+    packageName: pkg.packageName,
+    version: pkg.version,
+    description: pkg.description,
+    category: pkg.category,
+    scope: pkg.scope,
+    tags: pkg.tags,
+    featuresCount: pkg.features.length,
+    apiSectionTitles: pkg.apiSections.map((s) => s.title),
+  };
+}
 
 /**
  * 列出所有工具包
@@ -63,13 +83,18 @@ export class ListPackagesTool extends BaseTool {
  */
 export class GetPackageInfoTool extends BaseTool {
   name = MCP_TOOLS.GET_PACKAGE_INFO;
-  description = '获取指定工具包的详细信息（特性、API 文档、代码示例）';
+  description =
+    '获取指定工具包的详细信息（特性、代码示例、API 文档目录）。不传 section 时 API 文档只返回标题目录，传 section 才返回该章节正文';
   inputSchema = {
     type: 'object',
     properties: {
       name: {
         type: 'string',
         description: '工具包名称或包名（如 "tracker" 或 "@kit/tracker"）',
+      },
+      section: {
+        type: 'string',
+        description: 'API 文档章节标题（支持部分匹配）。省略则只返回章节目录，不返回正文',
       },
     },
     required: ['name'],
@@ -80,14 +105,20 @@ export class GetPackageInfoTool extends BaseTool {
   }
 
   async execute(args: ToolArguments) {
-    const name = typeof args.name === 'string' ? args.name : '';
+    const name = requireString(args, 'name');
+    const section = typeof args.section === 'string' ? args.section.toLowerCase() : null;
     const pkg = this.findPackage(name);
 
     if (!pkg) {
       throw new Error(`未找到工具包: ${name}`);
     }
 
-    return pkg;
+    // API 文档正文动辄数万字符，默认只给目录，按需展开单个章节
+    const apiSections = section
+      ? pkg.apiSections.filter((s) => s.title.toLowerCase().includes(section))
+      : pkg.apiSections.map((s) => ({ title: s.title, chars: s.content.length }));
+
+    return { ...pkg, apiSections };
   }
 
   private findPackage(name: string): ToolPackageInfo | null {
@@ -108,7 +139,8 @@ export class GetPackageInfoTool extends BaseTool {
  */
 export class SearchPackagesTool extends BaseTool {
   name = MCP_TOOLS.SEARCH_PACKAGES;
-  description = '按关键词搜索工具包（匹配名称、描述、标签、特性）';
+  description =
+    '按关键词搜索工具包（匹配名称、描述、标签、特性；返回摘要，详情请用 get-package-info 获取）';
   inputSchema = {
     type: 'object',
     properties: {
@@ -129,8 +161,8 @@ export class SearchPackagesTool extends BaseTool {
   }
 
   async execute(args: ToolArguments) {
-    const query = typeof args.query === 'string' ? args.query.trim() : '';
-    const limit = typeof args.limit === 'number' ? args.limit : 10;
+    const query = requireString(args, 'query');
+    const limit = clampLimit(args.limit);
 
     if (!query) {
       return { results: [], total: 0 };
@@ -139,7 +171,7 @@ export class SearchPackagesTool extends BaseTool {
     const queryLower = query.toLowerCase();
     const allMatched = this.packageIndex.packages
       .map((pkg) => ({
-        package: pkg,
+        package: toPackageSummary(pkg),
         score: this.calculateScore(pkg, queryLower),
         matchedFields: this.getMatchedFields(pkg, queryLower),
       }))

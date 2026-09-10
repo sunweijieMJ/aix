@@ -25,9 +25,9 @@ describe('ResourceManager', () => {
       packageName: '@aix/button',
       version: '1.0.0',
       description: 'A reusable button component',
-      sourcePath: '/packages/button',
-      readmePath: '/packages/button/README.md',
-      storiesPath: '/packages/button/src/Button.stories.tsx',
+      sourcePath: 'packages/button',
+      readmePath: 'packages/button/README.md',
+      storiesPath: 'packages/button/src/Button.stories.tsx',
       tags: ['ui', 'button'],
       category: 'Basic',
       author: 'AIX Team',
@@ -47,7 +47,8 @@ describe('ResourceManager', () => {
       version: '1.0.0',
     };
 
-    resourceManager = new ResourceManager(mockComponentIndex);
+    // 数据里的路径是仓库相对路径，需要 repoRoot 才能还原成真实文件
+    resourceManager = new ResourceManager(mockComponentIndex, '/data', '/repo');
   });
 
   describe('constructor', () => {
@@ -61,8 +62,8 @@ describe('ResourceManager', () => {
       // Mock glob to return source files
       const { glob } = await import('glob');
       vi.mocked(glob).mockResolvedValue([
-        '/packages/button/src/Button.tsx',
-        '/packages/button/src/index.ts',
+        '/repo/packages/button/src/Button.tsx',
+        '/repo/packages/button/src/index.ts',
       ]);
 
       // Mock stat for changelog
@@ -107,11 +108,11 @@ describe('ResourceManager', () => {
         components: [componentWithoutOptionals],
       };
 
-      const manager = new ResourceManager(indexWithoutOptionals);
+      const manager = new ResourceManager(indexWithoutOptionals, '/data', '/repo');
 
       // Mock glob to return source files
       const { glob } = await import('glob');
-      vi.mocked(glob).mockResolvedValue(['/packages/button/src/Button.tsx']);
+      vi.mocked(glob).mockResolvedValue(['/repo/packages/button/src/Button.tsx']);
 
       // Mock stat to throw error (no changelog)
       vi.mocked(stat).mockRejectedValue(new Error('File not found'));
@@ -144,6 +145,53 @@ describe('ResourceManager', () => {
     });
   });
 
+  describe('脱离仓库运行（repoRoot 为 null，如 npx 安装）', () => {
+    const docsIndex = JSON.stringify({
+      lastUpdated: '2026-01-01T00:00:00.000Z',
+      docs: {
+        '@aix/button': { readme: '# Button 快照', changelog: '# Changelog 快照' },
+      },
+    });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('不登记源码和 Story 资源，只登记有快照的文档', async () => {
+      vi.mocked(readFile).mockResolvedValue(docsIndex);
+      const manager = new ResourceManager(mockComponentIndex, '/data', null);
+
+      const resources = await manager.listResources();
+      const uris = resources.map((r) => r.uri);
+
+      // 登记了也读不到，只会让调用方白跑一趟拿到 Resource not found
+      expect(uris.filter((u) => u.startsWith('component-source'))).toHaveLength(0);
+      expect(uris.filter((u) => u.startsWith('component-story'))).toHaveLength(0);
+      expect(uris).toContain('component-readme://@aix/button/README.md');
+      expect(uris).toContain('component-changelog://@aix/button/CHANGELOG.md');
+    });
+
+    it('README 和 CHANGELOG 从文档快照读取', async () => {
+      vi.mocked(readFile).mockResolvedValue(docsIndex);
+      const manager = new ResourceManager(mockComponentIndex, '/data', null);
+
+      const readme = await manager.readResource('component-readme://@aix/button/README.md');
+      const changelog = await manager.readResource(
+        'component-changelog://@aix/button/CHANGELOG.md',
+      );
+
+      expect(readme?.text).toBe('# Button 快照');
+      expect(changelog?.text).toBe('# Changelog 快照');
+    });
+
+    it('没有快照时返回 null 而不是抛错', async () => {
+      vi.mocked(readFile).mockRejectedValue(new Error('ENOENT'));
+      const manager = new ResourceManager(mockComponentIndex, '/data', null);
+
+      expect(await manager.readResource('component-readme://@aix/button/README.md')).toBeNull();
+    });
+  });
+
   describe('readResource', () => {
     beforeEach(() => {
       // Reset all mocks before each test
@@ -151,12 +199,12 @@ describe('ResourceManager', () => {
     });
 
     it('should read component source file', async () => {
-      const uri = 'component-source://@aix/button/Button.tsx';
+      const uri = 'component-source://@aix/button/src/Button.tsx';
       const mockFileContent = 'export const Button = () => <button>Click me</button>;';
 
       // Mock glob to return source files
       const { glob } = await import('glob');
-      vi.mocked(glob).mockResolvedValue(['/packages/button/src/Button.tsx']);
+      vi.mocked(glob).mockResolvedValue(['/repo/packages/button/src/Button.tsx']);
 
       vi.mocked(readFile).mockResolvedValue(mockFileContent);
 
@@ -307,18 +355,18 @@ describe('ResourceManager', () => {
     it('should get component source files', async () => {
       const { glob } = await import('glob');
       const mockFiles = [
-        '/packages/button/src/Button.tsx',
-        '/packages/button/src/index.ts',
-        '/packages/button/src/Button.test.tsx',
-        '/packages/button/src/Button.stories.tsx',
+        '/repo/packages/button/src/Button.tsx',
+        '/repo/packages/button/src/index.ts',
+        '/repo/packages/button/src/Button.test.tsx',
+        '/repo/packages/button/src/Button.stories.tsx',
       ];
 
       vi.mocked(glob).mockResolvedValue(mockFiles);
 
       const result = await resourceManager['getComponentSourceFiles'](mockComponent);
 
-      // Should filter out test and story files
-      expect(result).toEqual(['/packages/button/src/Button.tsx', '/packages/button/src/index.ts']);
+      // Should filter out test and story files, and return package-relative paths
+      expect(result).toEqual(['src/Button.tsx', 'src/index.ts']);
     });
 
     it('should handle glob errors', async () => {
@@ -339,21 +387,49 @@ describe('ResourceManager', () => {
   });
 
   describe('findSourceFile', () => {
-    it('should find source file by name', async () => {
+    it('should find source file by package-relative path', async () => {
       const { glob } = await import('glob');
       vi.mocked(glob).mockResolvedValue([
-        '/packages/button/src/Button.tsx',
-        '/packages/button/src/index.ts',
+        '/repo/packages/button/src/Button.tsx',
+        '/repo/packages/button/src/index.ts',
       ]);
 
-      const result = await resourceManager['findSourceFile'](mockComponent, 'Button.tsx');
+      const result = await resourceManager['findSourceFile'](mockComponent, 'src/Button.tsx');
 
-      expect(result).toBe('/packages/button/src/Button.tsx');
+      expect(result).toBe('/repo/packages/button/src/Button.tsx');
+    });
+
+    it('should not resolve a bare basename', async () => {
+      const { glob } = await import('glob');
+      vi.mocked(glob).mockResolvedValue(['/repo/packages/button/src/Button.tsx']);
+
+      await expect(resourceManager['findSourceFile'](mockComponent, 'Button.tsx')).rejects.toThrow(
+        'Source file not found: Button.tsx',
+      );
+    });
+
+    it('should give same-named files in different dirs distinct URIs', async () => {
+      const { glob } = await import('glob');
+      vi.mocked(glob).mockResolvedValue([
+        '/repo/packages/button/src/index.ts',
+        '/repo/packages/button/src/hooks/index.ts',
+      ]);
+
+      const resources = await resourceManager.listResources();
+      const sourceUris = resources
+        .filter((r) => r.uri.startsWith('component-source://'))
+        .map((r) => r.uri);
+
+      expect(sourceUris).toEqual([
+        'component-source://@aix/button/src/hooks/index.ts',
+        'component-source://@aix/button/src/index.ts',
+      ]);
+      expect(new Set(sourceUris).size).toBe(sourceUris.length);
     });
 
     it('should throw error for non-existent file', async () => {
       const { glob } = await import('glob');
-      vi.mocked(glob).mockResolvedValue(['/packages/button/src/Button.tsx']);
+      vi.mocked(glob).mockResolvedValue(['/repo/packages/button/src/Button.tsx']);
 
       await expect(
         resourceManager['findSourceFile'](mockComponent, 'NonExistent.tsx'),

@@ -45,9 +45,6 @@ export {
   deepMerge,
   cleanDocString,
   extractTags,
-  // 缓存管理
-  CacheManager,
-  createCacheManager,
   // 日志系统
   Logger,
   ContextLogger,

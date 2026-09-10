@@ -8,19 +8,25 @@ import type {
   ComponentExample,
   ComponentIndex,
   ComponentInfo,
-  SearchResult,
+  ComponentSummary,
+  DocsIndex,
+  EmitDefinition,
+  PropDefinition,
+  SearchResultSummary,
+  SlotDefinition,
   ToolArguments,
 } from '../types/index';
+import { toComponentSummary } from '../types/index';
 import { findComponentByName, log } from '../utils';
 import { createSearchIndex } from '../utils/search-index';
-import { BaseTool } from './base';
+import { BaseTool, clampLimit, requireString } from './base';
 
 /**
  * 列出所有组件
  */
 export class ListComponentsTool extends BaseTool {
   name = MCP_TOOLS.LIST_COMPONENTS;
-  description = `列出所有可用的 ${COMPONENT_LIBRARY_CONFIG.displayName} 组件`;
+  description = `列出所有可用的 ${COMPONENT_LIBRARY_CONFIG.displayName} 组件（仅摘要，Props 和示例请用 get-component-info / get-component-props / get-component-examples 获取）`;
   inputSchema = {
     type: 'object',
     properties: {
@@ -39,7 +45,7 @@ export class ListComponentsTool extends BaseTool {
     super();
   }
 
-  async execute(args: ToolArguments): Promise<ComponentInfo[]> {
+  async execute(args: ToolArguments): Promise<ComponentSummary[]> {
     let components = this.componentIndex.components;
     const category = typeof args.category === 'string' ? args.category : null;
     const tag = typeof args.tag === 'string' ? args.tag : null;
@@ -58,7 +64,7 @@ export class ListComponentsTool extends BaseTool {
       );
     }
 
-    return components;
+    return components.map(toComponentSummary);
   }
 }
 
@@ -94,7 +100,7 @@ export class GetComponentInfoTool extends BaseTool {
  */
 export class GetComponentPropsTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_PROPS;
-  description = '获取指定组件的 Props 类型定义';
+  description = '获取指定组件的 Props / Emits / Slots 定义';
   inputSchema = {
     type: 'object',
     properties: {
@@ -110,10 +116,20 @@ export class GetComponentPropsTool extends BaseTool {
     super();
   }
 
-  async execute(args: ToolArguments): Promise<ComponentInfo['props'] | null> {
+  async execute(args: ToolArguments): Promise<{
+    props: PropDefinition[];
+    emits: EmitDefinition[];
+    slots: SlotDefinition[];
+  } | null> {
     const name = args.name as string;
     const component = findComponentByName(this.componentIndex.components, name);
-    return component?.props || null;
+    if (!component) return null;
+
+    return {
+      props: component.props ?? [],
+      emits: component.emits ?? [],
+      slots: component.slots ?? [],
+    };
   }
 }
 
@@ -166,7 +182,8 @@ export class GetComponentExamplesTool extends BaseTool {
  */
 export class SearchComponentsTool extends BaseTool {
   name = MCP_TOOLS.SEARCH_COMPONENTS;
-  description = '按关键词搜索组件（支持模糊搜索和智能排序）';
+  description =
+    '按关键词搜索组件（支持模糊搜索和智能排序，返回摘要，详情请用 get-component-info 获取）';
   inputSchema = {
     type: 'object',
     properties: {
@@ -198,11 +215,11 @@ export class SearchComponentsTool extends BaseTool {
     this.buildSearchIndex();
   }
 
-  async execute(args: ToolArguments): Promise<SearchResult[]> {
-    const query = args.query as string;
-    const limit = Math.min(typeof args.limit === 'number' ? args.limit : 10, 100);
+  async execute(args: ToolArguments): Promise<SearchResultSummary[]> {
+    const query = requireString(args, 'query');
+    const limit = clampLimit(args.limit);
 
-    if (!query.trim() || limit === 0) return [];
+    if (!query) return [];
 
     // 确保索引已构建
     if (!this.indexBuilt) {
@@ -213,9 +230,9 @@ export class SearchComponentsTool extends BaseTool {
       // 使用内存索引搜索
       const indexedResults = this.searchIndex.search(query, limit);
 
-      // 转换为兼容格式
-      const results: SearchResult[] = indexedResults.map((result) => ({
-        component: result.component,
+      // 压成摘要返回
+      const results: SearchResultSummary[] = indexedResults.map((result) => ({
+        component: toComponentSummary(result.component),
         score: result.score,
         matchedFields: result.matchedFields,
       }));
@@ -250,8 +267,8 @@ export class SearchComponentsTool extends BaseTool {
    * 降级搜索方法：简单的字符串匹配
    * 组件数量通常 <100，简单匹配已足够
    */
-  private fallbackSimpleSearch(query: string, limit: number): SearchResult[] {
-    const results: SearchResult[] = [];
+  private fallbackSimpleSearch(query: string, limit: number): SearchResultSummary[] {
+    const results: SearchResultSummary[] = [];
     const queryLower = query.toLowerCase();
 
     for (const component of this.componentIndex.components) {
@@ -274,7 +291,7 @@ export class SearchComponentsTool extends BaseTool {
       }
 
       if (score > 0) {
-        results.push({ component, score, matchedFields });
+        results.push({ component: toComponentSummary(component), score, matchedFields });
       }
     }
 
@@ -373,7 +390,16 @@ export class GetComponentChangelogTool extends BaseTool {
     required: ['name'],
   };
 
-  constructor(private componentIndex: ComponentIndex) {
+  /**
+   * @param componentIndex - 组件索引
+   * @param dataDir - 数据目录，用于加载文档快照
+   * @param repoRoot - workspace 根；null 表示脱离仓库运行，只能读快照
+   */
+  constructor(
+    private componentIndex: ComponentIndex,
+    private dataDir = '',
+    private repoRoot: string | null = null,
+  ) {
     super();
   }
 
@@ -388,39 +414,50 @@ export class GetComponentChangelogTool extends BaseTool {
     const component = findComponentByName(this.componentIndex.components, name);
     if (!component) return null;
 
+    const empty = {
+      changelog: [],
+      packageName: component.packageName,
+      currentVersion: component.version,
+    };
+
     try {
-      // 从组件源路径读取 CHANGELOG.md
-      const { readFile } = await import('node:fs/promises');
-
-      const changelogPath = join(component.sourcePath, 'CHANGELOG.md');
-      let changelogContent;
-
-      try {
-        changelogContent = await readFile(changelogPath, 'utf8');
-      } catch {
-        // 如果没有 CHANGELOG.md，返回空的变更日志
-        return {
-          changelog: [],
-          packageName: component.packageName,
-          currentVersion: component.version,
-        };
-      }
-
-      // 解析变更日志
-      const changelog = this.parseChangelog(changelogContent, version);
+      const raw = await this.readChangelog(component);
+      if (!raw) return empty;
 
       return {
-        changelog,
+        changelog: this.parseChangelog(raw, version),
         packageName: component.packageName,
         currentVersion: component.version,
       };
     } catch (error) {
       log.error(`Error getting changelog for ${component.name}:`, error);
-      return {
-        changelog: [],
-        packageName: component.packageName,
-        currentVersion: component.version,
-      };
+      return empty;
+    }
+  }
+
+  /**
+   * 读取 CHANGELOG 原文
+   *
+   * 有仓库时读磁盘（拿得到最新内容），否则退回 extract 时打进 data/ 的快照。
+   * 发布到 npm 的包里没有 packages/ 源码，快照是那种场景下唯一的数据来源。
+   */
+  private async readChangelog(component: ComponentInfo): Promise<string | null> {
+    const { readFile } = await import('node:fs/promises');
+
+    if (this.repoRoot) {
+      try {
+        return await readFile(join(this.repoRoot, component.sourcePath, 'CHANGELOG.md'), 'utf8');
+      } catch {
+        // 仓库里没有就继续找快照
+      }
+    }
+
+    try {
+      const content = await readFile(join(this.dataDir, 'docs-index.json'), 'utf8');
+      const docs = JSON.parse(content) as DocsIndex;
+      return docs.docs?.[component.packageName]?.changelog ?? null;
+    } catch {
+      return null;
     }
   }
 

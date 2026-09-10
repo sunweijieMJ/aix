@@ -5,7 +5,6 @@
  * 加载数据的方法已移除（由 MCP Server 直接读取 JSON 文件）。
  */
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentInfo } from '../src/types/index';
 import { DataManager } from '../src/utils/data-manager';
@@ -54,264 +53,143 @@ describe('DataManager', () => {
     ];
   });
 
-  describe('saveComponentsByPackage', () => {
-    it('应该正确按包保存组件数据', async () => {
+  /** 取出写入某个文件的内容 */
+  const writtenTo = (fileName: string): string | undefined => {
+    const call = vi.mocked(fs.writeFile).mock.calls.find((c) => c[0].toString().endsWith(fileName));
+    return call?.[1] as string | undefined;
+  };
+
+  describe('saveComponents', () => {
+    beforeEach(() => {
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      await dataManager.saveComponentsByPackage(mockComponents);
-
-      expect(fs.mkdir).toHaveBeenCalledWith(testDataDir, { recursive: true });
-      expect(fs.mkdir).toHaveBeenCalledWith(path.join(testDataDir, 'packages'), {
-        recursive: true,
-      });
-    });
-
-    it('应该处理保存失败的情况', async () => {
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockRejectedValue(new Error('Permission denied'));
-
-      await expect(dataManager.saveComponentsByPackage(mockComponents)).rejects.toThrow(
-        'Permission denied',
-      );
     });
 
     it('应该保存主索引文件', async () => {
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      await dataManager.saveComponents(mockComponents);
 
-      await dataManager.saveComponentsByPackage(mockComponents);
+      const index = writtenTo('components-index.json');
+      expect(index).toBeDefined();
 
-      // 验证主索引文件被保存
-      const indexWriteCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => call[0].toString().includes('components-index.json'));
-
-      expect(indexWriteCall).toBeDefined();
+      const parsed = JSON.parse(index!);
+      expect(parsed.components).toHaveLength(1);
+      expect(parsed.components[0].name).toBe('Button');
+      expect(parsed.components[0].packageName).toBe('@aix/button');
     });
 
-    it('应该不再保存搜索索引文件（运行时内存构建）', async () => {
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      await dataManager.saveComponentsByPackage(mockComponents);
-
-      // 搜索索引已改为运行时内存构建，不再持久化
-      const searchIndexWriteCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => call[0].toString().includes('search-index.json'));
-
-      expect(searchIndexWriteCall).toBeUndefined();
-    });
-  });
-
-  describe('数据完整性', () => {
-    it('应该验证保存的数据格式', async () => {
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      await dataManager.saveComponentsByPackage(mockComponents);
-
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => call[0].toString().includes('packages'));
-
-      expect(writeCall).toBeDefined();
-      const savedData = JSON.parse(writeCall![1] as string);
-      expect(savedData).toHaveProperty('packageName');
-      expect(savedData).toHaveProperty('components');
-      expect(savedData.components).toHaveLength(1);
-    });
-
-    it('应该保存组件的完整信息', async () => {
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      await dataManager.saveComponentsByPackage(mockComponents);
-
-      const writeCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => call[0].toString().includes('packages'));
-
-      expect(writeCall).toBeDefined();
-      const savedData = JSON.parse(writeCall![1] as string);
-      const savedComponent = savedData.components[0];
-
-      expect(savedComponent.name).toBe('Button');
-      expect(savedComponent.packageName).toBe('@aix/button');
-      expect(savedComponent.description).toBe('按钮组件');
-      expect(savedComponent.tags).toContain('button');
-    });
-  });
-
-  describe('大数据处理', () => {
-    it('应该能处理大量组件数据', async () => {
-      const largeComponentList = Array.from({ length: 1000 }, (_, i) => ({
-        ...mockComponents[0],
-        name: `Component${i}`,
-        packageName: `@aix/component-${i}`,
-        version: mockComponents[0]?.version || '1.0.0',
-        description: mockComponents[0]?.description || '测试组件',
-        category: mockComponents[0]?.category || '测试',
-        tags: mockComponents[0]?.tags || [],
-        author: mockComponents[0]?.author || 'Test Author',
-        license: mockComponents[0]?.license || 'MIT',
-        sourcePath: mockComponents[0]?.sourcePath || '/test/path',
-        dependencies: mockComponents[0]?.dependencies || [],
-        peerDependencies: mockComponents[0]?.peerDependencies || [],
-        props: mockComponents[0]?.props || [],
-        examples: mockComponents[0]?.examples || [],
-      }));
-
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      await dataManager.saveComponentsByPackage(largeComponentList);
-
-      expect(fs.writeFile).toHaveBeenCalled();
-    });
-
-    it('应该为每个包创建单独的数据文件', async () => {
-      const multiPackageComponents: ComponentInfo[] = [
+    it('不应该再写逐包切片文件', async () => {
+      const multiPackage: ComponentInfo[] = [
         { ...mockComponents[0]!, name: 'Button', packageName: '@aix/button' },
         { ...mockComponents[0]!, name: 'Input', packageName: '@aix/input' },
-        { ...mockComponents[0]!, name: 'Select', packageName: '@aix/select' },
       ];
 
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      await dataManager.saveComponents(multiPackage);
 
-      await dataManager.saveComponentsByPackage(multiPackageComponents);
+      // 逐包文件内容与主索引 100% 重复，且没有任何消费方
+      const packageFileWrites = vi
+        .mocked(fs.writeFile)
+        .mock.calls.filter((c) => /packages[/\\]/.test(c[0].toString()));
 
-      // 验证每个包都有单独的数据文件 (跨平台路径匹配)
-      const packageWriteCalls = vi.mocked(fs.writeFile).mock.calls.filter((call) => {
-        const filePath = call[0].toString();
-        // 跨平台：匹配 packages/ 或 packages\
-        return filePath.includes('packages/') || filePath.includes('packages\\');
-      });
+      expect(packageFileWrites).toHaveLength(0);
+    });
 
-      // 应该有 3 个包文件
-      expect(packageWriteCalls.length).toBeGreaterThanOrEqual(3);
+    it('不应该保存搜索索引文件（运行时内存构建）', async () => {
+      await dataManager.saveComponents(mockComponents);
+      expect(writtenTo('search-index.json')).toBeUndefined();
+    });
+
+    it('应该把文档正文摘到 docs-index.json，不留在主索引里', async () => {
+      await dataManager.saveComponents([
+        { ...mockComponents[0]!, readmeContent: '# Button', changelogContent: '## 1.0.0' },
+      ]);
+
+      const index = JSON.parse(writtenTo('components-index.json')!);
+      expect(index.components[0].readmeContent).toBeUndefined();
+      expect(index.components[0].changelogContent).toBeUndefined();
+
+      const docs = JSON.parse(writtenTo('docs-index.json')!);
+      expect(docs.docs['@aix/button']).toEqual({ readme: '# Button', changelog: '## 1.0.0' });
+    });
+
+    it('应该处理保存失败的情况', async () => {
+      vi.mocked(fs.writeFile).mockRejectedValue(new Error('Permission denied'));
+
+      await expect(dataManager.saveComponents(mockComponents)).rejects.toThrow('Permission denied');
+    });
+
+    it('应该能处理大量组件数据', async () => {
+      const many = Array.from({ length: 1000 }, (_, i) => ({
+        ...mockComponents[0]!,
+        name: `Component${i}`,
+        packageName: `@aix/component-${i}`,
+      }));
+
+      await dataManager.saveComponents(many);
+
+      expect(JSON.parse(writtenTo('components-index.json')!).components).toHaveLength(1000);
     });
   });
 
   describe('图标数据处理', () => {
-    it('应该正确保存图标数据', async () => {
-      const mockIcons = [
-        {
-          name: 'home',
-          packageName: '@aix/icons',
-          version: '1.0.0',
-          description: '首页图标',
-          category: '图标',
-          tags: ['navigation'],
-          author: 'AIX Team',
-          license: 'MIT',
-          sourcePath: '/packages/icons/src/home.svg',
-          svgContent: '<svg>...</svg>',
-          dependencies: [],
-          peerDependencies: [],
-        },
-      ];
+    const mockIcons = [
+      {
+        name: 'home',
+        packageName: '@aix/icons',
+        version: '1.0.0',
+        description: '首页图标',
+        category: '图标',
+        iconCategory: 'Navigation',
+        tags: ['navigation'],
+        keywords: ['首页', 'home'],
+        author: 'AIX Team',
+        license: 'MIT',
+        sourcePath: 'packages/icons/src/Navigation/Home.vue',
+        svgContent: '<svg>home icon</svg>',
+        dependencies: [],
+        peerDependencies: [],
+        examples: [],
+      },
+    ];
 
+    beforeEach(() => {
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      await dataManager.saveComponentsByPackage([], mockIcons as any);
-
-      // 验证图标数据文件被保存
-      const iconWriteCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => call[0].toString().includes('aix-icons.json'));
-
-      expect(iconWriteCall).toBeDefined();
     });
 
-    it('应该单独保存SVG内容映射', async () => {
-      const mockIcons = [
-        {
-          name: 'home',
-          packageName: '@aix/icons',
-          version: '1.0.0',
-          description: '首页图标',
-          category: '图标',
-          tags: ['navigation'],
-          author: 'AIX Team',
-          license: 'MIT',
-          sourcePath: '/packages/icons/src/home.svg',
-          svgContent: '<svg>home icon</svg>',
-          dependencies: [],
-          peerDependencies: [],
-        },
-      ];
+    it('应该保存图标检索索引，且不含 SVG 正文', async () => {
+      await dataManager.saveComponents([], mockIcons as any);
 
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      const index = JSON.parse(writtenTo('icons-index.json')!);
+      expect(index.totalIcons).toBe(1);
+      expect(index.icons[0].name).toBe('home');
+      expect(index.icons[0].keywords).toContain('首页');
+      expect(index.icons[0].svgContent).toBeUndefined();
+    });
 
-      await dataManager.saveComponentsByPackage([], mockIcons as any);
+    it('应该把 SVG 源码单独存成映射', async () => {
+      await dataManager.saveComponents([], mockIcons as any);
 
-      // 验证SVG映射文件被保存
-      const svgWriteCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => call[0].toString().includes('aix-icons-svg.json'));
-
-      expect(svgWriteCall).toBeDefined();
-      if (svgWriteCall) {
-        const svgData = JSON.parse(svgWriteCall[1] as string);
-        expect(svgData.home).toBe('<svg>home icon</svg>');
-      }
+      const svg = JSON.parse(writtenTo('icons-svg.json')!);
+      expect(svg).toEqual({ home: '<svg>home icon</svg>' });
     });
   });
 
   describe('路径处理', () => {
-    it('应该正确处理相对路径', async () => {
-      const relativeDataManager = new DataManager('./test-data');
+    beforeEach(() => {
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    });
 
-      await relativeDataManager.saveComponentsByPackage(mockComponents);
+    it('应该正确处理相对路径', async () => {
+      await new DataManager('./test-data').saveComponents(mockComponents);
 
       expect(fs.mkdir).toHaveBeenCalledWith('./test-data', { recursive: true });
     });
 
     it('应该正确处理绝对路径', async () => {
-      const absoluteDataManager = new DataManager('/absolute/path');
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      await new DataManager('/absolute/path').saveComponents(mockComponents);
 
-      await absoluteDataManager.saveComponentsByPackage(mockComponents);
-
-      expect(fs.mkdir).toHaveBeenCalledWith('/absolute/path', {
-        recursive: true,
-      });
-    });
-
-    it('应该生成安全的文件名', async () => {
-      const componentWithSpecialPackage: ComponentInfo[] = [
-        {
-          ...mockComponents[0]!,
-          packageName: '@aix/special-name',
-        },
-      ];
-
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      await dataManager.saveComponentsByPackage(componentWithSpecialPackage);
-
-      // 验证文件名被正确转换（@ 和 / 被替换）(跨平台路径匹配)
-      const packageWriteCall = vi.mocked(fs.writeFile).mock.calls.find((call) => {
-        const filePath = call[0].toString();
-        // 跨平台：匹配 packages/ 或 packages\ 且包含 special-name
-        return (
-          (filePath.includes('packages/') || filePath.includes('packages\\')) &&
-          filePath.includes('special-name')
-        );
-      });
-
-      expect(packageWriteCall).toBeDefined();
-      // 文件名应该是 aix-special-name.json，而不是 @aix/special-name.json
-      expect(packageWriteCall![0].toString()).not.toContain('@');
+      expect(fs.mkdir).toHaveBeenCalledWith('/absolute/path', { recursive: true });
     });
   });
 });

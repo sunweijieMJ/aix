@@ -1,7 +1,41 @@
 import { readFile } from 'node:fs/promises';
 import matter from 'gray-matter';
-import type { ComponentExample, PropDefinition } from '../types/index';
+import type {
+  ComponentExample,
+  EmitDefinition,
+  PropDefinition,
+  SlotDefinition,
+} from '../types/index';
 import { log } from '../utils/logger';
+
+/**
+ * 一张 markdown 表格
+ */
+interface MarkdownTable {
+  /** 表头单元格 */
+  header: string[];
+  /** 数据行 */
+  rows: string[][];
+  /** 所属章节（最近的一个标题），用于标注 props 归属哪个子组件 */
+  section: string;
+}
+
+/** 列名同义词，用于按列名而非列序定位数据 */
+const COLUMN_ALIASES = {
+  propName: ['属性名', '属性', '参数名', '参数', '配置项', '配置', '选项', 'prop', 'props'],
+  eventName: ['事件名', '事件', 'event', 'events'],
+  slotName: ['插槽名', '插槽', 'slot', 'slots'],
+  type: ['类型', 'type'],
+  defaultValue: ['默认值', '默认', 'default'],
+  required: ['必填', '必须', '是否必填', 'required'],
+  description: ['说明', '描述', '含义', 'description', '典型用途'],
+  enum: ['可选值', '取值', '枚举值'],
+  params: ['参数', '回调参数', '参数类型', '返回值'],
+  scope: ['作用域', '作用域字段', '插槽参数'],
+} as const;
+
+/** 表示"是"的单元格取值 */
+const TRUTHY_CELL = ['✅', '✓', '是', 'true', 'yes', 'y'];
 
 /**
  * README.md 文档提取器
@@ -21,6 +55,8 @@ export class ReadmeExtractor {
     description: string;
     features: string[];
     props: PropDefinition[];
+    emits: EmitDefinition[];
+    slots: SlotDefinition[];
     examples: ComponentExample[];
     tags: string[];
     category: string;
@@ -38,21 +74,23 @@ export class ReadmeExtractor {
       const description = this.extractDescription(markdownContent);
       const features = this.extractFeatures(markdownContent);
 
-      // 提取 Props 定义
-      const props = this.extractPropsFromApiReference(markdownContent);
+      // 提取 API 定义（Props / Emits / Slots）
+      const { props, emits, slots } = this.extractApiTables(markdownContent);
 
       // 提取代码示例
       const examples = this.extractCodeExamples(markdownContent);
 
       // 提取标签和分类
       const tags = this.extractTags(markdownContent, title);
-      const category = this.extractCategory(markdownContent, title);
+      const category = this.extractCategory(title, filePath);
 
       return {
         title,
         description,
         features,
         props,
+        emits,
+        slots,
         examples,
         tags,
         category,
@@ -116,160 +154,213 @@ export class ReadmeExtractor {
   }
 
   /**
-   * 从 API 参考部分提取 Props 定义
+   * 提取 Props / Emits / Slots 定义
+   *
+   * 按列名而非列序定位数据：仓库里同一类表格存在 7 种以上的列序变体
+   * （`属性名|类型|默认值|必填|说明`、`属性名|说明|类型|可选值|默认值`、
+   * `属性|类型|描述` 等），硬编码几种格式一定会漏。
+   *
+   * 同样不再要求表格必须挂在 `## API` 标题下——audio / hooks / ai-chat
+   * 的属性表分别挂在 `## UI 组件`、`## 国际化 API` 等标题下，
+   * 卡标题会让这些包一个 prop 都提不到。
    */
-  private extractPropsFromApiReference(content: string): PropDefinition[] {
-    const props: PropDefinition[] = [];
+  private extractApiTables(content: string): {
+    props: PropDefinition[];
+    emits: EmitDefinition[];
+    slots: SlotDefinition[];
+  } {
+    const props = new Map<string, PropDefinition>();
+    const emits = new Map<string, EmitDefinition>();
+    const slots = new Map<string, SlotDefinition>();
 
-    // 简单有效的API参考部分匹配 - 支持多种格式
-    // 匹配 "## API 参考" 或 "## API"
-    const apiMatch = content.match(/##\s+API(?:\s+参考)?[\s\S]*$/m);
-    if (!apiMatch) return props;
+    for (const table of this.extractTables(content)) {
+      const columns = table.header.map((h) => this.normalizeHeader(h));
+      const at = (aliases: readonly string[]) => columns.findIndex((c) => aliases.includes(c));
 
-    const apiSection = apiMatch[0];
+      const nameIndex = {
+        prop: at(COLUMN_ALIASES.propName),
+        event: at(COLUMN_ALIASES.eventName),
+        slot: at(COLUMN_ALIASES.slotName),
+      };
+      const typeIndex = at(COLUMN_ALIASES.type);
+      const descriptionIndex = at(COLUMN_ALIASES.description);
 
-    // 查找标准表格格式 - 支持多种格式
-    // 使用更简单的方法：找到表头，然后逐行提取直到遇到非表格行
-
-    let tableFormat: 'vue3' | 'new' | 'old' | null = null;
-    let tableStartIndex = -1;
-
-    // 格式1: 属性名 | 说明 | 类型 | 可选值 | 默认值 (Vue 3 格式)
-    const vue3Header = apiSection.match(
-      /\|\s*属性名\s*\|\s*说明\s*\|\s*类型\s*\|\s*可选值\s*\|\s*默认值\s*\|/,
-    );
-    if (vue3Header) {
-      tableFormat = 'vue3';
-      tableStartIndex = vue3Header.index || 0;
-    }
-
-    // 格式2: 属性(名) | 类型 | 默认值 | 必填 | 描述(说明) (5列格式)
-    if (!tableFormat) {
-      const newHeader = apiSection.match(
-        /\|\s*属性(?:名)?\s*\|\s*类型\s*\|\s*默认值\s*\|\s*必填\s*\|\s*(?:描述|说明)\s*\|/,
-      );
-      if (newHeader) {
-        tableFormat = 'new';
-        tableStartIndex = newHeader.index || 0;
-      }
-    }
-
-    // 格式3: 属性 | 类型 | 默认值 | 描述 (4列格式)
-    if (!tableFormat) {
-      const oldHeader = apiSection.match(/\|\s*属性\s*\|\s*类型\s*\|\s*默认值\s*\|\s*描述\s*\|/);
-      if (oldHeader) {
-        tableFormat = 'old';
-        tableStartIndex = oldHeader.index || 0;
-      }
-    }
-
-    if (!tableFormat || tableStartIndex === -1) return props;
-
-    // 从表头位置开始提取表格行
-    const lines = apiSection.substring(tableStartIndex).split('\n');
-    const rows: string[] = [];
-
-    // 跳过表头和分隔线，提取数据行
-    for (let i = 2; i < lines.length; i++) {
-      const line = lines[i]?.trim() || '';
-
-      // 如果遇到空行或不是表格行（不包含|），停止
-      if (!line || !line.includes('|')) {
-        break;
-      }
-
-      // 如果是分隔线，跳过
-      if (/^[\s|:-]+$/.test(line)) {
+      // 事件表：首列是事件名
+      if (nameIndex.event === 0) {
+        const paramsIndex = at(COLUMN_ALIASES.params);
+        for (const row of table.rows) {
+          const name = this.cleanCell(row[0]);
+          if (!name) continue;
+          if (!emits.has(name)) {
+            emits.set(name, {
+              name,
+              params: this.cleanCell(row[paramsIndex]) || undefined,
+              description: this.cleanCell(row[descriptionIndex]) || undefined,
+              group: table.section || undefined,
+            });
+          }
+        }
         continue;
       }
 
-      rows.push(line);
-    }
-
-    for (const row of rows) {
-      // 更智能的表格解析，处理类型中的 | 字符
-      const cells = this.parseTableRow(row);
-
-      const minCells = tableFormat === 'old' ? 4 : 5;
-      if (cells.length >= minCells) {
-        let name: string,
-          type: string,
-          defaultValue: string,
-          description: string,
-          optionalValues: string = '';
-
-        if (tableFormat === 'vue3') {
-          // Vue 3 格式：属性名 | 说明 | 类型 | 可选值 | 默认值
-          [name, description, type, optionalValues, defaultValue] = [
-            cells[0] || '',
-            cells[1] || '',
-            cells[2] || '',
-            cells[3] || '',
-            cells[4] || '',
-          ];
-        } else if (tableFormat === 'new') {
-          // 新格式：属性 | 类型 | 默认值 | 必填 | 描述
-          const requiredCell = cells[3] || '';
-          [name, type, defaultValue, description] = [
-            cells[0] || '',
-            cells[1] || '',
-            cells[2] || '',
-            cells[4] || '',
-          ];
-          // 暂存必填信息，后面判断required时会用到
-          optionalValues = requiredCell;
-        } else {
-          // 旧格式：属性 | 类型 | 默认值 | 描述
-          [name, type, defaultValue, description] = [
-            cells[0] || '',
-            cells[1] || '',
-            cells[2] || '',
-            cells[3] || '',
-          ];
+      // 插槽表：首列是插槽名
+      if (nameIndex.slot === 0) {
+        const scopeIndex = at(COLUMN_ALIASES.scope);
+        for (const row of table.rows) {
+          const name = this.cleanCell(row[0]);
+          if (!name) continue;
+          if (!slots.has(name)) {
+            slots.set(name, {
+              name,
+              description: this.cleanCell(row[descriptionIndex]) || undefined,
+              scope: this.cleanCell(row[scopeIndex]) || undefined,
+              group: table.section || undefined,
+            });
+          }
         }
+        continue;
+      }
 
-        // 跳过无效行
-        if (!name || !type || name === '属性' || name === '属性名' || name === 'Property') {
-          continue;
-        }
+      const defaultIndex = at(COLUMN_ALIASES.defaultValue);
+      const requiredIndex = at(COLUMN_ALIASES.required);
+      const enumIndex = at(COLUMN_ALIASES.enum);
 
-        // 判断是否必需
-        let isRequired: boolean;
-        if (tableFormat === 'new' && optionalValues) {
-          // 新格式：根据必填列判断（✅表示必填，❌表示可选）
-          isRequired =
-            optionalValues.includes('✅') ||
-            optionalValues.toLowerCase().includes('是') ||
-            optionalValues.toLowerCase().includes('true');
-        } else {
-          // Vue3 和旧格式：根据默认值判断（有默认值表示非必需）
-          isRequired = !defaultValue || defaultValue === '-';
-        }
+      // 属性表：首列是属性名，且至少要有类型/默认值/可选值之一。
+      // 只有名字和说明两列的表大多是说明性表格（`键|作用`、`配置|求值时机`），
+      // 收进来只会往 props 里灌噪声
+      const looksLikeProps =
+        nameIndex.prop === 0 && (typeIndex !== -1 || defaultIndex !== -1 || enumIndex !== -1);
+      if (!looksLikeProps) continue;
 
-        props.push({
-          name: name.trim().replace(/^`|`$/g, ''), // 去除反引号
-          type: type.trim().replace(/^`|`$/g, ''), // 去除反引号
-          required: isRequired,
-          description: description?.trim() || '',
-          defaultValue:
-            defaultValue && defaultValue !== '-'
-              ? defaultValue.trim().replace(/^`|`$/g, '') // 去除反引号
-              : undefined,
+      for (const row of table.rows) {
+        const name = this.cleanCell(row[0]);
+        if (!name || props.has(name)) continue;
+
+        const defaultValue = this.cleanCell(row[defaultIndex]);
+        const enumValues = this.cleanCell(row[enumIndex]);
+        // 没有类型列时用可选值兜底，`'small' | 'large'` 本身就是类型
+        const type = this.cleanCell(row[typeIndex]) || enumValues;
+        if (!type) continue;
+
+        props.set(name, {
+          name,
+          type,
+          // 只认显式的必填列。用"没有默认值"反推必填是错的：
+          // Vue 里绝大多数 prop 不写默认值也是可选的
+          required:
+            requiredIndex === -1 ? false : this.parseRequired(this.cleanCell(row[requiredIndex])),
+          description: this.cleanCell(row[descriptionIndex]) || '',
+          defaultValue: defaultValue && defaultValue !== '-' ? defaultValue : undefined,
+          enum: enumValues && enumValues !== '-' ? this.splitEnum(enumValues) : undefined,
+          group: table.section || undefined,
         });
       }
     }
 
-    return props;
+    return {
+      props: [...props.values()],
+      emits: [...emits.values()],
+      slots: [...slots.values()],
+    };
   }
 
   /**
-   * 智能解析表格行，处理类型中的 | 字符
+   * 扫描全文，切出所有 markdown 表格
+   *
+   * 表格的判定条件是「表头行 + 分隔行」，同时记录它所属的最近一个标题，
+   * 用于标注这批 props 属于哪个子组件（一个 README 里往往有多个组件的表）。
+   */
+  private extractTables(content: string): MarkdownTable[] {
+    const lines = content.split('\n');
+    const tables: MarkdownTable[] = [];
+    let section = '';
+    let inCodeFence = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]?.trim() ?? '';
+
+      // 围栏代码块里的表格是文档示例，不是真的 API 定义
+      if (line.startsWith('```') || line.startsWith('~~~')) {
+        inCodeFence = !inCodeFence;
+        continue;
+      }
+      if (inCodeFence) continue;
+
+      const heading = line.match(/^#{2,4}\s+(.+)$/);
+      if (heading?.[1]) {
+        section = heading[1].replace(/[`*]/g, '').trim();
+        continue;
+      }
+
+      const separator = lines[i + 1]?.trim() ?? '';
+      const isTableHead = line.startsWith('|') && /^\|[\s:|-]+\|$/.test(separator);
+      if (!isTableHead) continue;
+
+      const header = this.parseTableRow(line);
+      const rows: string[][] = [];
+
+      let j = i + 2;
+      for (; j < lines.length; j++) {
+        const rowLine = lines[j]?.trim() ?? '';
+        if (!rowLine.startsWith('|')) break;
+        rows.push(this.parseTableRow(rowLine));
+      }
+      i = j - 1;
+
+      if (rows.length > 0) {
+        tables.push({ header, rows, section });
+      }
+    }
+
+    return tables;
+  }
+
+  /**
+   * 归一化表头单元格，便于按别名匹配
+   */
+  private normalizeHeader(cell: string): string {
+    return cell
+      .replace(/[`*]/g, '')
+      .replace(/\s+/g, '')
+      .replace(/[（(].*?[）)]/g, '')
+      .toLowerCase();
+  }
+
+  /**
+   * 清洗单元格：去反引号、去首尾空白
+   */
+  private cleanCell(cell: string | undefined): string {
+    if (!cell) return '';
+    return cell.trim().replace(/^`|`$/g, '').trim();
+  }
+
+  /**
+   * 解析必填列
+   */
+  private parseRequired(cell: string): boolean {
+    const normalized = cell.trim().toLowerCase();
+    return TRUTHY_CELL.some((t) => normalized.includes(t));
+  }
+
+  /**
+   * 拆分可选值列，如 `'small' \| 'large'`
+   */
+  private splitEnum(cell: string): string[] {
+    return cell
+      .split(/\\?\||、|,|，/)
+      .map((v) => v.trim().replace(/^`|`$/g, '').trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * 解析表格行
+   *
+   * 保留空单元格：列的定位完全依赖下标，一旦把空单元格过滤掉，
+   * 后面所有列都会左移，轻则字段错位，重则整行因列数不足被丢弃。
    */
   private parseTableRow(row: string): string[] {
-    // 移除行首行尾的 |
-    const cleanRow = row.replace(/^\|+/, '').replace(/\|+$/, '');
+    const cleanRow = row.trim().replace(/^\|/, '').replace(/\|$/, '');
 
-    // 使用正则表达式匹配表格单元格，考虑转义的 |
     const cells: string[] = [];
     let currentCell = '';
     let inCode = false;
@@ -305,12 +396,9 @@ export class ReadmeExtractor {
       currentCell += char;
     }
 
-    // 添加最后一个单元格
-    if (currentCell.trim()) {
-      cells.push(currentCell.trim());
-    }
+    cells.push(currentCell.trim());
 
-    return cells.filter((cell) => cell.length > 0);
+    return cells;
   }
 
   /**
@@ -456,83 +544,37 @@ export class ReadmeExtractor {
   }
 
   /**
-   * 从内容中推断分类
+   * 推断组件分类
+   *
+   * 只看标题和包目录名。早先的实现拿整篇 README 做关键词匹配，
+   * 而正文里出现一次"按钮"就足以把 Popper、RichTextEditor、CodeEditor
+   * 统统判成"通用"——12 个组件错了 7 个，category 过滤形同虚设。
    */
-  private extractCategory(content: string, title: string): string {
-    const fullText = (title + ' ' + content).toLowerCase();
-    const titleLower = title.toLowerCase();
+  private extractCategory(title: string, filePath: string): string {
+    // packages/pdf-viewer/README.md -> pdf-viewer
+    const packageDir = filePath.split(/[/\\]/).slice(-2, -1)[0] ?? '';
+    const subject = `${title} ${packageDir}`.toLowerCase();
 
-    // 基于关键词推断分类，按优先级排序 - 具体的分类优先于通用分类
-    // 优先检测主题系统（必须在标题或者有明确的主题系统特征）
-    if (
-      titleLower.includes('theme') ||
-      titleLower.includes('主题') ||
-      (fullText.includes('设计系统') && fullText.includes('css variables')) ||
-      (fullText.includes('主题系统') && fullText.includes('设计令牌'))
-    ) {
-      return '主题';
-    } else if (fullText.includes('button') || fullText.includes('按钮')) {
-      return '通用';
-    } else if (
-      // 表单输入组件检测 - 提前到布局检测之前
-      fullText.includes('input') ||
-      fullText.includes('输入框') ||
-      fullText.includes('表单') ||
-      (fullText.includes('form') && !fullText.includes('transform'))
-    ) {
-      return '表单';
-    } else if (
-      fullText.includes('video') ||
-      fullText.includes('视频') ||
-      fullText.includes('播放器') ||
-      fullText.includes('videojs')
-    ) {
-      return '媒体';
-    } else if (
-      fullText.includes('highlight') ||
-      fullText.includes('高亮') ||
-      fullText.includes('标记')
-    ) {
-      return '文本处理';
-    } else if (
-      fullText.includes('overflow') ||
-      fullText.includes('溢出') ||
-      fullText.includes('布局') ||
-      fullText.includes('容器')
-    ) {
-      return '布局';
-    } else if (
-      fullText.includes('image') ||
-      fullText.includes('图片') ||
-      fullText.includes('媒体')
-    ) {
-      return '媒体';
-    } else if (
-      fullText.includes('picker') ||
-      fullText.includes('选择') ||
-      fullText.includes('选择器')
-    ) {
-      return '选择器';
-    } else if (
-      fullText.includes('modal') ||
-      fullText.includes('弹窗') ||
-      fullText.includes('对话框')
-    ) {
-      return '弹窗';
-    } else if (fullText.includes('icon') || fullText.includes('图标')) {
-      return '图标';
-    } else if (fullText.includes('upload') || fullText.includes('上传')) {
-      return '上传';
-    } else if (fullText.includes('keyboard') || fullText.includes('键盘')) {
-      return '输入';
-    } else if (fullText.includes('annotation') || fullText.includes('标注')) {
-      return '标注';
-    } else if (fullText.includes('camera') || fullText.includes('摄像头')) {
-      return '设备';
-    } else if (fullText.includes('archive') || fullText.includes('档案')) {
-      return '数据展示';
-    } else if (fullText.includes('editor') || fullText.includes('编辑器')) {
-      return '编辑器';
+    const RULES: Array<[string, string[]]> = [
+      ['主题', ['theme', '主题', 'token', '设计令牌']],
+      ['编辑器', ['editor', '编辑器']],
+      ['媒体', ['video', '视频', 'audio', '音频', '播放器', 'player', 'image', '图片', 'pdf']],
+      ['图标', ['icon', '图标']],
+      ['浮层', ['popper', 'popover', 'tooltip', 'modal', 'dialog', '弹窗', '浮层', '对话框']],
+      ['表单', ['input', '输入框', '表单', 'form', 'picker', '选择器', 'select', 'upload', '上传']],
+      ['数据展示', ['table', '表格', 'list', '列表', 'tree', '流程图', 'graph', 'chart']],
+      ['导航', ['menu', '菜单', 'nav', '导航', 'tabs', '标签页']],
+      ['反馈', ['message', '消息', 'notification', '通知', 'toast', 'alert']],
+      ['文本', ['subtitle', '字幕', 'text', '文本', 'highlight', '高亮', 'markdown']],
+      ['通用', ['button', '按钮', 'link', '链接']],
+      ['布局', ['layout', '布局', 'container', '容器', 'grid', '栅格']],
+      ['工具', ['hooks', 'utils', '工具', 'composable']],
+    ];
+
+    for (const [category, keywords] of RULES) {
+      if (keywords.some((k) => subject.includes(k))) {
+        return category;
+      }
     }
 
     return '其他';

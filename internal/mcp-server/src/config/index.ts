@@ -2,122 +2,79 @@
  * MCP Server 配置管理
  */
 
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  BYTES_PER_MB,
-  DEFAULT_CACHE_TTL,
-  DEFAULT_EXTRACTION_TIMEOUT,
-  DEFAULT_IGNORE_PATTERNS,
-  DEFAULT_MAX_CACHE_SIZE,
-  DEFAULT_MAX_CONCURRENT_EXTRACTION,
-  SERVER_NAME,
-  SERVER_VERSION,
-} from '../constants';
+import { join, resolve } from 'node:path';
+import { SERVER_NAME, SERVER_VERSION } from '../constants';
+import { getMcpServerRoot } from '../utils/repo-root';
 import { validateServerConfig } from '../utils/validation';
 
-/**
- * 获取 MCP Server 项目根目录
- * 无论代码运行在 src/ 还是 dist/ 目录下都能正确定位
- */
-function getMCPServerRoot(): string {
-  const currentDir = dirname(fileURLToPath(import.meta.url));
-  // tsdown 构建后输出到 dist/，开发时运行在 src/config/
-  const isInBuildDir = currentDir.includes('/dist') || currentDir.includes('\\dist');
-  return isInBuildDir
-    ? resolve(currentDir, '..') // dist/ → mcp-server/
-    : resolve(currentDir, '../..'); // src/config/ → mcp-server/
-}
-
-const mcpServerRoot = getMCPServerRoot();
+const mcpServerRoot = getMcpServerRoot();
 // mcp-server/ → internal/ → aix/
 const workspaceRoot = resolve(mcpServerRoot, '../..');
 
 /**
  * 服务器配置接口
+ *
+ * 只保留真正被消费的字段。此前这里还有 cacheDir / cacheTTL / maxCacheSize /
+ * enableCache / ignorePatterns / features 六项，全部零消费——
+ * 留着只会让人以为改了它们能改变行为。
  */
 export interface ServerConfig {
-  // 数据相关
+  /** 数据目录 */
   dataDir: string;
-  cacheDir: string;
+  /** 组件包目录 */
   packagesDir: string;
 
-  // 缓存配置
-  cacheTTL: number;
-  enableCache: boolean;
-  maxCacheSize: number; // MB
-
-  // 性能配置
-  maxConcurrentExtraction: number;
-  extractionTimeout: number; // ms
-
-  // 服务器配置
+  /** 服务器名称 */
   serverName: string;
+  /** 服务器版本 */
   serverVersion: string;
+  /** 详细输出 */
   verbose: boolean;
 
-  // 功能开关
-  features: {
-    enablePrompts: boolean;
-    enableExamples: boolean;
-    enableChangelog: boolean;
-    enableDependencyAnalysis: boolean;
-  };
-
-  // 忽略列表
+  /** 提取时忽略的包 */
   ignorePackages: string[];
-  ignorePatterns: string[];
+}
+
+/**
+ * 从环境变量读取配置覆盖
+ *
+ * MCP 客户端（Claude Desktop / Cursor 等）配置里通常只能设 args 和 env，
+ * 提供 env 入口能省掉拼命令行参数。
+ */
+function readEnvOverrides(): Partial<ServerConfig> {
+  const overrides: Partial<ServerConfig> = {};
+
+  if (process.env.MCP_DATA_DIR) overrides.dataDir = resolve(process.env.MCP_DATA_DIR);
+  if (process.env.MCP_PACKAGES_DIR) overrides.packagesDir = resolve(process.env.MCP_PACKAGES_DIR);
+  if (process.env.MCP_VERBOSE === 'true') overrides.verbose = true;
+
+  return overrides;
 }
 
 /**
  * 默认配置
  */
 export const DEFAULT_CONFIG: ServerConfig = {
-  // 数据相关
   dataDir: join(mcpServerRoot, 'data'),
-  cacheDir: join(mcpServerRoot, 'data/.cache'),
   packagesDir: join(workspaceRoot, 'packages'),
 
-  // 缓存配置
-  cacheTTL: DEFAULT_CACHE_TTL,
-  enableCache: true,
-  maxCacheSize: DEFAULT_MAX_CACHE_SIZE / BYTES_PER_MB, // Convert bytes to MB
-
-  // 性能配置
-  maxConcurrentExtraction: DEFAULT_MAX_CONCURRENT_EXTRACTION,
-  extractionTimeout: DEFAULT_EXTRACTION_TIMEOUT,
-
-  // 服务器配置
   serverName: SERVER_NAME,
   serverVersion: SERVER_VERSION,
   verbose: false,
 
-  // 功能开关
-  features: {
-    enablePrompts: true,
-    enableExamples: true,
-    enableChangelog: true,
-    enableDependencyAnalysis: true,
-  },
-
-  // 忽略列表
   ignorePackages: [],
-  ignorePatterns: [...DEFAULT_IGNORE_PATTERNS],
 };
 
 /**
  * 配置管理器
+ *
+ * 优先级：显式传入 > 环境变量 > 默认值
  */
 export class ConfigManager {
   private config: ServerConfig;
 
   constructor(customConfig?: Partial<ServerConfig>) {
-    this.config = { ...DEFAULT_CONFIG, ...customConfig };
-
-    // 如果 dataDir 被自定义，确保 cacheDir 也相应更新
-    if (customConfig?.dataDir && !customConfig?.cacheDir) {
-      this.config.cacheDir = join(customConfig.dataDir, '.cache');
-    }
+    this.config = { ...DEFAULT_CONFIG, ...readEnvOverrides(), ...customConfig };
   }
 
   /**
@@ -151,7 +108,7 @@ export class ConfigManager {
   /**
    * 验证配置
    *
-   * 复用 validateServerConfig 进行基础字段/数值验证，
+   * 复用 validateServerConfig 进行基础字段验证，
    * 并追加路径存在性和文件系统权限检查。
    */
   async validate(): Promise<{
@@ -159,50 +116,28 @@ export class ConfigManager {
     errors: string[];
     warnings: string[];
   }> {
-    // 基础验证（字段、数值范围、格式）
+    // 基础验证（字段、格式）
     const baseResult = validateServerConfig(this.config);
     const errors = [...baseResult.errors];
     const warnings = [...baseResult.warnings];
 
-    // 追加：路径存在性验证
-    if (this.config.dataDir || this.config.packagesDir) {
+    const { existsSync } = await import('node:fs');
+    const { access, constants } = await import('node:fs/promises');
+
+    // 数据目录缺失只是警告：服务会以空数据启动并提示运行 extract
+    if (!existsSync(this.config.dataDir)) {
+      warnings.push(`dataDir 不存在: ${this.config.dataDir}，请先运行 extract`);
+    } else {
       try {
-        const { existsSync } = await import('node:fs');
-
-        if (this.config.packagesDir && !existsSync(this.config.packagesDir)) {
-          errors.push(`packagesDir 不存在: ${this.config.packagesDir}`);
-        }
-
-        if (this.config.dataDir && !existsSync(this.config.dataDir)) {
-          warnings.push(`dataDir 不存在，将自动创建: ${this.config.dataDir}`);
-        }
+        await access(this.config.dataDir, constants.R_OK);
       } catch {
-        warnings.push('无法验证路径存在性');
+        errors.push(`dataDir 没有读取权限: ${this.config.dataDir}`);
       }
     }
 
-    // 追加：权限验证
-    try {
-      const { access, constants } = await import('node:fs/promises');
-      const { existsSync } = await import('node:fs');
-
-      if (this.config.dataDir && existsSync(this.config.dataDir)) {
-        try {
-          await access(this.config.dataDir, constants.W_OK);
-        } catch {
-          errors.push(`dataDir 没有写入权限: ${this.config.dataDir}`);
-        }
-      }
-
-      if (this.config.packagesDir && existsSync(this.config.packagesDir)) {
-        try {
-          await access(this.config.packagesDir, constants.R_OK);
-        } catch {
-          errors.push(`packagesDir 没有读取权限: ${this.config.packagesDir}`);
-        }
-      }
-    } catch {
-      warnings.push('无法验证文件系统权限');
+    // packagesDir 只在提取时需要，服务运行时缺失不影响查询
+    if (!existsSync(this.config.packagesDir)) {
+      warnings.push(`packagesDir 不存在: ${this.config.packagesDir}`);
     }
 
     return {

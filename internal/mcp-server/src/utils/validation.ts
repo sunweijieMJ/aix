@@ -27,51 +27,20 @@ export function validateServerConfig(config: ServerConfig): ValidationResult {
     errors.push('dataDir 是必需的');
   }
 
-  if (!config.cacheDir) {
-    errors.push('cacheDir 是必需的');
-  }
-
   if (!config.packagesDir) {
     errors.push('packagesDir 是必需的');
   }
 
-  // 数值范围验证
-  if (config.cacheTTL < 0) {
-    errors.push('cacheTTL 必须大于等于 0');
-  }
-
-  if (config.maxCacheSize < 0) {
-    errors.push('maxCacheSize 必须大于等于 0');
-  }
-
-  if (config.maxConcurrentExtraction < 1) {
-    errors.push('maxConcurrentExtraction 必须大于 0');
-  }
-
-  if (config.extractionTimeout < 1000) {
-    errors.push('extractionTimeout 必须大于等于 1000ms');
-  }
-
-  // 数值合理性警告
-  if (config.maxCacheSize > 500) {
-    warnings.push(`maxCacheSize 设置过大 (${config.maxCacheSize}MB)，建议不超过 500MB`);
-  }
-  if (config.cacheTTL > 24 * 60 * 60 * 1000) {
-    warnings.push(`cacheTTL 设置过长 (${config.cacheTTL}ms)，建议不超过 24 小时`);
-  }
-  if (config.maxConcurrentExtraction > 10) {
-    warnings.push(
-      `maxConcurrentExtraction 设置过大 (${config.maxConcurrentExtraction})，可能导致性能问题`,
-    );
-  }
-
-  // 字符串格式验证
-  if (config.serverName && !/^[a-z0-9-]+$/.test(config.serverName)) {
-    errors.push('serverName 只能包含小写字母、数字和连字符');
+  if (!config.serverName) {
+    errors.push('serverName 是必需的');
   }
 
   if (config.serverVersion && !/^\d+\.\d+\.\d+/.test(config.serverVersion)) {
     warnings.push('serverVersion 建议使用语义化版本格式');
+  }
+
+  if (!Array.isArray(config.ignorePackages)) {
+    errors.push('ignorePackages 必须是字符串数组');
   }
 
   return {
@@ -100,10 +69,6 @@ export function validateExtractorConfig(config: ExtractorConfig): ValidationResu
   // 数值验证
   if (config.maxConcurrentExtraction !== undefined && config.maxConcurrentExtraction < 1) {
     errors.push('maxConcurrentExtraction 必须大于 0');
-  }
-
-  if (config.extractionTimeout !== undefined && config.extractionTimeout < 1000) {
-    warnings.push('extractionTimeout 建议设置为至少 1000ms');
   }
 
   // 数组验证
@@ -195,15 +160,9 @@ export function validateEnvironment(): ValidationResult {
     warnings.push(`建议使用 Node.js 22 或更高版本，当前版本: ${nodeVersion}`);
   }
 
-  // 环境变量检查
-  if (process.env.NODE_ENV === 'production') {
-    if (!process.env.MCP_DATA_DIR) {
-      warnings.push('生产环境建议设置 MCP_DATA_DIR 环境变量');
-    }
-
-    if (!process.env.MCP_CACHE_DIR) {
-      warnings.push('生产环境建议设置 MCP_CACHE_DIR 环境变量');
-    }
+  // 环境变量检查（只提示真实存在的变量，见 config/readEnvOverrides）
+  if (process.env.NODE_ENV === 'production' && !process.env.MCP_DATA_DIR) {
+    warnings.push('生产环境建议显式设置 MCP_DATA_DIR，避免依赖包内默认目录');
   }
 
   return {
@@ -240,10 +199,11 @@ export function validateComponents(components: ComponentInfo[]): ValidationResul
       warnings.push(`组件 [${index}]: ${warning}`);
     });
 
-    // 检查重复的包名和组件名
+    // 重复包名只是警告：一个包里出现多个组件是合法的，
+    // 判成错误会让「一包多组件」的数据整体校验失败
     if (component.packageName) {
       if (packageNames.has(component.packageName)) {
-        errors.push(`重复的包名: ${component.packageName}`);
+        warnings.push(`重复的包名: ${component.packageName}`);
       }
       packageNames.add(component.packageName);
     }

@@ -3,9 +3,9 @@
  */
 
 import { readFile, stat } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { basename, extname, join, relative, sep } from 'node:path';
 import { MIME_TYPES, RESOURCE_TYPES } from '../constants';
-import type { ComponentIndex, ComponentInfo } from '../types/index';
+import type { ComponentIndex, ComponentInfo, DocsIndex } from '../types/index';
 import { log } from '../utils/logger';
 
 /**
@@ -42,11 +42,47 @@ export interface ResourceContent {
  */
 export class ResourceManager {
   private componentIndex: ComponentIndex;
-  /** 源文件缓存：packageName -> sourceFiles[] */
+  /** 源文件缓存：packageName -> 相对包根的源文件路径列表（如 src/hooks/index.ts） */
   private sourceFilesCache = new Map<string, string[]>();
+  /** 文档快照，脱离仓库运行时的唯一数据来源，首次访问时懒加载 */
+  private docsIndex: DocsIndex | null = null;
+  private docsLoaded = false;
 
-  constructor(componentIndex: ComponentIndex) {
+  /**
+   * @param componentIndex - 组件索引
+   * @param dataDir - 数据目录，用于加载文档快照
+   * @param repoRoot - workspace 根；null 表示脱离仓库运行，此时源码类资源不可用
+   */
+  constructor(
+    componentIndex: ComponentIndex,
+    private dataDir: string = '',
+    private repoRoot: string | null = null,
+  ) {
     this.componentIndex = componentIndex;
+  }
+
+  /**
+   * 把数据里的仓库相对路径还原成可读取的绝对路径
+   */
+  private toAbsolute(repoRelativePath: string): string | null {
+    return this.repoRoot ? join(this.repoRoot, repoRelativePath) : null;
+  }
+
+  /**
+   * 懒加载文档快照
+   */
+  private async getDocs(packageName: string): Promise<{ readme?: string; changelog?: string }> {
+    if (!this.docsLoaded) {
+      this.docsLoaded = true;
+      try {
+        const content = await readFile(join(this.dataDir, 'docs-index.json'), 'utf8');
+        this.docsIndex = JSON.parse(content) as DocsIndex;
+      } catch {
+        this.docsIndex = null;
+      }
+    }
+
+    return this.docsIndex?.docs?.[packageName] ?? {};
   }
 
   /**
@@ -56,19 +92,35 @@ export class ResourceManager {
     const resources: ResourceDescription[] = [];
 
     for (const component of this.componentIndex.components) {
-      // 组件源码文件
-      const sourceFiles = await this.getComponentSourceFiles(component);
-      for (const sourceFile of sourceFiles) {
-        resources.push({
-          uri: `component-source://${component.packageName}/${basename(sourceFile)}`,
-          name: `${component.name} - ${basename(sourceFile)}`,
-          description: `${component.name} 组件的源码文件`,
-          mimeType: this.getMimeType(sourceFile),
-        });
+      const docs = await this.getDocs(component.packageName);
+
+      // 组件源码和 Story 依赖真实仓库，脱离仓库运行时不登记
+      // ——登记了也读不到，只会让调用方白跑一趟拿到 "Resource not found"
+      if (this.repoRoot) {
+        // URI 用相对包根的路径而非 basename：一个包内多个同名 index.ts 会撞 URI，
+        // 撞上之后读取只会返回第一个命中，其余文件永远无法寻址
+        const sourceFiles = await this.getComponentSourceFiles(component);
+        for (const sourceFile of sourceFiles) {
+          resources.push({
+            uri: `component-source://${component.packageName}/${sourceFile}`,
+            name: `${component.name} - ${sourceFile}`,
+            description: `${component.name} 组件的源码文件`,
+            mimeType: this.getMimeType(sourceFile),
+          });
+        }
+
+        if (component.storiesPath) {
+          resources.push({
+            uri: `component-story://${component.packageName}/${basename(component.storiesPath)}`,
+            name: `${component.name} - Stories`,
+            description: `${component.name} 组件的故事文件`,
+            mimeType: this.getMimeType(component.storiesPath),
+          });
+        }
       }
 
-      // README 文件
-      if (component.readmePath) {
+      // README：有仓库读磁盘，没仓库读快照
+      if (component.readmePath || docs.readme) {
         resources.push({
           uri: `component-readme://${component.packageName}/README.md`,
           name: `${component.name} - README`,
@@ -77,32 +129,38 @@ export class ResourceManager {
         });
       }
 
-      // Story 文件
-      if (component.storiesPath) {
-        resources.push({
-          uri: `component-story://${component.packageName}/${basename(component.storiesPath)}`,
-          name: `${component.name} - Stories`,
-          description: `${component.name} 组件的故事文件`,
-          mimeType: this.getMimeType(component.storiesPath),
-        });
-      }
-
-      // CHANGELOG 文件
-      const changelogPath = join(component.sourcePath, 'CHANGELOG.md');
-      try {
-        await stat(changelogPath);
+      // CHANGELOG：同上
+      if (await this.hasChangelog(component, docs)) {
         resources.push({
           uri: `component-changelog://${component.packageName}/CHANGELOG.md`,
           name: `${component.name} - Changelog`,
           description: `${component.name} 组件的变更日志`,
           mimeType: 'text/markdown',
         });
-      } catch {
-        // CHANGELOG 文件不存在，跳过
       }
     }
 
     return resources;
+  }
+
+  /**
+   * 判断组件是否有变更日志可读
+   */
+  private async hasChangelog(
+    component: ComponentInfo,
+    docs: { changelog?: string },
+  ): Promise<boolean> {
+    if (docs.changelog) return true;
+
+    const changelogPath = this.toAbsolute(join(component.sourcePath, 'CHANGELOG.md'));
+    if (!changelogPath) return false;
+
+    try {
+      await stat(changelogPath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -122,8 +180,13 @@ export class ResourceManager {
         return null;
       }
 
-      let filePath: string;
+      const docs = await this.getDocs(packageName);
+
+      // 文档类资源：优先读仓库里的真实文件（内容最新），
+      // 脱离仓库时退回 extract 阶段打进 data/ 的快照
+      let filePath: string | null;
       let mimeType: string;
+      let snapshot: string | undefined;
 
       switch (type) {
         case 'component-source':
@@ -132,33 +195,38 @@ export class ResourceManager {
           break;
 
         case 'component-readme':
-          if (!component.readmePath) return null;
-          filePath = component.readmePath;
+          filePath = component.readmePath ? this.toAbsolute(component.readmePath) : null;
           mimeType = 'text/markdown';
+          snapshot = docs.readme;
           break;
 
         case 'component-story':
-          if (!component.storiesPath) return null;
-          filePath = component.storiesPath;
-          mimeType = this.getMimeType(component.storiesPath);
+          filePath = component.storiesPath ? this.toAbsolute(component.storiesPath) : null;
+          mimeType = this.getMimeType(component.storiesPath ?? '');
           break;
 
         case 'component-changelog':
-          filePath = join(component.sourcePath, 'CHANGELOG.md');
+          filePath = this.toAbsolute(join(component.sourcePath, 'CHANGELOG.md'));
           mimeType = 'text/markdown';
+          snapshot = docs.changelog;
           break;
 
         default:
           return null;
       }
 
-      const content = await readFile(filePath, 'utf8');
+      if (filePath) {
+        try {
+          return { uri, mimeType, text: await readFile(filePath, 'utf8') };
+        } catch (error) {
+          if (!snapshot) throw error;
+          log.warn(`读取 ${filePath} 失败，改用文档快照`);
+        }
+      }
 
-      return {
-        uri,
-        mimeType,
-        text: content,
-      };
+      if (!snapshot) return null;
+
+      return { uri, mimeType, text: snapshot };
     } catch (error) {
       log.error(`Error reading resource ${uri}:`, error);
       return null;
@@ -203,6 +271,8 @@ export class ResourceManager {
 
   /**
    * 获取组件源码文件列表（带缓存）
+   *
+   * @returns 相对包根的路径列表，统一用 `/` 分隔以便拼进 URI
    */
   private async getComponentSourceFiles(component: ComponentInfo): Promise<string[]> {
     // 检查缓存
@@ -211,15 +281,23 @@ export class ResourceManager {
       return cached;
     }
 
+    const packageDir = this.toAbsolute(component.sourcePath);
+    if (!packageDir) {
+      return [];
+    }
+
     try {
       const { glob } = await import('glob');
-      const pattern = join(component.sourcePath, 'src/**/*.{ts,tsx,vue}');
+      const pattern = join(packageDir, 'src/**/*.{ts,tsx,vue}');
       const files = await glob(pattern);
 
-      const filteredFiles = files.filter(
-        (file) =>
-          !file.includes('.test.') && !file.includes('.spec.') && !file.includes('.stories.'),
-      );
+      const filteredFiles = files
+        .filter(
+          (file) =>
+            !file.includes('.test.') && !file.includes('.spec.') && !file.includes('.stories.'),
+        )
+        .map((file) => relative(packageDir, file).split(sep).join('/'))
+        .sort();
 
       // 存入缓存
       this.sourceFilesCache.set(component.packageName, filteredFiles);
@@ -232,16 +310,21 @@ export class ResourceManager {
 
   /**
    * 查找指定的源码文件
+   *
+   * 只接受 listResources 登记过的相对路径，天然拒绝 `../` 之类的越界访问。
+   *
+   * @returns 可直接读取的绝对路径
    */
-  private async findSourceFile(component: ComponentInfo, fileName: string): Promise<string> {
+  private async findSourceFile(component: ComponentInfo, filePath: string): Promise<string> {
     const sourceFiles = await this.getComponentSourceFiles(component);
-    const targetFile = sourceFiles.find((file) => basename(file) === fileName);
+    const targetFile = sourceFiles.find((file) => file === filePath);
+    const packageDir = this.toAbsolute(component.sourcePath);
 
-    if (!targetFile) {
-      throw new Error(`Source file not found: ${fileName}`);
+    if (!targetFile || !packageDir) {
+      throw new Error(`Source file not found: ${filePath}`);
     }
 
-    return targetFile;
+    return join(packageDir, targetFile);
   }
 
   /**
@@ -265,6 +348,10 @@ export class ResourceManager {
 /**
  * 创建资源管理器
  */
-export function createResourceManager(componentIndex: ComponentIndex): ResourceManager {
-  return new ResourceManager(componentIndex);
+export function createResourceManager(
+  componentIndex: ComponentIndex,
+  dataDir = '',
+  repoRoot: string | null = null,
+): ResourceManager {
+  return new ResourceManager(componentIndex, dataDir, repoRoot);
 }

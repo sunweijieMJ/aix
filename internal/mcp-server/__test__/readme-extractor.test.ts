@@ -83,3 +83,98 @@ describe('ReadmeExtractor', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('ReadmeExtractor 表格解析', () => {
+  const extractor = new ReadmeExtractor();
+  const parse = (md: string) => (extractor as any).extractApiTables(md);
+
+  it('应该按列名而非列序定位数据', () => {
+    // 列序和主流格式完全不同：说明在第二列，默认值在最后
+    const md = `## API
+
+| 属性名 | 说明 | 类型 | 可选值 | 默认值 |
+| --- | --- | --- | --- | --- |
+| size | 尺寸 | \`string\` | small \\| large | medium |
+`;
+    const { props } = parse(md);
+    expect(props).toHaveLength(1);
+    expect(props[0]).toMatchObject({
+      name: 'size',
+      type: 'string',
+      description: '尺寸',
+      defaultValue: 'medium',
+      enum: ['small', 'large'],
+    });
+  });
+
+  it('空单元格不应该导致后续列错位或整行丢失', () => {
+    const md = `## API
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| disabled | \`boolean\` |  | ❌ | 是否禁用 |
+`;
+    const { props } = parse(md);
+    expect(props).toHaveLength(1);
+    expect(props[0]).toMatchObject({
+      name: 'disabled',
+      type: 'boolean',
+      required: false,
+      description: '是否禁用',
+    });
+    expect(props[0].defaultValue).toBeUndefined();
+  });
+
+  it('没有默认值不等于必填，只认显式的必填列', () => {
+    const md = `## API
+
+| 属性名 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| modelValue | \`string\` | - | 绑定值 |
+`;
+    expect(parse(md).props[0].required).toBe(false);
+  });
+
+  it('不要求表格挂在 ## API 标题下，并记录所属章节', () => {
+    const md = `## UI 组件
+
+### WaveformCanvas
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| barWidth | \`number\` | 2 | ❌ | 柱宽 |
+`;
+    const { props } = parse(md);
+    expect(props).toHaveLength(1);
+    expect(props[0].group).toBe('WaveformCanvas');
+  });
+
+  it('应该分别提取 Emits 和 Slots', () => {
+    const md = `## API
+
+| 事件名 | 参数 | 说明 |
+| --- | --- | --- |
+| click | \`MouseEvent\` | 点击时触发 |
+
+| 插槽名 | 说明 |
+| --- | --- |
+| default | 按钮内容 |
+`;
+    const { emits, slots } = parse(md);
+    expect(emits).toEqual([
+      expect.objectContaining({ name: 'click', params: 'MouseEvent', description: '点击时触发' }),
+    ]);
+    expect(slots).toEqual([expect.objectContaining({ name: 'default', description: '按钮内容' })]);
+  });
+
+  it('说明性表格不应该被当成 props', () => {
+    // 没有类型/默认值/可选值列，只是普通的说明表
+    const md = `## 说明
+
+| 配置 | 求值时机 |
+| --- | --- |
+| theme | 挂载时 |
+`;
+    expect(parse(md).props).toHaveLength(0);
+  });
+});

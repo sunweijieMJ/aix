@@ -74,7 +74,7 @@ describe('McpServer', () => {
 
       expect(stats).toHaveProperty('componentsLoaded');
       expect(stats).toHaveProperty('toolsAvailable');
-      expect(stats).toHaveProperty('cacheStats');
+      expect(stats).toHaveProperty('monitoringStats');
       expect(stats).toHaveProperty('lastUpdated');
     });
   });

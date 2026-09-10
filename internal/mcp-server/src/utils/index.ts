@@ -199,8 +199,6 @@ export function findComponentByName(
 }
 
 // 重新导出工具模块
-export * from './cache';
-
 export * from './logger';
 export * from './validation';
 export * from './monitoring';

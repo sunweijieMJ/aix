@@ -34,10 +34,15 @@ export interface ToolPackageInfo {
   /** 来源：kit | internal */
   scope: 'kit' | 'internal';
 
-  /** 源码路径 */
+  /** 源码路径（相对 workspace 根，如 kit/tracker） */
   sourcePath: string;
-  /** README 路径 */
+  /** README 路径（相对 workspace 根） */
   readmePath?: string;
+
+  /** README 正文快照，落盘时剥离到 docs-index.json（见 ComponentInfo.readmeContent） */
+  readmeContent?: string;
+  /** CHANGELOG 正文快照，去向同 readmeContent */
+  changelogContent?: string;
 
   /** 依赖列表 */
   dependencies: string[];
