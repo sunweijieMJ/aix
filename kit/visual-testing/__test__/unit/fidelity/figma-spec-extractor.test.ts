@@ -5,6 +5,19 @@ import {
   collectFontFamilies,
 } from '../../../src/core/fidelity/figma-spec-extractor';
 import { heroFixture } from '../../fixtures/figma-hero';
+import type { FigmaNode } from '../../../src/core/figma/types';
+
+/** 构造一个只关心描边的最小节点 */
+function strokedNode(overrides: Partial<FigmaNode>): FigmaNode {
+  return {
+    id: '1:1',
+    name: 'Box',
+    type: 'RECTANGLE',
+    absoluteBoundingBox: { x: 0, y: 0, width: 100, height: 40 },
+    strokes: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }],
+    ...overrides,
+  };
+}
 
 describe('normalizeText', () => {
   it('collapses whitespace and strips zero-width chars', () => {
@@ -73,5 +86,27 @@ describe('extractDesignSpec', () => {
 
   it('throws for invisible root', () => {
     expect(() => extractDesignSpec({ ...heroFixture, visible: false })).toThrow(/invisible/);
+  });
+});
+
+describe('stroke weight', () => {
+  it('falls back to strokeWeight when sides are uniform', () => {
+    const node = extractDesignSpec(strokedNode({ strokeWeight: 2 }));
+    expect(node.strokes[0]!.weight).toBe(2);
+  });
+
+  it('takes the max of individualStrokeWeights (DOM 侧同样取四边 max)', () => {
+    const node = extractDesignSpec(
+      strokedNode({
+        strokeWeight: 1,
+        individualStrokeWeights: { top: 0, right: 0, bottom: 3, left: 0 },
+      }),
+    );
+    expect(node.strokes[0]!.weight).toBe(3);
+  });
+
+  it('defaults to 1 when neither is present', () => {
+    const node = extractDesignSpec(strokedNode({}));
+    expect(node.strokes[0]!.weight).toBe(1);
   });
 });

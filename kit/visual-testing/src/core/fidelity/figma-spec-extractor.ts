@@ -87,7 +87,7 @@ function convertNode(node: FigmaNode, origin: FigmaRect): DesignNode | null {
     fillKind: type === 'TEXT' ? 'none' : fillKind,
     strokes: (node.strokes ?? [])
       .filter((s) => s.visible !== false && s.type === 'SOLID' && s.color)
-      .map((s) => ({ color: paintToColor(s)!, weight: node.strokeWeight ?? 1 })),
+      .map((s) => ({ color: paintToColor(s)!, weight: strokeWeightOf(node) })),
     cornerRadius: normalizeRadius(node),
     effects: normalizeEffects(node),
     isLeaf,
@@ -111,6 +111,18 @@ function convertNode(node: FigmaNode, origin: FigmaRect): DesignNode | null {
   }
 
   return design;
+}
+
+/**
+ * 描边宽度：四边独立设置时取最大值。
+ *
+ * DOM 侧 borderWidth 同样取四边 max（见 dom-extractor.ts），两边口径必须一致，
+ * 否则「只给一条边加 border」的设计会被判成宽度不符。
+ */
+function strokeWeightOf(node: FigmaNode): number {
+  const sides = node.individualStrokeWeights;
+  if (sides) return Math.max(sides.top, sides.right, sides.bottom, sides.left);
+  return node.strokeWeight ?? 1;
 }
 
 function normalizeType(type: string): DesignNodeType {

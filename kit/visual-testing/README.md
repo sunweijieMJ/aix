@@ -73,9 +73,14 @@ pnpm add -D openai
 npx visual-test init
 ```
 
-交互式填写项目配置，生成 `visual-test.config.ts` 和目录结构。
+交互式填写项目名、基准图 provider（`local` 或 `figma-api`）与是否启用 LLM 分析，生成
+`visual-test.config.ts` 和 `.visual-test/`（含 `fidelity/`）目录结构。选 `figma-api` 时可
+顺带填 Figma fileKey；access token 一律走环境变量 `FIGMA_TOKEN`，init 不会把任何密钥写进配置文件。
 
-跳过交互直接使用默认值：
+生成的配置已包含 `screenshot.deviceScaleFactor`、`ci.gate: 'pixel'` 和 `fidelity` 段，
+按需取消注释即可。
+
+跳过交互直接使用默认值（`local` provider + 关闭 LLM）：
 
 ```bash
 npx visual-test init --yes
