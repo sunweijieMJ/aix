@@ -95,6 +95,9 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 ## 组件一览
 
+下表给的是「这个组件大概长什么样」，含 emits / slots / expose；
+完整的 Props 逐条定义见文末「API」章节。
+
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
 | `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `toolbarItems?`（工具栏项与顺序，直通 Sender）/ `senderIcons?`（覆盖 Sender 内置按钮图标，见「自定义内置按钮」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）/ `tailBreathing?`（末尾静默呼吸，默认关闭，见「末尾静默呼吸」）/ `outline?`（对话大纲导航，默认关闭，见「对话大纲导航」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`block-intent`（块意图，见「块交互的两条通道」）/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer`/`bubble-header`/`avatar`/`error`（消息级，见「消息级插槽」）+ 块插槽穿透（见「块渲染与富内容插槽穿透」） |
@@ -1421,6 +1424,281 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 >
 > 表内每个变量都是长期契约（加容易、删是破坏性变更），故按「确有定制需求」收敛，
 > 未穷举所有内部尺寸。缺你需要的请提 issue，不建议自行猜测未文档化的变量名。
+
+## API
+
+各组件的 Props 定义。下表按组件分节，与源码里的 `XxxProps` 接口逐条对应；
+`说明` 一列取 JSDoc 首句，完整的设计权衡见源码注释。
+
+Emits、Slots、expose 方法见上方「组件一览」以及各专题章节（「块渲染与富内容插槽穿透」
+「Sender 工具栏作用域插槽」「消息级插槽」等）。`SenderSkeleton` / `LoadingDots`
+是纯展示组件，没有 props。
+
+### AiChat Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `request` | `UseChatOptions['request']` | - | ✅ | 发起请求，返回字节流或 Response（必填）。 |
+| `streamMode` | `'sse' \| 'line'` | - | - | 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat。每次请求才读取，运行时可改 |
+| `parseChunk` | `UseChatOptions['parseChunk']` | - | - | 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传 openaiParseChunk/anthropicParseChunk。透传给 useChat。 |
+| `parser` | `UseChatOptions['parser']` | - | - | 渲染消息转换器（解耦后端格式与展示形状，1→1，须保留消息 id）；透传给 useChat。静态配置 |
+| `defaultMessages` | `UseChatOptions['defaultMessages']` | - | - | 初始历史消息 |
+| `historyLoading` | `boolean` | - | - | 历史消息加载中：true 时消息区渲染骨架屏（占位假气泡），而不是空消息态的 Welcome 或 真实 BubbleList；用于业务从远端异步恢复会话历史时的过渡态（如接入 useConversations 异步 storage.load… |
+| `localeMessages` | `Partial<AiChatLocale>` | - | - | 实例级文案覆盖（Partial 浅合并，优先级最高，只影响本实例及其内部子组件）。 |
+| `input` | `string` | - | - | 输入框文本（v-model:input）。可选；不传则走非受控，由组件内部维护草稿。 |
+| `roles` | `Record<string, RoleConfig>` | - | - | 角色气泡样式映射，优先级高于 provideAiChatConfig 的全局 roles |
+| `shouldFollow` | `ShouldFollow` | - | - | 滚动跟随策略，优先级高于 provideAiChatConfig 的全局 shouldFollow |
+| `tailBreathing` | `boolean \| { idleMs?: number }` | - | - | 末尾静默呼吸：流式输出停顿时末块文字明暗呼吸，提示「仍在生成」。 |
+| `outline` | `boolean \| OutlineOptions` | - | - | 对话大纲导航：右侧提问刻度条，点击定位到对应提问。 |
+| `blockRenderers` | `BlockRenderers` | - | - | 块渲染器注册表（扩展/覆盖内置 text/reasoning 渲染），优先级高于 provideAiChatConfig 的全局 blockRenderers |
+| `toolRenderers` | `BlockRenderers` | - | - | 工具调用（tool_use）渲染器注册表，按 toolName 路由，优先级高于 provideAiChatConfig 的全局 toolRenderers |
+| `prompts` | `PromptItem[]` | - | - | 欢迎页快捷问题，点击后以其 label 作为消息自动发送 |
+| `headerTitle` | `string` | - | - | 顶部标题栏标题文案；传入（或提供 header* 插槽）时渲染标题栏，默认不渲染 |
+| `headerIcon` | `string` | - | - | 顶部标题栏图标图片地址（可用 header-icon 具名插槽覆盖） |
+| `welcomeTitle` | `string` | - | - | 欢迎页标题（空消息态展示）。等价于 `welcome.title`，两者同时存在时以 `welcome` 为准 |
+| `welcomeDescription` | `string` | - | - | 欢迎页描述文案（空消息态展示）。等价于 `welcome.description`，两者同时存在时以 `welcome` 为准 |
+| `welcome` | `{ icon?: string; title?: string; description?: string; align?: 'center' \| 'start'; fillHe…` | - | - | 欢迎页配置。`title` / `description` 与扁平的 `welcomeTitle` / `welcomeDescription` 等价 （本对象优先），另外开放三项只能从这里配置的能力： |
+| `placeholder` | `string` | - | - | 输入框占位提示，缺省取 locale.senderPlaceholder |
+| `submitType` | `'enter' \| 'shiftEnter'` | - | - | 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter'；透传给 Sender |
+| `actions` | `ActionsItems \| ((message: ChatMessage) => ActionsItems \| null)` | - | - | 消息操作条配置，默认 ['copy','regenerate']。 |
+| `actionsTrigger` | `'always' \| 'hover'` | `'always'` | - | 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示）。 |
+| `errorText` | `(message: ChatMessage) => string` | - | - | 出错态内置错误条的文案解析，默认回退 `locale.errorMessage`。 |
+| `retryTimes` | `number` | - | - | 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。运行时可改 |
+| `retryInterval` | `number` | - | - | 两次重试间隔（ms），默认 1000；透传给 useChat。运行时可改 |
+| `continuePrompt` | `string` | - | - | 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。 |
+| `streamTimeout` | `number` | - | - | 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。 |
+| `markdownRenderers` | `MarkdownRenderers` | - | - | markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局同名配置。 |
+| `allowHtml` | `boolean` | - | - | 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin）， 默认 false；注入到气泡内 MarkdownRenderer。运行时可改（切换时引擎按新模式… |
+| `mdPlugins` | `MarkdownItPlugin[]` | - | - | 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）；注入到气泡内 MarkdownRenderer。 |
+| `attachments` | `UseAttachmentsOptions \| UseAttachmentsReturn` | - | - | 附件能力（opt-in），原样透传 Sender；不传则无任何附件 UI。静态配置 |
+| `voice` | `boolean \| VoiceConfig` | - | - | 语音输入（opt-in），透传 Sender；不传则无麦克风按钮。静态配置 |
+| `speech` | `boolean \| SpeechConfig` | - | - | 语音播报（opt-in），透传内置 useSpeech；不传则无朗读按钮、不自动播报。 |
+| `tree` | `ExportedTree` | - | - | 对话树（v-model:tree）：分支感知的持久化通道，绑 useConversations.activeTree。 |
+| `treeMode` | `boolean` | - | - | 显式声明是否以 `tree` 为权威持久化通道（默认由是否绑定 `v-model:tree` 自动推断）。 |
+| `quote` | `QuoteConfig \| boolean` | - | - | 划词引用/追问（opt-in，默认关闭）。true 开启默认能力；false 关闭；对象按 QuoteConfig 细配并默认视为开启， 与全局 provideAiChatConfig().quote 合并（props 优先）。 |
+| `triggers` | `TriggerConfig[]` | - | - | 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置 |
+| `toolbarItems` | `SenderToolbarItems` | - | - | 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender；不传则用 Sender 默认值 ['attach','voice'] |
+| `autoSpacer` | `boolean` | - | - | 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，直通 Sender，默认 true。 |
+| `senderIcons` | `SenderIcons` | - | - | 覆盖 Sender 内置按钮图标（附件 / 语音 / 发送 / 停止），直通 Sender 的 `icons` prop。 |
+| `senderVariant` | `SenderVariant` | - | - | 输入框外观形态，直通 Sender 的 `variant`，默认 `'card'`。 |
+| `reasoningVariant` | `ThinkingVariant` | - | - | 深度思考（reasoning 块）折叠面板的外观形态，默认 `'card'`； |
+| `suggestions` | `boolean \| { fillOnly?: boolean; max?: number }` | - | - | 追问建议（opt-in）：true 全默认；对象可配 fillOnly（点击仅回填不发送）/ max（上限，默认 5）。 |
+
+### Sender Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `modelValue` | `string` | `''` | - | 输入框文本（v-model），受控 |
+| `placeholder` | `string` | - | - | 占位提示，缺省取 locale.senderPlaceholder |
+| `loading` | `boolean` | `false` | - | 加载态：发送按钮切换为停止按钮，点击触发 cancel，默认 false |
+| `disabled` | `boolean` | `false` | - | 是否禁用整个输入框，默认 false |
+| `submitType` | `'enter' \| 'shiftEnter'` | `'enter'` | - | 提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter' |
+| `attachments` | `UseAttachmentsOptions \| UseAttachmentsReturn` | - | - | 附件能力（opt-in）：不传则完全不渲染附件 UI。传入后启用回形针按钮 / 拖拽 / 粘贴上传。 |
+| `voice` | `boolean \| VoiceConfig` | - | - | 语音输入（opt-in）：true=全默认（Web Speech API + navigator.language）；对象=自定义识别器/语言。 |
+| `allowEmptySubmit` | `boolean` | `false` | - | 有外部附加内容（如引用 chip）时允许空文本提交，默认 false |
+| `triggers` | `TriggerConfig[]` | - | - | 触发菜单（opt-in）：@提及 / 斜杠命令等按字符触发的候选菜单。 |
+| `toolbarItems` | `SenderToolbarItems` | `() => ['attach', 'voice'] as SenderToolb…` | - | 工具栏项：内置 'attach'/'voice' 与自定义对象混排，渲染顺序 = 数组顺序。 |
+| `autoSpacer` | `boolean` | `true` | - | 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，默认 true。 |
+| `icons` | `SenderIcons` | - | - | 覆盖内置按钮图标（仅换图标，按钮行为与 a11y 文案不变）。 |
+| `variant` | `SenderVariant` | `'card'` | - | 外观形态，默认 `'card'`（行为完全不变）： |
+
+### Bubble Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `content` | `ContentBlock[]` | `() => []` | - | 内容块列表（有序），由各 block 渲染器分发渲染 |
+| `role` | `MessageRole` | `'ai'` | - | 角色：决定默认头像 / 位置 / 样式（user/ai/system 或自定义），默认 'ai' |
+| `status` | `MessageStatus` | - | - | 消息状态：loading 显示加载点、error 显示重试入口等，影响渲染分支 |
+| `placement` | `BubblePlacement` | `'start'` | - | 气泡位置：'start' 左 / 'end' 右，默认 'start' |
+| `variant` | `BubbleVariant` | `'filled'` | - | 气泡样式变体：filled / outlined / borderless / shadow，默认 'filled' |
+| `shape` | `BubbleShape` | `'round'` | - | 气泡圆角形状：round / corner，默认 'round' |
+| `avatar` | `string` | - | - | 头像图片地址（URL / data-URI），不传则不渲染头像 |
+| `loading` | `boolean` | `false` | - | 是否加载态：显示加载点而非内容，默认 false |
+| `contentRender` | `(blocks: ContentBlock[], info: BubbleContentInfo) => unknown` | - | - | 自定义整条内容区渲染（优先级低于 content slot） |
+| `itemKey` | `string \| number` | - | - | 虚拟列表 / block-action 回传所用的消息 key（通常为消息 id） |
+| `typing` | `boolean \| BubbleTypingConfig` | `false` | - | 打字机效果：`true` 用默认节奏逐字显示；传配置对象 `{ step, interval }` 细化节奏； |
+| `blockRenderers` | `BlockRenderers` | `() => ({})` | - | block 渲染器注册表：块类型 → 组件，用于扩展新块类型或覆盖内置 text/reasoning 渲染 |
+| `toolRenderers` | `BlockRenderers` | - | - | 工具渲染器注册表：toolName → 组件，透传给内置 ToolUseBlock 做按名路由 |
+| `tailBreathing` | `boolean \| { idleMs?: number }` | - | - | 末尾静默呼吸：流式输出停顿时让末块文字做明暗呼吸，提示「仍在生成」而非已说完。 |
+| `editing` | `boolean` | - | - | 是否处于内联编辑态（受控，由外部驱动进入/退出——见 BubbleList.startEdit） |
+| `saveDisabled` | `boolean` | - | - | 编辑态下是否禁止保存（如全局请求进行中），true 时点击保存无效果、保留草稿与编辑态 |
+| `errorText` | `string` | - | - | 出错态（status==='error'）内置错误条展示的文案；缺省回退 `locale.errorMessage`。 |
+
+### BubbleList Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `ChatMessage[]` | - | ✅ | 消息列表（渲染数据源，经 virtua 虚拟化渲染为气泡） |
+| `loading` | `boolean` | `false` | - | 整体加载态：为 true 时渲染骨架占位气泡，不渲染 items（历史消息拉取中使用），默认 false |
+| `roles` | `Record<string, RoleConfig>` | - | - | 角色样式映射：角色 → 气泡默认 props（头像 / 位置 / 变体等） |
+| `autoScroll` | `boolean` | `true` | - | 是否自动滚动跟随新消息，默认 true |
+| `shouldFollow` | `ShouldFollow` | - | - | 自定义滚动跟随策略（覆盖内置 defaultShouldFollow） |
+| `maxHeight` | `string` | `'100%'` | - | 列表最大高度（CSS 值），默认 '100%'；超出内部滚动 |
+| `typing` | `boolean \| BubbleTypingConfig` | `false` | - | 全局打字机开关：开启后流式更新中（status==='updating'）的气泡逐字显示，默认 false。 |
+| `tailBreathing` | `boolean \| { idleMs?: number }` | - | - | 末尾静默呼吸：透传给各 Bubble（见 BubbleProps.tailBreathing） |
+| `blockRenderers` | `BlockRenderers` | - | - | 块渲染器注册表：透传给各 Bubble，与 roles 内的 blockRenderers 合并（role 级更具体，优先） |
+| `toolRenderers` | `BlockRenderers` | - | - | 工具渲染器注册表：toolName → 组件，透传给各 Bubble 供内置 ToolUseBlock 按名路由 |
+| `saveDisabled` | `boolean` | - | - | 编辑态下是否禁止保存（如全局请求进行中），透传给每个 Bubble |
+| `errorText` | `(message: ChatMessage) => string` | - | - | 出错文案解析：按整条消息算出内置错误条要显示的文字，逐条传给 Bubble 的 `errorText`。 |
+
+### BubbleActions Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `ActionsItems` | `() => ['copy', 'regenerate']` | - | 操作项列表：字符串=内置预设（copy/regenerate/feedback/speak），对象=自定义项；默认 ['copy','regenerate'] |
+| `content` | `string` | - | - | 'copy' 内置项的复制文本；提供后点击复制自动写入剪贴板并给出「已复制」反馈。 |
+| `sourceContent` | `string` | - | - | 'copySource' 内置项的复制文本（原始 markdown 源码，未剥离语法符号）； |
+| `feedback` | `MessageFeedback \| null` | - | - | 'feedback' 内置项的受控激活态，null 表示未反馈 |
+| `speaking` | `boolean` | - | - | 'speak' 内置项的受控朗读态（true=正在朗读，按钮切换为停止） |
+| `message` | `ChatMessage` | - | - | 自定义项 onClick 的 ctx.message 来源（AiChat 接线时传入；独立使用可不传） |
+| `branch` | `BranchMeta` | - | - | 分支元信息：count>1 时渲染 ‹ i/n › 切换器 |
+| `branchDisabled` | `boolean` | - | - | 切换器是否禁用（流式中由上层传 true） |
+
+### Welcome Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `icon` | `string` | - | - | 顶部图标图片地址（可用 icon 具名 slot 覆盖） |
+| `title` | `string` | - | - | 标题文案（可用 title 具名 slot 覆盖） |
+| `description` | `string` | - | - | 描述文案（可用 description 具名 slot 覆盖） |
+| `align` | `'center' \| 'start'` | `'center'` | - | 对齐方式：center 居中空态（默认）/ start 左对齐（用于带在顶部的引导语） |
+| `fillHeight` | `boolean` | - | - | 是否用 flex 上下 auto margin 在纵向撑满的容器（如 AiChat body）中垂直居中， 默认跟随 `align`（`center` → `true`，`start` → `false`）。 |
+
+### Prompts Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `PromptItem[]` | - | ✅ | - |
+
+### Thinking Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `content` | `string` | `''` | - | 思维链内容（可用默认 slot 覆盖） |
+| `title` | `string` | - | - | 折叠面板标题，未传时回退 i18n 文案 |
+| `expanded` | `boolean` | `false` | - | 初始是否展开，默认 false |
+| `variant` | `ThinkingVariant` | `'card'` | - | 外观形态，默认 `'card'`（行为完全不变）： |
+
+### ThoughtChain Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `ThoughtChainItem[]` | `() => []` | - | 思维链步骤列表 |
+| `title` | `string` | - | - | 链级头部标题（如「已完成」「生成中…」）；提供后在步骤列表上方渲染一行汇总头部 |
+| `collapsible` | `boolean` | `false` | - | 是否可点击头部折叠/展开整个步骤列表（需配合 title），默认 false |
+| `defaultCollapsed` | `boolean` | `false` | - | 初始是否折叠整链（需 collapsible），默认 false |
+| `loading` | `boolean` | `false` | - | 生成中：汇总标题显示主色流光（如「生成中…」），默认 false |
+
+### ModelSelector Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `modelValue` | `string` | - | - | 当前选中的 model value（v-model）。可选；不传走非受控，由组件内部维护选中态。 |
+| `options` | `ModelOption[]` | - | ✅ | 可选模型列表 |
+| `placeholder` | `string` | `''` | - | 未选中时占位文案 |
+| `placement` | `'top' \| 'bottom'` | `'bottom'` | - | 下拉展开方向，默认 bottom；位于面板底部时用 top 向上弹出 |
+| `loading` | `boolean` | `false` | - | 选项加载态：为 true 且下拉展开时，菜单渲染骨架占位而非真实选项，默认 false |
+
+### MarkdownRenderer Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `content` | `string` | `''` | - | 待渲染的 Markdown 文本 |
+| `streaming` | `boolean` | `false` | - | 流式渲染态：开启后对可能半截的内容做防闪烁整修（隐去未闭合 $$/\[、补围栏、隐末行残链）， 默认 false。完整文本（非流式）保持 false 以原样渲染。 |
+| `markdownRenderers` | `MarkdownRenderers` | `() => ({})` | - | markdown token 渲染器注册表（扩展/覆盖内置块渲染，如 fence/math/自定义），优先级高于内置 |
+| `allowHtml` | `boolean` | `false` | - | 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），默认 false |
+| `mdPlugins` | `MarkdownItPlugin[]` | - | - | 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）。 |
+
+### Conversations Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `ConversationItem[]` | - | ✅ | 会话列表元数据（来自 useConversations.items） |
+| `loading` | `boolean` | `false` | - | 加载态：为 true 时列表区域渲染骨架占位，忽略 items，默认 false |
+| `groupable` | `boolean` | `false` | - | 是否按 group 字段分组渲染，默认 false |
+| `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（按 label 模糊匹配、大小写不敏感，纯本地过滤），默认 false |
+| `searchPlaceholder` | `string` | - | - | 搜索框 placeholder，缺省取 locale |
+| `newButtonText` | `string` | - | - | 新建按钮文案，缺省取 locale |
+| `activeKey` | `string` | - | - | 当前激活会话 id（v-model:activeKey）。可选；不传走非受控，由组件内部维护选中态。 |
+
+### Skeleton Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `loading` | `boolean` | `true` | - | 是否展示骨架占位（false 时渲染默认插槽的真实内容），默认 true |
+| `rows` | `number` | - | - | 行模式：渲染 N 行文本占位（末行短行）；与 height/aspectRatio 互斥，优先生效 |
+| `height` | `string` | - | - | 块模式高度（如 '120px'），默认 96px |
+| `aspectRatio` | `string` | - | - | 块模式宽高比（如 '2 / 1'），设置后优先于 height |
+
+### QuoteMenu Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `ResolvedQuoteAction[]` | - | ✅ | - |
+| `source` | `'pointer' \| 'keyboard' \| 'longpress'` | - | ✅ | 本次触发来源 = 唯一平台事实：longpress → sheet，pointer/keyboard → toolbar |
+| `mode` | `'menu' \| 'selecting'` | - | ✅ | - |
+| `getRect` | `() => DOMRect` | - | - | 选区包围盒（toolbar 锚点，source=pointer/keyboard 时必传） |
+| `point` | `{ x: number; y: number }` | - | - | 长按触点（sheet 锚点，source=longpress 时必传） |
+| `contextEl` | `HTMLElement \| null` | - | - | 虚拟锚点宿主元素（透传给皮肤的 contextEl）：供 autoUpdate 挂滚动祖先监听 |
+| `toolbar` | `Component` | - | - | 深度换肤：仅替换单端皮肤，L2 逻辑复用 |
+| `sheet` | `Component` | - | - | - |
+
+### QuoteChip Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `quote` | `Quote` | - | ✅ | - |
+
+### TriggerMenu Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `TriggerItem[]` | - | ✅ | 候选项（已由 Sender 侧解析/过滤完成） |
+| `loading` | `boolean` | - | ✅ | 异步 items 加载中 |
+| `activeIndex` | `number` | - | ✅ | 受控高亮下标（键盘导航由 Sender keydown 驱动，焦点不进菜单） |
+| `menuId` | `string` | - | ✅ | listbox 的 DOM id；选项 id 约定为 `${menuId}-option-${i}`，供 aria-activedescendant |
+| `getAnchorRect` | `() => DOMRect` | - | ✅ | 虚拟锚点工厂：@ 用 caret rect、/ 用 Sender 整框 rect（含降级），由调用方决定 |
+| `contextEl` | `HTMLElement \| null` | - | - | 虚拟锚点的宿主元素（floating-ui VirtualElement.contextElement）： autoUpdate 借此找到滚动祖先挂监听——缺省时锚点在可滚动容器内滚动不会触发重定位 |
+
+### Suggestions Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `SuggestionItem[]` | - | ✅ | 建议项（已由上层归一化并截断） |
+| `loading` | `boolean` | - | - | 建议生成中：为 true 时渲染占位胶囊，忽略 items，默认 false |
+
+### ContextWindow Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `used` | `number` | `0` | - | 已用 token 数 |
+| `total` | `number` | `0` | - | 上下文窗口总量 |
+| `percent` | `number` | - | - | 展示用占比（0–1）。缺省由 used/total 计算；total 为 0 时按 0 处理（不产生 NaN/Infinity）。 |
+| `compressible` | `boolean` | `false` | - | 是否提供「压缩会话」入口，默认 false |
+| `compressing` | `boolean` | `false` | - | 压缩进行中：按钮禁用并显示进行中文案 |
+| `formatter` | `(n: number) => string` | - | - | 数值格式化，缺省按 k 单位（12000 → 12k） |
+| `warnRatio` | `number` | `0.8` | - | 进入告警配色的占比阈值（0–1），默认 0.8 |
+
+### MessageOutline Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `entries` | `OutlineEntry[]` | `() => []` | - | 可见刻度条目（通常传 useMessageOutline 的 windowed） |
+| `activeId` | `string` | - | - | 当前活跃条目的 messageId，决定高亮 |
+
+### AttachmentCard Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `item` | `AttachmentCardItem` | - | ✅ | - |
+| `removable` | `boolean` | `false` | - | 是否显示删除按钮（输入区预览 true / 气泡回显 false），默认 false |
+
+### AttachmentsPanel Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `items` | `PendingAttachment[]` | - | ✅ | 待发附件列表（含上传过程态） |
+| `icons` | `AttachmentsPanelIcons` | - | - | 覆盖内置图标（上传占位 / 收起按钮），见 `AttachmentsPanelIcons` |
 
 ## 能力范围
 

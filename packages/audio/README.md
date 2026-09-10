@@ -628,18 +628,24 @@ app.mount('#app');
 
 ## 主题定制
 
-组件暴露以下 CSS 变量，可在业务侧覆盖：
+AudioPlayer 暴露以下 CSS 变量。默认值是一条回退链——先读组件级变量，
+没设置就读 `@aix/theme` 的语义 token，token 也缺失时才落到写死的兜底色。
+也就是说**不覆盖任何东西时，它已经跟着主题走**，切换明暗主题会自动联动。
+
+| 变量 | 回退到 | 兜底色 | 用途 |
+|------|--------|--------|------|
+| `--aix-audio-player-btn-bg` | `--aix-colorPrimary` | `#1677ff` | 播放按钮背景 |
+| `--aix-audio-player-track-bg` | `--aix-colorFillTertiary` | `#f0f0f0` | 进度条轨道背景 |
+| `--aix-audio-player-progress-bg` | `--aix-colorPrimary` | `#1677ff` | 进度条已播放部分 |
+| `--aix-audio-player-time-color` | `--aix-colorTextTertiary` | `#00000073` | 时间文字颜色 |
+
+只有需要让播放器脱离主题、单独换色时才覆盖，优先写主题 token 而不是色值：
 
 ```css
 :root {
-  /* AudioPlayer 按钮背景色，默认读取 --aix-colorPrimary */
-  --aix-audio-player-btn-bg: #1677ff;
-  /* 进度条轨道背景色 */
-  --aix-audio-player-track-bg: #f0f0f0;
-  /* 进度条激活色 */
-  --aix-audio-player-progress-bg: #1677ff;
-  /* 时间文字颜色 */
-  --aix-audio-player-time-color: rgba(0, 0, 0, 0.45);
+  /* 推荐：指向另一个语义 token，仍然跟随明暗主题 */
+  --aix-audio-player-btn-bg: var(--aix-colorSuccess);
+  --aix-audio-player-progress-bg: var(--aix-colorSuccess);
 }
 ```
 
