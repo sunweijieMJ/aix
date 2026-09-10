@@ -137,6 +137,33 @@ describe('Package MCP Tools', () => {
       expect(result.apiSections).toHaveLength(0);
     });
 
+    it('默认只返回示例目录，不返回代码', async () => {
+      const tool = tools.find((t) => t.name === 'get-package-info')!;
+      const result = (await tool.execute({ name: '@kit/tracker' })) as any;
+
+      expect(result.examples[0]).toEqual({
+        title: '基础用法',
+        language: 'ts',
+        chars: expect.any(Number),
+      });
+      expect(result.examples[0].code).toBeUndefined();
+    });
+
+    it('传 example 时返回该示例代码', async () => {
+      const tool = tools.find((t) => t.name === 'get-package-info')!;
+      const result = (await tool.execute({ name: '@kit/tracker', example: '基础' })) as any;
+
+      expect(result.examples).toHaveLength(1);
+      expect(result.examples[0].code).toContain('createTrackerPlugin');
+    });
+
+    it('example 不匹配时返回空示例列表', async () => {
+      const tool = tools.find((t) => t.name === 'get-package-info')!;
+      const result = (await tool.execute({ name: '@kit/tracker', example: '不存在' })) as any;
+
+      expect(result.examples).toHaveLength(0);
+    });
+
     it('应该通过显示名获取', async () => {
       const tool = tools.find((t) => t.name === 'get-package-info')!;
       const result = (await tool.execute({

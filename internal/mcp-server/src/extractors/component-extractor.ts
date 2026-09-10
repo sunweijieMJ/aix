@@ -11,9 +11,10 @@ import {
 import { log } from '../utils/logger';
 import { ConcurrencyController } from '../utils/performance';
 import { findRepoRoot, toRepoRelative } from '../utils/repo-root';
+import { toSubComponentName } from '../utils/sub-component';
 import { IconsExtractor } from './icons-extractor';
 import type { IconInfo } from './icons-extractor';
-import { ReadmeExtractor, toSubComponentName } from './readme-extractor';
+import { ReadmeExtractor } from './readme-extractor';
 
 /**
  * 图标包名称（基于组件库配置）
@@ -118,17 +119,19 @@ export class ComponentExtractor {
     const extractTasks = packagePaths.map((packagePath) =>
       this.concurrencyController.execute(async () => {
         try {
-          // 提取图标包
-          if (options?.includeIcons) {
-            const packageInfo = await readPackageJson(packagePath);
-            if (packageInfo?.name === ICONS_PACKAGE_NAME) {
+          // 图标包永远不当成普通组件：580 个图标走 icons-index.json / icons-svg.json。
+          // 这个判断必须与 includeIcons 无关，否则 extractAllComponents（getStats 在用）
+          // 会比落盘的索引多出一个 @aix/icons 组件
+          const packageInfo = await readPackageJson(packagePath);
+          if (packageInfo?.name === ICONS_PACKAGE_NAME) {
+            if (options?.includeIcons) {
               const extractedIcons = await this.iconsExtractor.extractIconsFromPackage(packagePath);
               icons.push(...extractedIcons);
               if (this.config.verbose) {
                 log.info(`🎨 提取了 ${extractedIcons.length} 个图标`);
               }
-              return;
             }
+            return;
           }
 
           const component = await this.extractComponentFromPackage(packagePath);
@@ -169,89 +172,6 @@ export class ComponentExtractor {
     const result = await this.extractPackages({ includeIcons: true });
     await this.dataManager.saveComponents(result.components, result.icons);
     return result;
-  }
-
-  /**
-   * 增量提取组件
-   *
-   * 仅提取自上次提取后有更新的组件，提高效率
-   */
-  async extractIncrementalComponents(lastExtractTime: Date): Promise<ComponentInfo[]> {
-    const packagePaths = await findPackages(this.config.packagesDir);
-    const components: ComponentInfo[] = [];
-
-    if (!packagePaths || packagePaths.length === 0) {
-      if (this.config.verbose) {
-        log.warn('⚠️ 未找到任何包');
-      }
-      return components;
-    }
-
-    if (this.config.verbose) {
-      log.info(`📦 开始增量提取，基准时间: ${lastExtractTime.toISOString()}`);
-    }
-
-    // 使用并发控制器处理包提取
-    const extractTasks = packagePaths.map((packagePath) =>
-      this.concurrencyController.execute(async () => {
-        try {
-          // 检查包是否有更新
-          const isUpdated = await this.isPackageUpdatedSince(packagePath, lastExtractTime);
-          if (isUpdated) {
-            if (this.config.verbose) {
-              log.info(`🔄 检测到更新: ${packagePath}`);
-            }
-            const component = await this.extractComponentFromPackage(packagePath);
-            if (component) {
-              components.push(component);
-            }
-          }
-        } catch (error) {
-          log.error(`Failed to extract component from ${packagePath}:`, error);
-        }
-      }),
-    );
-
-    await Promise.all(extractTasks);
-
-    if (this.config.verbose) {
-      log.info(`✅ 增量提取完成，更新了 ${components.length} 个组件`);
-    }
-
-    return components;
-  }
-
-  /**
-   * 检查包是否在指定时间后更新
-   */
-  private async isPackageUpdatedSince(packagePath: string, since: Date): Promise<boolean> {
-    try {
-      const { stat } = await import('node:fs/promises');
-      const { join } = await import('node:path');
-
-      // 检查关键文件是否有更新
-      const filesToCheck = [
-        join(packagePath, 'package.json'),
-        join(packagePath, 'src'),
-        join(packagePath, 'README.md'),
-        join(packagePath, 'CHANGELOG.md'),
-      ];
-
-      for (const file of filesToCheck) {
-        try {
-          const stats = await stat(file);
-          if (stats.mtime > since) {
-            return true;
-          }
-        } catch {
-          // 文件可能不存在，继续检查下一个
-        }
-      }
-
-      return false;
-    } catch {
-      return true; // 如果无法获取文件信息，默认认为需要更新
-    }
   }
 
   /**

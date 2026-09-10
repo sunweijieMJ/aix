@@ -68,7 +68,6 @@ class McpCli {
       .option('-o, --output <dir>', '输出目录路径')
       .option('-v, --verbose', '显示详细输出', false)
       .option('--ignore <packages>', '忽略的包列表（逗号分隔）', '')
-      .option('--incremental', '增量提取（仅提取变更的组件）', false)
       .action(async (options) => {
         await this.extractCommand(options);
       });
@@ -164,11 +163,9 @@ class McpCli {
     output?: string;
     verbose: boolean;
     ignore: string;
-    incremental: boolean;
   }): Promise<void> {
     try {
-      const isIncremental = options.incremental;
-      log.info(chalk.blue(isIncremental ? '📦 开始增量提取组件数据...' : '📦 开始提取组件数据...'));
+      log.info(chalk.blue('📦 开始提取组件数据...'));
 
       // 使用默认输出目录或提供的目录
       const outputDir = options.output || resolveDataDir();
@@ -205,76 +202,24 @@ class McpCli {
       const { ComponentExtractor } = await import('./extractors/index');
       const extractor = new ComponentExtractor(config);
 
-      let components;
-      let icons: any[] = [];
+      const { components, icons } = await extractor.extractAndSaveAllComponents();
 
-      if (isIncremental) {
-        // 增量提取：读取上次提取时间
-        const metadataPath = join(config.outputDir, 'metadata.json');
-        let lastExtractTime = new Date(0); // 默认为最早时间
+      // 提取工具包
+      const { ToolPackageExtractor } = await import('./extractors/index');
+      const { DataManager } = await import('./utils/data-manager');
+      const toolExtractor = new ToolPackageExtractor();
+      const dataManager = new DataManager(config.outputDir);
 
-        try {
-          const metadataContent = await fs.readFile(metadataPath, 'utf8');
-          const metadata = JSON.parse(metadataContent);
-          if (metadata.extractedAt) {
-            lastExtractTime = new Date(metadata.extractedAt);
-            log.info(chalk.gray(`上次提取时间: ${lastExtractTime.toISOString()}`));
-          }
-        } catch {
-          log.warn(chalk.yellow('⚠️ 未找到上次提取记录，将执行全量提取'));
-        }
+      const kitPackages = await toolExtractor.extractFromDirectory(options.kit, 'kit');
+      const internalPackages = await toolExtractor.extractFromDirectory(
+        options.internal,
+        'internal',
+      );
+      const allToolPackages = [...kitPackages, ...internalPackages];
 
-        // 执行增量提取
-        components = await extractor.extractIncrementalComponents(lastExtractTime);
-
-        // 增量模式下，需要合并现有数据
-        if (components.length > 0) {
-          try {
-            const indexPath = join(config.outputDir, 'components-index.json');
-            const indexContent = await fs.readFile(indexPath, 'utf8');
-            const existingIndex = JSON.parse(indexContent);
-
-            // 合并组件：更新已存在的，添加新的
-            const componentMap = new Map(
-              existingIndex.components.map((c: any) => [c.packageName, c]),
-            );
-            for (const comp of components) {
-              componentMap.set(comp.packageName, comp);
-            }
-
-            // 更新索引（简化版，仅更新组件列表）
-            existingIndex.components = Array.from(componentMap.values());
-            existingIndex.lastUpdated = new Date().toISOString();
-
-            await fs.writeFile(indexPath, JSON.stringify(existingIndex, null, 2), 'utf8');
-            log.info(chalk.green(`📝 已更新组件索引`));
-          } catch (error) {
-            log.warn(chalk.yellow('⚠️ 无法合并现有数据，将覆盖'), error);
-          }
-        }
-      } else {
-        // 全量提取
-        const result = await extractor.extractAndSaveAllComponents();
-        components = result.components;
-        icons = result.icons;
-
-        // 提取工具包
-        const { ToolPackageExtractor } = await import('./extractors/index');
-        const { DataManager } = await import('./utils/data-manager');
-        const toolExtractor = new ToolPackageExtractor();
-        const dataManager = new DataManager(config.outputDir);
-
-        const kitPackages = await toolExtractor.extractFromDirectory(options.kit, 'kit');
-        const internalPackages = await toolExtractor.extractFromDirectory(
-          options.internal,
-          'internal',
-        );
-        const allToolPackages = [...kitPackages, ...internalPackages];
-
-        if (allToolPackages.length > 0) {
-          await dataManager.saveToolPackages(allToolPackages);
-          log.info(chalk.green(`✅ 成功提取 ${allToolPackages.length} 个工具包`));
-        }
+      if (allToolPackages.length > 0) {
+        await dataManager.saveToolPackages(allToolPackages);
+        log.info(chalk.green(`✅ 成功提取 ${allToolPackages.length} 个工具包`));
       }
 
       // 保存元数据
@@ -284,18 +229,12 @@ class McpCli {
         totalIcons: icons.length,
         totalItems: components.length + icons.length,
         version: '1.0.0',
-        incremental: isIncremental,
       };
 
       const metadataPath = join(config.outputDir, 'metadata.json');
       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
       log.info(chalk.green(`📊 元数据已保存到: ${metadataPath}`));
-
-      if (isIncremental) {
-        log.info(chalk.green(`✅ 增量提取完成，更新了 ${components.length} 个组件`));
-      } else {
-        log.info(chalk.green(`✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`));
-      }
+      log.info(chalk.green(`✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`));
 
       process.exit(0);
     } catch (error) {

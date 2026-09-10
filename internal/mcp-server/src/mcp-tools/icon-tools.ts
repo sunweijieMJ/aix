@@ -8,7 +8,11 @@ import { z } from 'zod';
 import { ICONS_SVG_FILE, MCP_TOOLS } from '../constants';
 import type { IconSearchResult, IconsIndex, ToolArguments } from '../types/index';
 import { log } from '../utils';
-import { calculateIconSearchScore, getIconMatchedFields } from '../utils/search-scoring';
+import {
+  calculateIconSearchScore,
+  getIconMatchedFields,
+  matchesAllIconTerms,
+} from '../utils/search-scoring';
 import { BaseTool, clampLimit, requireString } from './base';
 
 /**
@@ -52,27 +56,35 @@ export class SearchIconsTool extends BaseTool {
       return { results: [], total: 0 };
     }
 
-    const matched: IconSearchResult[] = [];
+    const matched: Array<{ result: IconSearchResult; allTerms: boolean }> = [];
 
     for (const icon of this.iconsIndex.icons) {
       const score = calculateIconSearchScore(icon, query);
       if (score > 0) {
         matched.push({
-          name: icon.name,
-          packageName: icon.packageName,
-          category: icon.iconCategory,
-          description: icon.description,
-          // 直接给出可用的导入语句，省得调用方去猜子路径
-          importStatement: `import { ${icon.name} } from '${icon.packageName}';`,
-          score,
-          matchedFields: getIconMatchedFields(icon, query),
+          result: {
+            name: icon.name,
+            packageName: icon.packageName,
+            category: icon.iconCategory,
+            description: icon.description,
+            // 直接给出可用的导入语句，省得调用方去猜子路径
+            importStatement: `import { ${icon.name} } from '${icon.packageName}';`,
+            score,
+            matchedFields: getIconMatchedFields(icon, query),
+          },
+          allTerms: matchesAllIconTerms(icon, query),
         });
       }
     }
 
-    matched.sort((a, b) => b.score - a.score);
+    // 全词命中优先；一个都没有才退回 OR。多词查询直接按 OR 收口的话，
+    // "arrow up" 会返回 35 个只沾一个词的图标，total 全是噪声
+    const strict = matched.filter((m) => m.allTerms);
+    const final = strict.length > 0 ? strict : matched;
 
-    return { results: matched.slice(0, limit), total: matched.length };
+    final.sort((a, b) => b.result.score - a.result.score);
+
+    return { results: final.slice(0, limit).map((m) => m.result), total: final.length };
   }
 
   /**

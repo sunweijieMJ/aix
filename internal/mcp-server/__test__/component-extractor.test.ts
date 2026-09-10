@@ -85,6 +85,26 @@ describe('ComponentExtractor', () => {
       expect(components[1]?.name).toBe('Input');
     });
 
+    it('不应该把图标包当成普通组件（与落盘索引口径一致）', async () => {
+      // extractAndSaveAllComponents 一直会跳过 @aix/icons，
+      // 这里以前不跳，导致 getStats 的组件数比实际索引多一个
+      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/icons']);
+      mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) =>
+        pkgPath.includes('icons')
+          ? { name: '@aix/icons', version: '1.0.0' }
+          : { name: '@aix/button', version: '1.0.0', description: '按钮组件' },
+      );
+      mockUtils.findComponentFiles.mockResolvedValue({
+        sourceFiles: [],
+        storyFiles: [],
+        readmeFiles: [],
+      });
+
+      const components = await extractor.extractAllComponents();
+
+      expect(components.map((c) => c.packageName)).toEqual(['@aix/button']);
+    });
+
     it('应该在没有包时返回空数组', async () => {
       mockUtils.findPackages.mockResolvedValue([]);
 
@@ -209,47 +229,6 @@ describe('ComponentExtractor', () => {
 
         expect(component?.category).toBe(expectedCategory);
       }
-    });
-  });
-
-  describe('extractIncrementalComponents', () => {
-    it('应该只提取自上次提取后有更新的组件', async () => {
-      const lastExtractTime = new Date(Date.now() - 3600000); // 1小时前
-
-      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/input']);
-
-      mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) => {
-        if (pkgPath.includes('button')) {
-          return {
-            name: '@aix/button',
-            version: '1.0.0',
-            description: '按钮组件',
-          };
-        }
-        return null;
-      });
-
-      mockUtils.findComponentFiles.mockResolvedValue({
-        sourceFiles: [],
-        storyFiles: [],
-        readmeFiles: [],
-      });
-
-      // Mock stat 来模拟文件修改时间
-      vi.mocked(fs.stat).mockImplementation(async (filePath: any) => {
-        if (filePath.toString().includes('button')) {
-          // button 包已更新
-          return { mtime: new Date() } as any;
-        }
-        // input 包未更新
-        return { mtime: new Date(Date.now() - 7200000) } as any;
-      });
-
-      const components = await extractor.extractIncrementalComponents(lastExtractTime);
-
-      // 只有 button 应该被提取
-      expect(components.length).toBe(1);
-      expect(components[0]?.packageName).toBe('@aix/button');
     });
   });
 

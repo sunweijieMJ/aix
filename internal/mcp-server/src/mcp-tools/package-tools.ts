@@ -75,13 +75,17 @@ export class ListPackagesTool extends BaseTool {
 export class GetPackageInfoTool extends BaseTool {
   name = MCP_TOOLS.GET_PACKAGE_INFO;
   description =
-    '获取指定工具包的详细信息（特性、代码示例、API 文档目录）。不传 section 时 API 文档只返回标题目录，传 section 才返回该章节正文';
+    '获取指定工具包的详细信息（特性、API 文档目录、代码示例目录）。API 文档和代码示例默认都只返回标题目录，传 section / example 才展开对应正文';
   inputSchema = {
     name: z.string().describe('工具包名称或包名（如 "tracker" 或 "@kit/tracker"）'),
     section: z
       .string()
       .optional()
       .describe('API 文档章节标题（支持部分匹配）。省略则只返回章节目录，不返回正文'),
+    example: z
+      .string()
+      .optional()
+      .describe('代码示例标题（支持部分匹配）。省略则只返回示例目录，不返回代码'),
   };
 
   constructor(private packageIndex: ToolPackageIndex) {
@@ -91,6 +95,7 @@ export class GetPackageInfoTool extends BaseTool {
   async execute(args: ToolArguments) {
     const name = requireString(args, 'name');
     const section = typeof args.section === 'string' ? args.section.toLowerCase() : null;
+    const example = typeof args.example === 'string' ? args.example.toLowerCase() : null;
     const pkg = this.findPackage(name);
 
     if (!pkg) {
@@ -102,7 +107,12 @@ export class GetPackageInfoTool extends BaseTool {
       ? pkg.apiSections.filter((s) => s.title.toLowerCase().includes(section))
       : pkg.apiSections.map((s) => ({ title: s.title, chars: s.content.length }));
 
-    return { ...pkg, apiSections };
+    // 代码示例同理：i18n-tools 的 16 条示例占了默认响应的一大半
+    const examples = example
+      ? pkg.examples.filter((e) => e.title.toLowerCase().includes(example))
+      : pkg.examples.map((e) => ({ title: e.title, language: e.language, chars: e.code.length }));
+
+    return { ...pkg, apiSections, examples };
   }
 
   private findPackage(name: string): ToolPackageInfo | null {

@@ -18,7 +18,7 @@ import type {
   ToolArguments,
 } from '../types/index';
 import { toComponentSummary } from '../types/index';
-import { findComponentByName, log } from '../utils';
+import { filterBySubComponent, findComponentByName, log, resolveComponent } from '../utils';
 import { createSearchIndex } from '../utils/search-index';
 import { BaseTool, clampLimit, requireString } from './base';
 
@@ -61,11 +61,25 @@ export class ListComponentsTool extends BaseTool {
 }
 
 /**
+ * 组件详情
+ *
+ * 示例正文不在里面：ai-chat 的 60 条示例就占 30KB，占了整个响应的 85%，
+ * 而这些内容已经有 get-component-examples 按需取。同 get-package-info
+ * 默认只给 API 章节目录是一个道理。
+ */
+type ComponentDetail = Omit<ComponentInfo, 'examples'> & {
+  examplesCount: number;
+  /** 按子组件名查询时给出，此时 props / emits / slots 已收窄到该子组件 */
+  subComponent?: string;
+};
+
+/**
  * 获取单个组件信息
  */
 export class GetComponentInfoTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_INFO;
-  description = '获取指定组件的详细信息';
+  description =
+    '获取指定组件的详细信息（含 Props / Emits / Slots）。传子组件名时 API 只返回该子组件的；示例只返回数量，正文请用 get-component-examples 获取';
   inputSchema = {
     name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
@@ -74,9 +88,22 @@ export class GetComponentInfoTool extends BaseTool {
     super();
   }
 
-  async execute(args: ToolArguments): Promise<ComponentInfo | null> {
+  async execute(args: ToolArguments): Promise<ComponentDetail | null> {
     const name = args.name as string;
-    return findComponentByName(this.componentIndex.components, name);
+    const resolved = resolveComponent(this.componentIndex.components, name);
+    if (!resolved) return null;
+
+    const { component, subComponent } = resolved;
+    const { examples, ...rest } = component;
+
+    return {
+      ...rest,
+      props: filterBySubComponent(component.props, subComponent),
+      emits: filterBySubComponent(component.emits, subComponent),
+      slots: filterBySubComponent(component.slots, subComponent),
+      examplesCount: examples?.length ?? 0,
+      ...(subComponent ? { subComponent } : {}),
+    };
   }
 }
 
@@ -85,7 +112,8 @@ export class GetComponentInfoTool extends BaseTool {
  */
 export class GetComponentPropsTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_PROPS;
-  description = '获取指定组件的 Props / Emits / Slots 定义';
+  description =
+    '获取指定组件的 Props / Emits / Slots 定义。传子组件名（如 Tooltip）只返回该子组件的，传包名返回整包的';
   inputSchema = {
     name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
@@ -98,15 +126,22 @@ export class GetComponentPropsTool extends BaseTool {
     props: PropDefinition[];
     emits: EmitDefinition[];
     slots: SlotDefinition[];
+    subComponent?: string;
   } | null> {
     const name = args.name as string;
-    const component = findComponentByName(this.componentIndex.components, name);
-    if (!component) return null;
+    const resolved = resolveComponent(this.componentIndex.components, name);
+    if (!resolved) return null;
+
+    // 必须按 group 收窄：@aix/popper 一个包里有 6 个子组件，
+    // placement 有 4 份、teleportTo 有 5 份，默认值互不相同。
+    // 整包返回等于让调用方在一堆自相矛盾的同名条目里猜
+    const { component, subComponent } = resolved;
 
     return {
-      props: component.props ?? [],
-      emits: component.emits ?? [],
-      slots: component.slots ?? [],
+      props: filterBySubComponent(component.props, subComponent),
+      emits: filterBySubComponent(component.emits, subComponent),
+      slots: filterBySubComponent(component.slots, subComponent),
+      ...(subComponent ? { subComponent } : {}),
     };
   }
 }

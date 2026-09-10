@@ -7,8 +7,11 @@ import type {
   ComponentIndex,
   ComponentInfo,
   ComponentSummary,
+  EmitDefinition,
   IconSearchResult,
+  PropDefinition,
   SearchResultSummary,
+  SlotDefinition,
 } from '../src/types/index';
 
 // Mock fs/promises for changelog reading
@@ -193,6 +196,19 @@ describe('MCP Tools', () => {
       expect((result as ComponentInfo)?.packageName).toBe('@aix/test-component');
     });
 
+    it('不应该返回示例正文，只给数量', async () => {
+      // ai-chat 的 60 条示例占 30KB，是整个响应的 85%；
+      // 正文已经有 get-component-examples 按需取
+      const tool = tools.find((t) => t.name === 'get-component-info');
+      const result = (await tool!.execute({ name: 'TestComponent' })) as Record<string, unknown>;
+
+      expect(result).not.toHaveProperty('examples');
+      expect(result.examplesCount).toBe(2);
+      // 其余详情字段照常返回
+      expect(result.props).toHaveLength(2);
+      expect(result.packageName).toBe('@aix/test-component');
+    });
+
     it('应该对不存在的组件返回 null', async () => {
       const tool = tools.find((t) => t.name === 'get-component-info');
       const result = await tool!.execute({ name: 'NonExistent' });
@@ -229,6 +245,110 @@ describe('MCP Tools', () => {
       const tool = tools.find((t) => t.name === 'get-component-props');
       const result = await tool!.execute({ name: 'AnotherComponent' });
       expect(result).toEqual({ props: [], emits: [], slots: [] });
+    });
+  });
+
+  describe('子组件收窄', () => {
+    // popper 的真实形态：一个包里 6 个子组件，placement / arrowSize 这些名字
+    // 在多个子组件的表里都出现，默认值互不相同
+    const multi: ComponentIndex = {
+      components: [
+        {
+          ...mockComponent,
+          name: 'Popper',
+          packageName: '@aix/popper',
+          subComponents: ['Popper', 'Tooltip'],
+          props: [
+            {
+              name: 'placement',
+              type: 'Placement',
+              required: false,
+              defaultValue: "'bottom'",
+              group: 'Popper Props',
+            },
+            {
+              name: 'arrowSize',
+              type: 'number',
+              required: false,
+              defaultValue: '8',
+              group: 'Popper Props',
+            },
+            {
+              name: 'placement',
+              type: 'Placement',
+              required: false,
+              defaultValue: "'top'",
+              group: 'Tooltip Props',
+            },
+            { name: 'content', type: 'string', required: false, group: 'Tooltip Props' },
+          ],
+          emits: [
+            { name: 'show', group: 'Popper Events' },
+            { name: 'show', group: 'Tooltip Events' },
+          ],
+          slots: [
+            { name: 'default', group: 'Popper Slots' },
+            { name: 'default', group: 'Tooltip Slots' },
+          ],
+        },
+      ],
+      categories: ['浮层'],
+      tags: [],
+      lastUpdated: new Date().toISOString(),
+      version: '1.0.0',
+    };
+    const multiTools = () => createTools(multi, '/test/data');
+
+    it('问子组件名时 API 应该收窄到该子组件，不能返回同名却矛盾的条目', async () => {
+      const result = (await multiTools()
+        .find((t) => t.name === 'get-component-props')!
+        .execute({ name: 'Tooltip' })) as any;
+
+      expect(result.subComponent).toBe('Tooltip');
+      expect(result.props.map((p: PropDefinition) => p.name)).toEqual(['placement', 'content']);
+      // 关键：拿到的是 Tooltip 自己的默认值，而不是 Popper 的 'bottom'
+      expect(result.props[0].defaultValue).toBe("'top'");
+      expect(result.emits.map((e: EmitDefinition) => e.group)).toEqual(['Tooltip Events']);
+      expect(result.slots.map((s: SlotDefinition) => s.group)).toEqual(['Tooltip Slots']);
+    });
+
+    it('显示名同时也是子组件名时同样收窄', async () => {
+      const result = (await multiTools()
+        .find((t) => t.name === 'get-component-props')!
+        .execute({ name: 'Popper' })) as any;
+
+      expect(result.subComponent).toBe('Popper');
+      expect(result.props.map((p: PropDefinition) => p.defaultValue)).toEqual(["'bottom'", '8']);
+    });
+
+    it('按包名查询返回整包，不收窄', async () => {
+      const result = (await multiTools()
+        .find((t) => t.name === 'get-component-props')!
+        .execute({ name: '@aix/popper' })) as any;
+
+      expect(result.subComponent).toBeUndefined();
+      expect(result.props).toHaveLength(4);
+    });
+
+    it('get-component-info 同样收窄', async () => {
+      const info = (await multiTools()
+        .find((t) => t.name === 'get-component-info')!
+        .execute({ name: 'Tooltip' })) as any;
+
+      expect(info.subComponent).toBe('Tooltip');
+      expect(info.props).toHaveLength(2);
+      // 包级字段照常是整包的
+      expect(info.packageName).toBe('@aix/popper');
+      expect(info.subComponents).toEqual(['Popper', 'Tooltip']);
+    });
+
+    it('没有子组件的包不受影响', async () => {
+      const result = (await tools
+        .find((t) => t.name === 'get-component-props')!
+        .execute({ name: 'TestComponent' })) as any;
+
+      expect(result.subComponent).toBeUndefined();
+      expect(result.props).toHaveLength(2);
     });
   });
 
@@ -499,6 +619,48 @@ describe('MCP Tools', () => {
       expect(result.results[0]?.name).toBe('home');
       // 图标不再伪装成组件，改为直接给出可用的导入语句
       expect(result.results[0]?.importStatement).toBe("import { home } from '@aix/icons';");
+    });
+
+    it('多词查询应该全词命中优先，没有全词命中才退回 OR', async () => {
+      const tool = tools.find((t) => t.name === 'search-icons');
+
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          icons: [
+            {
+              name: 'ArrowUp',
+              packageName: '@aix/icons',
+              iconCategory: 'General',
+              description: '向上箭头',
+              tags: [],
+              keywords: ['arrow', 'up'],
+            },
+            {
+              name: 'ArrowLeft',
+              packageName: '@aix/icons',
+              iconCategory: 'General',
+              description: '向左箭头',
+              tags: [],
+              keywords: ['arrow', 'left'],
+            },
+          ],
+        }),
+      );
+
+      // 两个词都命中的只有 ArrowUp；ArrowLeft 只沾 "arrow"，不该混进来
+      const strict = (await tool!.execute({ query: 'arrow up' })) as {
+        results: IconSearchResult[];
+        total: number;
+      };
+      expect(strict.total).toBe(1);
+      expect(strict.results[0]?.name).toBe('ArrowUp');
+
+      // 没有任何图标全词命中时退回 OR，保住召回
+      const loose = (await tool!.execute({ query: 'arrow 不存在的词' })) as {
+        results: IconSearchResult[];
+        total: number;
+      };
+      expect(loose.total).toBe(2);
     });
 
     it('应该处理空查询', async () => {

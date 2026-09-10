@@ -14,7 +14,7 @@ import { createResourceManager } from '../mcp-resources/index';
 import { createTools } from '../mcp-tools/index';
 import { getAllPrompts } from '../prompts/index';
 import type { ComponentIndex, ToolArguments, ToolPackageIndex } from '../types/index';
-import { log } from '../utils/logger';
+import { LogLevel, cliLogger, log } from '../utils/logger';
 import { createMonitoringManager } from '../utils/monitoring';
 import { findRepoRoot } from '../utils/repo-root';
 
@@ -64,6 +64,10 @@ export class McpServer {
     this.config = this.configManager.getAll();
     this.testMode = testMode;
 
+    // verbose（含 MCP_VERBOSE 环境变量）此前只被读进配置就没有下文了。
+    // 接到日志级别上：默认 INFO，开了才出 debug——否则这个开关是个空承诺
+    cliLogger.setLevel(this.config.verbose ? LogLevel.DEBUG : LogLevel.INFO);
+
     if (testMode) {
       log.info(`数据目录: ${this.config.dataDir}`);
     }
@@ -101,22 +105,30 @@ export class McpServer {
     for (const { name, description, inputSchema } of this.tools) {
       this.server.registerTool(name, { description, inputSchema }, async (args: ToolArguments) => {
         const startTime = Date.now();
+        // 请求计数必须落在这里：只记 recordToolCall 的话，getStats 的成功率和
+        // health 的错误率分母恒为 0，永远显示 0.00%——是块假的绿灯
+        this.monitoringManager.recordRequestStart();
         const tool = this.tools.find((t) => t.name === name);
 
         if (!tool) {
+          const message = `工具不可用: ${name}`;
+          this.monitoringManager.recordRequestEnd(false, startTime);
+          this.monitoringManager.recordError(name, message);
           return {
             isError: true,
-            content: [{ type: 'text' as const, text: `工具不可用: ${name}` }],
+            content: [{ type: 'text' as const, text: message }],
           };
         }
 
         try {
           const result = await tool.execute(args ?? {});
           this.monitoringManager.recordToolCall(name, startTime);
+          this.monitoringManager.recordRequestEnd(true, startTime);
           return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           this.monitoringManager.recordToolCall(name, startTime);
+          this.monitoringManager.recordRequestEnd(false, startTime);
           this.monitoringManager.recordError(name, message);
           // 用 isError 而不是抛异常：调用方能看到具体原因并自行纠正
           return { isError: true, content: [{ type: 'text' as const, text: message }] };

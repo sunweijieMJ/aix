@@ -57,8 +57,14 @@ node dist/cli.js serve
 
 ### 仓库内使用（推荐）
 
-仓库根目录的 `.mcp.json` 已配置好，Claude Code / Cursor 打开仓库即可用。
-手动配置时指向构建产物：
+仓库根目录的 `.mcp.json` 已配置好（指向本包的构建产物），
+在仓库根目录打开 Claude Code / Cursor 即可用——前提是先跑过一次 `pnpm build`。
+
+只有这样才是真正的"仓库内运行"：走 npx 装的已发布版本，
+数据目录在 npx 缓存里，向上找不到本仓库，源码/Story 资源不会登记、
+文档也读不到工作区里的最新改动。
+
+手动配置时同样指向构建产物：
 
 ```json
 {
@@ -115,7 +121,7 @@ node dist/cli.js serve
 | 工具 | 说明 |
 |------|------|
 | `list-components` | 列出组件摘要，可按 `category` / `tag` 过滤 |
-| `get-component-info` | 组件完整信息（含 Props / Emits / Slots / 示例） |
+| `get-component-info` | 组件详情（含 Props / Emits / Slots）。示例只给数量，正文走 `get-component-examples` |
 | `get-component-props` | 只取 API 定义：Props、Emits、Slots |
 | `get-component-examples` | 使用示例，可按 `language` 过滤 |
 | `get-component-dependencies` | dependencies / peerDependencies |
@@ -128,7 +134,7 @@ node dist/cli.js serve
 | 工具 | 说明 |
 |------|------|
 | `list-packages` | 列出 `kit/` 和 `internal/` 下的工具包，可按 `category` / `scope` 过滤 |
-| `get-package-info` | 工具包详情。默认只返回 API 章节目录，传 `section` 展开正文 |
+| `get-package-info` | 工具包详情。API 文档和代码示例默认都只给目录，传 `section` / `example` 展开正文 |
 | `search-packages` | 按名称、描述、标签、特性搜索 |
 
 ### 图标（2 个）
@@ -142,9 +148,13 @@ node dist/cli.js serve
 
 列表和搜索类工具**只返回摘要**（带 `propsCount` / `emitsCount` / `slotsCount` 等计数），
 详情由 `get-component-info` / `get-component-props` 按需获取。
-`get-package-info` 的 API 文档正文同理，默认只给目录。
+
+详情类工具同样只给目录、不给正文：`get-component-info` 的示例只返回
+`examplesCount`（正文走 `get-component-examples`），`get-package-info`
+的 API 章节和代码示例也只返回标题 + 字符数，传 `section` / `example` 才展开。
 
 这不是可有可无的优化：不裁剪时 `list-components` 单次返回 120KB+ JSON，
+`get-component-info @aix/ai-chat` 单次 35KB（其中 30KB 是 60 条示例），
 一次调用就会占掉大量上下文。
 
 ## MCP 资源
@@ -235,7 +245,7 @@ JSON Schema，业务错误以 `isError` 返回而不是抛异常。资源是按�
 | `metadata.json` | 提取时间、数量统计 | `health` 判断数据时效 |
 
 体积大的内容一律拆出去按需加载，理由都一样：主索引会被完整读进内存，
-且 `get-component-info` 直接返回整个对象——文档正文或 SVG 留在里面，
+且 `get-component-info` 会返回整个结构化对象——文档正文或 SVG 留在里面，
 等于每次查询都多吐几十 KB。
 
 ## CLI 命令
@@ -243,7 +253,7 @@ JSON Schema，业务错误以 `isError` 返回而不是抛异常。资源是按�
 | 命令 | 说明 | 常用选项 |
 |------|------|---------|
 | `serve` | 启动 MCP Server（stdio） | `-d <dir>` 数据目录 |
-| `extract` | 提取组件库数据 | `-p <dir>` 组件包目录、`-k <dir>` kit 目录、`-i <dir>` internal 目录、`-v` 详细输出、`--incremental` 增量 |
+| `extract` | 提取组件库数据（全量） | `-p <dir>` 组件包目录、`-k <dir>` kit 目录、`-i <dir>` internal 目录、`-v` 详细输出 |
 | `validate` | 校验索引数据必填字段 | `-d <dir>` |
 | `stats` | 输出组件、分类、Props、示例统计 | `-d <dir>` |
 | `health` | 检查索引文件可读性与时效 | `-d <dir>` |

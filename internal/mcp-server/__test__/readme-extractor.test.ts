@@ -1,6 +1,8 @@
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { ReadmeExtractor, toSubComponentName } from '../src/extractors/readme-extractor';
+import { ReadmeExtractor } from '../src/extractors/readme-extractor';
+import type { EmitDefinition, PropDefinition, SlotDefinition } from '../src/types/index';
+import { toSubComponentName } from '../src/utils/sub-component';
 
 describe('ReadmeExtractor', () => {
   const extractor = new ReadmeExtractor();
@@ -165,6 +167,114 @@ describe('ReadmeExtractor 表格解析', () => {
       expect.objectContaining({ name: 'click', params: 'MouseEvent', description: '点击时触发' }),
     ]);
     expect(slots).toEqual([expect.objectContaining({ name: 'default', description: '按钮内容' })]);
+  });
+
+  it('同名 API 不应该被别的子组件顶掉，且各自保留自己的默认值', () => {
+    // popper 包的真实形态：Popper / Tooltip 两个子组件各有一张表，
+    // 共享 placement / arrowSize 这些名字，但默认值不同。
+    // 只按名字去重会让 Tooltip 拿到 Popper 的 'bottom'，是错值而不是缺值。
+    const md = `## API
+
+### Popper Props
+
+| 属性名 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| placement | \`Placement\` | 'bottom' | 浮动元素位置 |
+| arrowSize | \`number\` | 8 | 箭头大小 |
+
+### Tooltip Props
+
+| 属性名 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| placement | \`Placement\` | 'top' | 弹出位置 |
+| arrowSize | \`number\` | 6 | 箭头大小 |
+| content | \`string\` | - | 提示内容 |
+`;
+    const { props } = parse(md);
+    expect(props).toHaveLength(5);
+
+    const byGroup = (group: string) =>
+      props.filter((p: PropDefinition) => p.group === group).map((p: PropDefinition) => p.name);
+    expect(byGroup('Popper Props')).toEqual(['placement', 'arrowSize']);
+    expect(byGroup('Tooltip Props')).toEqual(['placement', 'arrowSize', 'content']);
+
+    const tooltipPlacement = props.find(
+      (p: PropDefinition) => p.name === 'placement' && p.group === 'Tooltip Props',
+    );
+    expect(tooltipPlacement.defaultValue).toBe("'top'");
+    const popperPlacement = props.find(
+      (p: PropDefinition) => p.name === 'placement' && p.group === 'Popper Props',
+    );
+    expect(popperPlacement.defaultValue).toBe("'bottom'");
+  });
+
+  it('同名 Emits / Slots 同样按章节各留一份', () => {
+    const md = `## API
+
+### Popper Events
+
+| 事件名 | 参数 | 说明 |
+| --- | --- | --- |
+| update:open | \`boolean\` | 显示状态变更 |
+
+### Popper Slots
+
+| 插槽名 | 说明 |
+| --- | --- |
+| default | 浮动内容 |
+
+### Tooltip Events
+
+| 事件名 | 参数 | 说明 |
+| --- | --- | --- |
+| update:open | \`boolean\` | 提示显示状态变更 |
+
+### Tooltip Slots
+
+| 插槽名 | 说明 |
+| --- | --- |
+| default | 触发元素 |
+`;
+    const { emits, slots } = parse(md);
+    expect(emits).toHaveLength(2);
+    expect(emits.map((e: EmitDefinition) => e.group)).toEqual(['Popper Events', 'Tooltip Events']);
+    expect(emits[1].description).toBe('提示显示状态变更');
+
+    expect(slots).toHaveLength(2);
+    expect(slots.map((s: SlotDefinition) => s.group)).toEqual(['Popper Slots', 'Tooltip Slots']);
+    expect(slots[1].description).toBe('触发元素');
+  });
+
+  it('同一章节内重复出现的同名条目仍然只留第一条', () => {
+    const md = `## API
+
+| 属性名 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| size | \`string\` | medium | 尺寸 |
+| size | \`string\` | large | 重复行 |
+`;
+    const { props } = parse(md);
+    expect(props).toHaveLength(1);
+    expect(props[0].defaultValue).toBe('medium');
+  });
+
+  it('type / enum 不应该带 markdown 转义和反引号', () => {
+    // `\|` 是表格里管道符的必要转义，反引号是排版；留在数据里会变成
+    // `number \| string` 这种照抄即错的类型标注
+    const md = `## API
+
+| 属性名 | 类型 | 可选值 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| width | \`number \\| string\` | - | - | 宽度 |
+| locale |  | \`'zh-CN'\` \\| \`'en-US'\` | \`'zh-CN'\` | 语言 |
+`;
+    const { props } = parse(md);
+
+    expect(props[0].type).toBe('number | string');
+    // 没有类型列时用可选值兜底，同样不能带转义
+    expect(props[1].type).toBe("'zh-CN' | 'en-US'");
+    expect(props[1].enum).toEqual(["'zh-CN'", "'en-US'"]);
+    expect(props[1].defaultValue).toBe("'zh-CN'");
   });
 
   it('说明性表格不应该被当成 props', () => {

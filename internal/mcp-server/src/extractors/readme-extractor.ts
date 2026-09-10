@@ -37,23 +37,6 @@ const COLUMN_ALIASES = {
 /** 表示"是"的单元格取值 */
 const TRUTHY_CELL = ['✅', '✓', '是', 'true', 'yes', 'y'];
 
-/** 章节标题里表示 API 种类的后缀，剥掉后剩下的才可能是组件名 */
-const API_KIND_SUFFIX = /\s*(Props|Emits|Events|Slots|属性|事件|插槽)\s*$/;
-
-/**
- * 从章节标题识别子组件名
- *
- * 判据是「剥掉 API 种类后缀后是严格的 PascalCase 标识符」。
- * 这条判据能把 `Tooltip Props` → Tooltip、`WaveformCanvas` → WaveformCanvas 认出来，
- * 同时排除 `Props`（种类名，属于包本身）、`createLocale`（camelCase，是函数不是组件）、
- * `音频来源契约` / `命名插槽穿透块内部（…）`（说明性标题）。
- */
-export function toSubComponentName(section: string | undefined): string | null {
-  if (!section) return null;
-  const name = section.replace(API_KIND_SUFFIX, '').trim();
-  return /^[A-Z][A-Za-z0-9]*$/.test(name) ? name : null;
-}
-
 /**
  * README.md 文档提取器
  *
@@ -190,6 +173,12 @@ export class ReadmeExtractor {
     const emits = new Map<string, EmitDefinition>();
     const slots = new Map<string, SlotDefinition>();
 
+    // 去重键必须带章节：一个 README 里多个子组件各有一张表，只按名字去重会让
+    // 后面章节的同名条目被前面的顶掉——Tooltip 的 placement（默认 'top'）被
+    // Popper 的（默认 'bottom'）吞掉，拿到的不是"少一条"而是"错一条"。
+    // 同章节内仍然首条优先（同一张表里重复出现的行按第一条算）。
+    const keyOf = (section: string, name: string) => `${section}::${name}`;
+
     for (const table of this.extractTables(content)) {
       const columns = table.header.map((h) => this.normalizeHeader(h));
       const at = (aliases: readonly string[]) => columns.findIndex((c) => aliases.includes(c));
@@ -208,8 +197,9 @@ export class ReadmeExtractor {
         for (const row of table.rows) {
           const name = this.cleanCell(row[0]);
           if (!name) continue;
-          if (!emits.has(name)) {
-            emits.set(name, {
+          const key = keyOf(table.section, name);
+          if (!emits.has(key)) {
+            emits.set(key, {
               name,
               params: this.cleanCell(row[paramsIndex]) || undefined,
               description: this.cleanCell(row[descriptionIndex]) || undefined,
@@ -226,8 +216,9 @@ export class ReadmeExtractor {
         for (const row of table.rows) {
           const name = this.cleanCell(row[0]);
           if (!name) continue;
-          if (!slots.has(name)) {
-            slots.set(name, {
+          const key = keyOf(table.section, name);
+          if (!slots.has(key)) {
+            slots.set(key, {
               name,
               description: this.cleanCell(row[descriptionIndex]) || undefined,
               scope: this.cleanCell(row[scopeIndex]) || undefined,
@@ -251,7 +242,9 @@ export class ReadmeExtractor {
 
       for (const row of table.rows) {
         const name = this.cleanCell(row[0]);
-        if (!name || props.has(name)) continue;
+        if (!name) continue;
+        const key = keyOf(table.section, name);
+        if (props.has(key)) continue;
 
         const defaultValue = this.cleanCell(row[defaultIndex]);
         const enumValues = this.cleanCell(row[enumIndex]);
@@ -259,7 +252,7 @@ export class ReadmeExtractor {
         const type = this.cleanCell(row[typeIndex]) || enumValues;
         if (!type) continue;
 
-        props.set(name, {
+        props.set(key, {
           name,
           type,
           // 只认显式的必填列。用"没有默认值"反推必填是错的：
@@ -344,11 +337,18 @@ export class ReadmeExtractor {
   }
 
   /**
-   * 清洗单元格：去反引号、去首尾空白
+   * 清洗单元格：还原 markdown 转义、去反引号、去首尾空白
+   *
+   * `\|` 是表格里管道符的必要转义，反引号是排版标记，两者都不是数据的一部分。
+   * 留着的话 type 就成了 `number \| string`、`'zh-CN'` \| `'en-US'`，
+   * LLM 照抄就是一个错误的类型标注。
    */
   private cleanCell(cell: string | undefined): string {
     if (!cell) return '';
-    return cell.trim().replace(/^`|`$/g, '').trim();
+    return cell
+      .replace(/\\([|*_])/g, '$1')
+      .replace(/`/g, '')
+      .trim();
   }
 
   /**
@@ -360,12 +360,12 @@ export class ReadmeExtractor {
   }
 
   /**
-   * 拆分可选值列，如 `'small' \| 'large'`
+   * 拆分可选值列，如 `'small' | 'large'`（转义和反引号已由 cleanCell 处理）
    */
   private splitEnum(cell: string): string[] {
     return cell
-      .split(/\\?\||、|,|，/)
-      .map((v) => v.trim().replace(/^`|`$/g, '').trim())
+      .split(/\||、|,|，/)
+      .map((v) => v.trim())
       .filter(Boolean);
   }
 
