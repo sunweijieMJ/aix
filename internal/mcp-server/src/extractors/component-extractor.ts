@@ -13,7 +13,7 @@ import { ConcurrencyController } from '../utils/performance';
 import { findRepoRoot, toRepoRelative } from '../utils/repo-root';
 import { IconsExtractor } from './icons-extractor';
 import type { IconInfo } from './icons-extractor';
-import { ReadmeExtractor } from './readme-extractor';
+import { ReadmeExtractor, toSubComponentName } from './readme-extractor';
 
 /**
  * 图标包名称（基于组件库配置）
@@ -57,6 +57,29 @@ export class ComponentExtractor {
    */
   private relativize(absolutePath: string): string {
     return this.repoRoot ? toRepoRelative(absolutePath, this.repoRoot) : absolutePath;
+  }
+
+  /**
+   * 汇总一个包内出现过的子组件名
+   *
+   * 不把它们拆成独立的顶层组件：README 章节标题只有一部分是真组件名，
+   * 剩下的是 API 种类（`Props`）、函数名（`createLocale`）或说明性标题
+   * （`音频来源契约`），照单拆分会产出一堆不存在的"组件"。
+   */
+  private collectSubComponents(
+    ...groups: Array<Array<{ group?: string }> | undefined>
+  ): string[] | undefined {
+    const names = new Set<string>();
+
+    for (const list of groups) {
+      for (const item of list ?? []) {
+        const name = toSubComponentName(item.group);
+        if (name) names.add(name);
+      }
+    }
+
+    // 只有一个、且就是包本身的显示名时没有区分价值
+    return names.size > 1 ? [...names].sort() : undefined;
   }
 
   /**
@@ -323,6 +346,7 @@ export class ComponentExtractor {
       props,
       emits,
       slots,
+      subComponents: this.collectSubComponents(props, emits, slots),
       examples,
 
       readmeContent: readmeData?.content,

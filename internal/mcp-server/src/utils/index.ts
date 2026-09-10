@@ -188,13 +188,19 @@ export function findComponentByName(
 
   const normalizedName = name.toLowerCase();
 
+  const matched = components.find(
+    (c) =>
+      c.name.toLowerCase() === normalizedName ||
+      c.packageName.toLowerCase() === normalizedName ||
+      c.packageName.toLowerCase().endsWith(`/${normalizedName}`),
+  );
+  if (matched) return matched;
+
+  // 退而查子组件：@aix/popper 里的 Tooltip 不是顶层条目，
+  // 但按名字问它是很自然的用法，命中后返回所属包（各条 API 带 group 可区分）
   return (
-    components.find(
-      (c) =>
-        c.name.toLowerCase() === normalizedName ||
-        c.packageName.toLowerCase() === normalizedName ||
-        c.packageName.toLowerCase().endsWith(`/${normalizedName}`),
-    ) || null
+    components.find((c) => c.subComponents?.some((sub) => sub.toLowerCase() === normalizedName)) ||
+    null
   );
 }
 

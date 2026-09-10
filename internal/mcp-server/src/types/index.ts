@@ -61,6 +61,15 @@ export interface ComponentInfo extends ComponentBasicInfo, ComponentPaths, Compo
   emits?: EmitDefinition[];
   /** Slots 定义，可选原因同 emits */
   slots?: SlotDefinition[];
+  /**
+   * 同一个包内导出的子组件名
+   *
+   * 像 @aix/popper 一个包里就有 Popper / Tooltip / Popover / Dropdown 四个组件，
+   * 从 README 各章节的属性表标题识别得到。它们的 props/emits/slots 通过各自的
+   * `group` 字段区分，不单独拆成顶层组件——章节标题并不总是组件名
+   * （`createLocale`、`音频来源契约` 这类拆出去只会产生垃圾条目）。
+   */
+  subComponents?: string[];
   /** 组件示例 */
   examples: ComponentExample[];
   /** 变更日志 */
@@ -302,6 +311,8 @@ export interface SearchResult {
  * 因此列表类工具只返回摘要，详情由 get-component-info 按需获取。
  */
 export interface ComponentSummary extends ComponentBasicInfo {
+  /** 同包内的子组件名，仅在存在多个时给出 */
+  subComponents?: string[];
   /** Props 数量 */
   propsCount: number;
   /** Emits 数量 */
@@ -337,6 +348,7 @@ export function toComponentSummary(component: ComponentInfo): ComponentSummary {
     tags: component.tags,
     author: component.author,
     license: component.license,
+    subComponents: component.subComponents,
     propsCount: component.props?.length ?? 0,
     emitsCount: component.emits?.length ?? 0,
     slotsCount: component.slots?.length ?? 0,

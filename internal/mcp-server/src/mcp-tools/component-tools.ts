@@ -3,6 +3,7 @@
  */
 
 import { join } from 'node:path';
+import { z } from 'zod';
 import { COMPONENT_LIBRARY_CONFIG, MCP_TOOLS } from '../constants';
 import type {
   ComponentExample,
@@ -28,17 +29,8 @@ export class ListComponentsTool extends BaseTool {
   name = MCP_TOOLS.LIST_COMPONENTS;
   description = `列出所有可用的 ${COMPONENT_LIBRARY_CONFIG.displayName} 组件（仅摘要，Props 和示例请用 get-component-info / get-component-props / get-component-examples 获取）`;
   inputSchema = {
-    type: 'object',
-    properties: {
-      category: {
-        type: 'string',
-        description: '按分类过滤组件',
-      },
-      tag: {
-        type: 'string',
-        description: '按标签过滤组件',
-      },
-    },
+    category: z.string().optional().describe('按分类过滤组件'),
+    tag: z.string().optional().describe('按标签过滤组件'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
@@ -75,14 +67,7 @@ export class GetComponentInfoTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_INFO;
   description = '获取指定组件的详细信息';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
@@ -102,14 +87,7 @@ export class GetComponentPropsTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_PROPS;
   description = '获取指定组件的 Props / Emits / Slots 定义';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
@@ -140,19 +118,8 @@ export class GetComponentExamplesTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_EXAMPLES;
   description = '获取指定组件的使用示例';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-      language: {
-        type: 'string',
-        enum: ['tsx', 'jsx', 'ts', 'js', 'vue'],
-        description: '示例代码语言',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名'),
+    language: z.enum(['tsx', 'jsx', 'ts', 'js', 'vue']).optional().describe('示例代码语言'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
@@ -185,25 +152,8 @@ export class SearchComponentsTool extends BaseTool {
   description =
     '按关键词搜索组件（支持模糊搜索和智能排序，返回摘要，详情请用 get-component-info 获取）';
   inputSchema = {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: '搜索关键词',
-      },
-      limit: {
-        type: 'number',
-        description: '返回结果数量限制',
-        default: 10,
-        maximum: 100,
-      },
-      fuzzy: {
-        type: 'boolean',
-        description: '是否启用模糊搜索',
-        default: true,
-      },
-    },
-    required: ['query'],
+    query: z.string().describe('搜索关键词'),
+    limit: z.number().optional().describe('返回结果数量限制（1-100，默认 10）'),
   };
 
   private searchIndex = createSearchIndex();
@@ -306,14 +256,7 @@ export class GetComponentDependenciesTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_DEPENDENCIES;
   description = '获取指定组件的依赖关系';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
@@ -341,10 +284,7 @@ export class GetComponentDependenciesTool extends BaseTool {
 export class GetCategoriesAndTagsTool extends BaseTool {
   name = MCP_TOOLS.GET_CATEGORIES_AND_TAGS;
   description = '获取所有可用的组件分类和标签';
-  inputSchema = {
-    type: 'object',
-    properties: {},
-  };
+  inputSchema = {};
 
   constructor(private componentIndex: ComponentIndex) {
     super();
@@ -376,18 +316,8 @@ export class GetComponentChangelogTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_CHANGELOG;
   description = '获取指定组件的变更日志';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-      version: {
-        type: 'string',
-        description: '指定版本（可选）',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名'),
+    version: z.string().optional().describe('只返回指定版本'),
   };
 
   /**

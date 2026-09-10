@@ -33,7 +33,8 @@
     "chalk": "catalog:",
     "commander": "catalog:",
     "glob": "catalog:",
-    "gray-matter": "catalog:"
+    "gray-matter": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",

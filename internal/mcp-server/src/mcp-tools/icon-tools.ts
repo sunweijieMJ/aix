@@ -4,6 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { ICONS_SVG_FILE, MCP_TOOLS } from '../constants';
 import type { IconSearchResult, IconsIndex, ToolArguments } from '../types/index';
 import { log } from '../utils';
@@ -20,19 +21,8 @@ export class SearchIconsTool extends BaseTool {
   name = MCP_TOOLS.SEARCH_ICONS;
   description = '按关键词搜索图标';
   inputSchema = {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: '搜索关键词',
-      },
-      limit: {
-        type: 'number',
-        description: '返回结果数量限制',
-        default: 10,
-      },
-    },
-    required: ['query'],
+    query: z.string().describe('搜索关键词，支持中英文'),
+    limit: z.number().optional().describe('返回结果数量限制（1-100，默认 10）'),
   };
 
   private iconsIndex: IconsIndex | null = null;
@@ -112,14 +102,7 @@ export class GetIconSvgTool extends BaseTool {
   description =
     '获取指定图标的 SVG 源码，用于不依赖 @aix/icons 直接内联图标的场景。常规使用请优先用 search-icons 返回的 importStatement';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '图标组件名（search-icons 返回的 name，如 "IconSearch"）',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('图标组件名（search-icons 返回的 name，如 "IconSearch"）'),
   };
 
   private svgMap: Record<string, string> | null = null;

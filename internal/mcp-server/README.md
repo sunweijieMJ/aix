@@ -214,8 +214,12 @@ graph TB
 stdio 监听：tools / resources / prompts
 ```
 
-搜索是**字段加权的关键词匹配**（名称 100、包名 80、描述 60、分类 40、标签 30、props 20，
+搜索是**字段加权的关键词匹配**（名称 100、子组件名 80、包名 80、描述 60、分类 40、标签 30、props 20，
 前缀匹配打五折），不是倒排索引或 TF-IDF——组件数量在百级，简单匹配足够且更好维护。
+
+工具、提示词走 SDK 的高阶 `McpServer`：入参用 zod 声明，协议层自动校验并生成
+JSON Schema，业务错误以 `isError` 返回而不是抛异常。资源是按组件动态生成的
+（几百条 URI），不适合套 `ResourceTemplate`，继续用底层 list/read 处理器。
 
 ## 数据文件
 
@@ -291,8 +295,9 @@ src/
 
 ### 新增一个 MCP 工具
 
-1. 在 `mcp-tools/` 下继承 `BaseTool`，实现 `name` / `description` / `inputSchema` / `execute`
-2. 入参用 `requireString` 和 `clampLimit` 归一（低阶 SDK 不校验入参）
+1. 在 `mcp-tools/` 下继承 `BaseTool`，实现 `name` / `description` / `inputSchema`（zod shape）/ `execute`
+2. 入参再用 `requireString` / `clampLimit` 兜一层——协议层已由 zod 校验，
+   但 `execute` 也会被直接调用（测试、内部复用），这层保证两条路径行为一致
 3. 在 `constants/project.ts` 的 `MCP_TOOLS` 注册工具名
 4. 在 `mcp-tools/index.ts` 的 `createTools` 中实例化
 5. 返回值注意体积——列表类一律返回摘要
@@ -331,8 +336,16 @@ Props 来自 README 的 markdown 表格，需要满足：首列是属性名（`�
 
 **Q: 一个包里有多个组件怎么办？**
 
-当前一个包产出一条 `ComponentInfo`，多个子组件的 Props 会合并，但每条 Prop 带 `group` 字段
-标注它来自 README 的哪个章节（如 `Tooltip Props`、`Dropdown Props`）可供区分。
+一个包仍然产出一条 `ComponentInfo`，但会识别出包内的子组件名放进 `subComponents`
+（如 `@aix/popper` → Popper / Tooltip / Popover / Dropdown / DropdownItem）：
+
+- 搜 `tooltip` 能命中 `@aix/popper`
+- `get-component-info Tooltip` 能直接寻址到所属包
+- 每条 Prop / Emit / Slot 带 `group` 标注它属于哪个子组件
+
+之所以不拆成独立的顶层组件：README 章节标题只有一部分是真组件名，
+其余是 API 种类（`Props`）、函数名（`createLocale`）或说明性标题（`音频来源契约`），
+照单拆分会造出一批不存在的"组件"。识别判据是「剥掉 Props/Events/Slots 后是 PascalCase 标识符」。
 
 **Q: 图标的中文搜索覆盖到什么程度？**
 

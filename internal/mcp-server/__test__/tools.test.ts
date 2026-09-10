@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { z } from 'zod';
 import { createTools } from '../src/mcp-tools/index';
 import type {
   ComponentExample,
@@ -139,6 +140,39 @@ describe('MCP Tools', () => {
       expect(result[0]).not.toHaveProperty('props');
       expect(result[0]).not.toHaveProperty('examples');
       expect(result[0]).not.toHaveProperty('sourcePath');
+    });
+  });
+
+  describe('子组件寻址', () => {
+    it('按子组件名也应该能找到所属包', async () => {
+      const withSubs: ComponentIndex = {
+        ...mockIndex,
+        components: [{ ...mockComponent, subComponents: ['TestComponent', 'InnerWidget'] }],
+      };
+      const subTools = createTools(withSubs, '/test/data');
+
+      const info = (await subTools
+        .find((t) => t.name === 'get-component-info')!
+        .execute({ name: 'InnerWidget' })) as ComponentInfo;
+
+      // 返回所属包，各条 API 上的 group 字段用于区分归属
+      expect(info?.packageName).toBe('@aix/test-component');
+    });
+
+    it('搜索子组件名应该命中所属包', async () => {
+      const withSubs: ComponentIndex = {
+        ...mockIndex,
+        components: [{ ...mockComponent, subComponents: ['TestComponent', 'InnerWidget'] }],
+      };
+      const subTools = createTools(withSubs, '/test/data');
+
+      const results = (await subTools
+        .find((t) => t.name === 'search-components')!
+        .execute({ query: 'InnerWidget' })) as SearchResultSummary[];
+
+      expect(results[0]?.component.name).toBe('TestComponent');
+      expect(results[0]?.matchedFields).toContain('subComponents');
+      expect(results[0]?.component.subComponents).toEqual(['TestComponent', 'InnerWidget']);
     });
   });
 
@@ -562,11 +596,26 @@ describe('MCP Tools', () => {
       }
     });
 
-    it('所有工具应该有输入 schema', () => {
+    it('所有工具的入参 schema 应该是可交给 SDK 校验的 zod shape', () => {
       for (const tool of tools) {
         expect(tool.inputSchema).toBeDefined();
-        expect((tool.inputSchema as { type: string }).type).toBe('object');
+        // 每个字段都得是 zod 类型，SDK 才能据此校验入参并生成 JSON Schema
+        for (const [field, schema] of Object.entries(tool.inputSchema)) {
+          expect(schema, `${tool.name}.${field}`).toHaveProperty('safeParse');
+        }
       }
+    });
+
+    it('必填参数应该被 schema 标记为必填', () => {
+      const required = (name: string) =>
+        Object.entries(tools.find((t) => t.name === name)!.inputSchema)
+          .filter(([, schema]) => !(schema as z.ZodType).safeParse(undefined).success)
+          .map(([field]) => field);
+
+      expect(required('get-component-info')).toEqual(['name']);
+      expect(required('search-components')).toEqual(['query']);
+      expect(required('get-icon-svg')).toEqual(['name']);
+      expect(required('list-components')).toEqual([]);
     });
 
     it('未提供工具包索引时只创建组件和图标工具', () => {

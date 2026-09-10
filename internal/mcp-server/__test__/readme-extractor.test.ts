@@ -1,6 +1,6 @@
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { ReadmeExtractor } from '../src/extractors/readme-extractor';
+import { ReadmeExtractor, toSubComponentName } from '../src/extractors/readme-extractor';
 
 describe('ReadmeExtractor', () => {
   const extractor = new ReadmeExtractor();
@@ -176,5 +176,25 @@ describe('ReadmeExtractor 表格解析', () => {
 | theme | 挂载时 |
 `;
     expect(parse(md).props).toHaveLength(0);
+  });
+});
+
+describe('toSubComponentName', () => {
+  it('应该从章节标题识别出真正的组件名', () => {
+    expect(toSubComponentName('Tooltip Props')).toBe('Tooltip');
+    expect(toSubComponentName('Dropdown Events')).toBe('Dropdown');
+    expect(toSubComponentName('WaveformCanvas')).toBe('WaveformCanvas');
+    expect(toSubComponentName('DropdownItem 插槽')).toBe('DropdownItem');
+  });
+
+  it('不应该把非组件名的章节标题当成组件', () => {
+    // 这些都是仓库里真实出现过的标题，按组件名处理会造出不存在的条目
+    expect(toSubComponentName('Props')).toBeNull();
+    expect(toSubComponentName('Events')).toBeNull();
+    expect(toSubComponentName('createLocale')).toBeNull(); // camelCase：函数不是组件
+    expect(toSubComponentName('音频来源契约')).toBeNull();
+    expect(toSubComponentName('generateThemeCSS - 构建时生成主题 CSS')).toBeNull();
+    expect(toSubComponentName('命名插槽穿透块内部（<块类型>-<内部slot名>）')).toBeNull();
+    expect(toSubComponentName(undefined)).toBeNull();
   });
 });

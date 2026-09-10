@@ -2,6 +2,7 @@
  * 工具包相关的 MCP 工具
  */
 
+import { z } from 'zod';
 import { MCP_TOOLS } from '../constants';
 import type { ToolArguments, ToolPackageIndex, ToolPackageInfo } from '../types/index';
 import { BaseTool, clampLimit, requireString } from './base';
@@ -33,18 +34,8 @@ export class ListPackagesTool extends BaseTool {
   name = MCP_TOOLS.LIST_PACKAGES;
   description = '列出所有可用的工具包（kit/ 和 internal/ 下的非组件包）';
   inputSchema = {
-    type: 'object',
-    properties: {
-      category: {
-        type: 'string',
-        description: '按分类过滤（工具包 | 基础设施 | 开发工具）',
-      },
-      scope: {
-        type: 'string',
-        enum: ['kit', 'internal'],
-        description: '按来源过滤',
-      },
-    },
+    category: z.string().optional().describe('按分类过滤（工具包 | 基础设施 | 开发工具）'),
+    scope: z.enum(['kit', 'internal']).optional().describe('按来源过滤'),
   };
 
   constructor(private packageIndex: ToolPackageIndex) {
@@ -86,18 +77,11 @@ export class GetPackageInfoTool extends BaseTool {
   description =
     '获取指定工具包的详细信息（特性、代码示例、API 文档目录）。不传 section 时 API 文档只返回标题目录，传 section 才返回该章节正文';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '工具包名称或包名（如 "tracker" 或 "@kit/tracker"）',
-      },
-      section: {
-        type: 'string',
-        description: 'API 文档章节标题（支持部分匹配）。省略则只返回章节目录，不返回正文',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('工具包名称或包名（如 "tracker" 或 "@kit/tracker"）'),
+    section: z
+      .string()
+      .optional()
+      .describe('API 文档章节标题（支持部分匹配）。省略则只返回章节目录，不返回正文'),
   };
 
   constructor(private packageIndex: ToolPackageIndex) {
@@ -142,18 +126,8 @@ export class SearchPackagesTool extends BaseTool {
   description =
     '按关键词搜索工具包（匹配名称、描述、标签、特性；返回摘要，详情请用 get-package-info 获取）';
   inputSchema = {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: '搜索关键词',
-      },
-      limit: {
-        type: 'number',
-        description: '返回结果数量限制（默认 10）',
-      },
-    },
-    required: ['query'],
+    query: z.string().describe('搜索关键词'),
+    limit: z.number().optional().describe('返回结果数量限制（1-100，默认 10）'),
   };
 
   constructor(private packageIndex: ToolPackageIndex) {

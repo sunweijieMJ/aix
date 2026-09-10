@@ -1,13 +1,10 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+// SDK 的高阶服务端与本文件导出的 McpServer 同名，用别名区分
+import { McpServer as SdkMcpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
-  CallToolRequestSchema,
-  GetPromptRequestSchema,
-  ListPromptsRequestSchema,
   ListResourcesRequestSchema,
-  ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createConfigManager } from '../config';
@@ -16,7 +13,7 @@ import { COMPONENT_LIBRARY_CONFIG } from '../constants';
 import { createResourceManager } from '../mcp-resources/index';
 import { createTools } from '../mcp-tools/index';
 import { getAllPrompts } from '../prompts/index';
-import type { ComponentIndex, ToolPackageIndex } from '../types/index';
+import type { ComponentIndex, ToolArguments, ToolPackageIndex } from '../types/index';
 import { log } from '../utils/logger';
 import { createMonitoringManager } from '../utils/monitoring';
 import { findRepoRoot } from '../utils/repo-root';
@@ -35,7 +32,9 @@ import { findRepoRoot } from '../utils/repo-root';
  * ```
  */
 export class McpServer {
-  private server: Server;
+  private server: SdkMcpServer;
+  /** 工具只注册一次；回调按名字查当前实例，索引刷新后自动生效 */
+  private toolsRegistered = false;
   private componentIndex: ComponentIndex | null = null;
   private toolPackageIndex: ToolPackageIndex | null = null;
   private tools: ReturnType<typeof createTools> = [];
@@ -71,7 +70,7 @@ export class McpServer {
 
     this.monitoringManager = createMonitoringManager();
 
-    this.server = new Server(
+    this.server = new SdkMcpServer(
       {
         name: COMPONENT_LIBRARY_CONFIG.packageName,
         version: COMPONENT_LIBRARY_CONFIG.version,
@@ -85,140 +84,90 @@ export class McpServer {
       },
     );
 
-    this.setupHandlers();
+    this.registerPrompts();
+    this.setupResourceHandlers();
   }
 
   /**
-   * 包装请求处理器，统一处理监控和错误
+   * 注册工具
+   *
+   * 只注册一次：工具实例会随索引刷新重建，但名字和 schema 不变，
+   * 所以回调里按名字取当前实例，避免重复注册（SDK 会对同名报错）。
    */
-  private wrapHandler<T>(
-    requestType: string,
-    handler: (request: any) => Promise<T>,
-  ): (request: any) => Promise<T> {
-    return async (request: any) => {
-      const startTime = Date.now();
-      this.monitoringManager.recordRequestStart();
+  private registerTools(): void {
+    if (this.toolsRegistered) return;
+    this.toolsRegistered = true;
 
-      try {
-        const result = await handler(request);
-        this.monitoringManager.recordRequestEnd(true, startTime);
-        return result;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.monitoringManager.recordError(requestType, errorMessage);
-        this.monitoringManager.recordRequestEnd(false, startTime);
-        throw error;
-      }
-    };
-  }
-
-  /**
-   * 设置请求处理器
-   */
-  private setupHandlers(): void {
-    // 工具列表处理器
-    this.server.setRequestHandler(
-      ListToolsRequestSchema,
-      this.wrapHandler('list-tools', async () => ({
-        tools: this.tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        })),
-      })),
-    );
-
-    // 工具调用处理器
-    this.server.setRequestHandler(
-      CallToolRequestSchema,
-      this.wrapHandler('call-tool', async (request: any) => {
-        const { name, arguments: args } = request.params;
-        const toolStartTime = Date.now();
-
+    for (const { name, description, inputSchema } of this.tools) {
+      this.server.registerTool(name, { description, inputSchema }, async (args: ToolArguments) => {
+        const startTime = Date.now();
         const tool = this.tools.find((t) => t.name === name);
+
         if (!tool) {
-          throw new Error(`Unknown tool: ${name}`);
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: `工具不可用: ${name}` }],
+          };
         }
 
         try {
-          const result = await tool.execute(args || {});
-          this.monitoringManager.recordToolCall(name, toolStartTime);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
+          const result = await tool.execute(args ?? {});
+          this.monitoringManager.recordToolCall(name, startTime);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (error) {
-          this.monitoringManager.recordToolCall(name, toolStartTime);
-          throw new Error(
-            `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
-            { cause: error },
-          );
+          const message = error instanceof Error ? error.message : String(error);
+          this.monitoringManager.recordToolCall(name, startTime);
+          this.monitoringManager.recordError(name, message);
+          // 用 isError 而不是抛异常：调用方能看到具体原因并自行纠正
+          return { isError: true, content: [{ type: 'text' as const, text: message }] };
         }
-      }),
-    );
+      });
+    }
+  }
 
-    // 提示词列表处理器
-    this.server.setRequestHandler(
-      ListPromptsRequestSchema,
-      this.wrapHandler('list-prompts', async () => {
-        const prompts = getAllPrompts();
-        return {
-          prompts: Object.entries(prompts).map(([key]) => ({
-            name: `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-${key}`,
-            description: this.getPromptDescription(key),
-          })),
-        };
-      }),
-    );
+  /**
+   * 注册提示词
+   */
+  private registerPrompts(): void {
+    const prompts = getAllPrompts();
 
-    // 获取提示词处理器
-    this.server.setRequestHandler(
-      GetPromptRequestSchema,
-      this.wrapHandler('get-prompt', async (request: any) => {
-        const { name } = request.params;
-        const prompts = getAllPrompts();
-        const promptKey = name.replace(
-          `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-`,
-          '',
-        ) as keyof typeof prompts;
-        const prompt = prompts[promptKey];
+    for (const [key, text] of Object.entries(prompts)) {
+      this.server.registerPrompt(
+        `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-${key}`,
+        { description: this.getPromptDescription(key) },
+        () => ({ messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] }),
+      );
+    }
+  }
 
-        if (!prompt) {
-          throw new Error(`Unknown prompt: ${name}`);
-        }
+  /**
+   * 注册资源处理器
+   *
+   * 资源是按组件动态生成的（几百条，URI 由包名 + 文件相对路径拼成），
+   * 既不是固定 URI 也不适合套 ResourceTemplate，所以这部分继续用底层
+   * 的 list/read 处理器，高阶实例通过 `.server` 暴露它。
+   */
+  private setupResourceHandlers(): void {
+    this.server.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      if (!this.resourceManager) {
+        return { resources: [] };
+      }
+      return { resources: await this.resourceManager.listResources() };
+    });
 
-        return {
-          messages: [{ role: 'user', content: { type: 'text', text: prompt } }],
-        };
-      }),
-    );
+    this.server.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      if (!this.resourceManager) {
+        throw new Error('Resource manager not initialized');
+      }
 
-    // 资源列表处理器
-    this.server.setRequestHandler(
-      ListResourcesRequestSchema,
-      this.wrapHandler('list-resources', async () => {
-        if (!this.resourceManager) {
-          return { resources: [] };
-        }
-        const resources = await this.resourceManager.listResources();
-        return { resources };
-      }),
-    );
+      const { uri } = request.params;
+      const content = await this.resourceManager.readResource(uri);
+      if (!content) {
+        throw new Error(`Resource not found: ${uri}`);
+      }
 
-    // 读取资源处理器
-    this.server.setRequestHandler(
-      ReadResourceRequestSchema,
-      this.wrapHandler('read-resource', async (request: any) => {
-        if (!this.resourceManager) {
-          throw new Error('Resource manager not initialized');
-        }
-        const { uri } = request.params;
-        const content = await this.resourceManager.readResource(uri);
-        if (!content) {
-          throw new Error(`Resource not found: ${uri}`);
-        }
-        return { contents: [content] };
-      }),
-    );
+      return { contents: [content] };
+    });
   }
 
   /**
@@ -300,6 +249,8 @@ export class McpServer {
       this.config.dataDir,
       this.repoRoot,
     );
+
+    this.registerTools();
   }
 
   /**

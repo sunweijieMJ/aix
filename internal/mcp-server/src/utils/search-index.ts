@@ -40,6 +40,8 @@ interface SearchConfig {
 const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   fieldWeights: {
     name: 100,
+    // 子组件名与包名同权：搜 Tooltip 和搜 popper 都是在指名道姓找东西
+    subComponents: 80,
     packageName: 80,
     description: 60,
     category: 40,
@@ -117,6 +119,8 @@ export class SearchIndex {
     // 准备搜索文本
     const searchTexts = {
       name: component.name.toLowerCase(),
+      // 子组件名参与匹配：搜 "tooltip" 得能找到 @aix/popper
+      subComponents: component.subComponents?.join(' ').toLowerCase() || '',
       packageName: component.packageName.toLowerCase(),
       description: component.description.toLowerCase(),
       category: component.category.toLowerCase(),
