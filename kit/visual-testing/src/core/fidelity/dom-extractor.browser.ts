@@ -147,26 +147,44 @@ export function extractRenderTree(options: BrowserExtractOptions): BrowserExtrac
     return pathSelector(el, root);
   }
 
-  function isRendered(cs: CSSStyleDeclaration, rect: DOMRect): boolean {
-    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
-    if (rect.width <= 0 || rect.height <= 0) return false;
-    return true;
+  function isHidden(cs: CSSStyleDeclaration): boolean {
+    return cs.display === 'none' || cs.visibility === 'hidden';
   }
 
-  function convert(
+  /**
+   * 转换单个元素，返回它在结果树中占据的节点列表。
+   *
+   * 返回数组而非单个节点，是为了处理 `display: contents`：这类元素不生成盒子、
+   * getBoundingClientRect 恒为 0×0，但子元素照常渲染（Vue 的 ErrorBoundary、
+   * Fragment 包装层常用）。若按「零尺寸即不可见」丢弃，会连整棵子树一起丢掉，
+   * 表现为提取结果只剩一个根节点。此时把子元素提升到父级，与这类包装层在
+   * Figma 中没有对应节点的事实一致。
+   */
+  function convertMany(
     el: Element,
     root: Element,
     origin: DOMRect,
     depth: number,
-  ): BrowserRenderNode | null {
-    if (SKIP_TAGS.has(el.tagName)) return null;
+  ): BrowserRenderNode[] {
+    if (SKIP_TAGS.has(el.tagName)) return [];
     const cs = getComputedStyle(el);
+    if (isHidden(cs)) return [];
+
+    // 自身不产生盒子：不占用深度，直接把子元素提升上来
+    if (cs.display === 'contents') {
+      const lifted: BrowserRenderNode[] = [];
+      for (const child of Array.from(el.children)) {
+        lifted.push(...convertMany(child, root, origin, depth));
+      }
+      return lifted;
+    }
+
     const rect = el.getBoundingClientRect();
-    if (!isRendered(cs, rect)) return null;
+    if (rect.width <= 0 || rect.height <= 0) return [];
 
     if (nodeCount >= options.maxNodes) {
       truncated = true;
-      return null;
+      return [];
     }
     nodeCount++;
 
@@ -235,14 +253,13 @@ export function extractRenderTree(options: BrowserExtractOptions): BrowserExtrac
 
     if (depth < options.maxDepth) {
       for (const child of Array.from(el.children)) {
-        const converted = convert(child, root, origin, depth + 1);
-        if (converted) node.children.push(converted);
+        node.children.push(...convertMany(child, root, origin, depth + 1));
       }
     } else if (el.children.length > 0) {
       truncated = true;
     }
 
-    return node;
+    return [node];
   }
 
   const rootEl = document.querySelector(options.rootSelector);
@@ -257,7 +274,23 @@ export function extractRenderTree(options: BrowserExtractOptions): BrowserExtrac
   }
 
   const origin = rootEl.getBoundingClientRect();
-  const root = convert(rootEl, rootEl, origin, 0);
+  const rootNodes = convertMany(rootEl, rootEl, origin, 0);
+  const root = rootNodes.length === 1 ? rootNodes[0]! : null;
+  if (!root) {
+    const cs = getComputedStyle(rootEl);
+    const r = rootEl.getBoundingClientRect();
+    return {
+      root: null,
+      error:
+        `Root element "${options.rootSelector}" is not rendered as a single box ` +
+        `(display: ${cs.display}, visibility: ${cs.visibility}, ` +
+        `size: ${Math.round(r.width)}×${Math.round(r.height)}). ` +
+        'Pass --selector pointing at a visible container.',
+      truncated,
+      nodeCount,
+      duplicateFigmaIds: [],
+    };
+  }
   const duplicateFigmaIds = Array.from(figmaIdCount.entries())
     .filter(([, n]) => n > 1)
     .map(([id]) => id);

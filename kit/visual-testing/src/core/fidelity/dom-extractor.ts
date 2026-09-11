@@ -35,16 +35,53 @@ export interface DomExtractOutput {
   duplicateFigmaIds: string[];
 }
 
+/** 自动探测时依次尝试的挂载点选择器 */
+const MOUNT_CANDIDATES = ['#app', '#root', '#main-app', 'main'];
+
 /**
- * 解析根元素选择器：显式指定 → [data-figma=<rootId>] → #app > * → body > *
+ * 在页面内挑选一个「确实渲染出盒子」的根元素，返回唯一选择器；找不到返回 null。
+ *
+ * 不能简单用 `body > *`：Vue 项目普遍用 vite-plugin-svg-icons 之类的插件在 body
+ * 首位注入 `width:0;height:0` 的隐藏 SVG sprite，`body > *` 的第一个匹配就是它，
+ * 后续提取必然拿不到任何内容。这里显式跳过隐藏与零尺寸元素。
+ */
+const FIND_ROOT_SCRIPT = `(() => {
+  var SKIP = ['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'LINK', 'META'];
+  var rendered = function (el) {
+    var cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    if (el.getAttribute('aria-hidden') === 'true') return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  var esc = function (v) {
+    return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(v) : v;
+  };
+  var mounts = ${JSON.stringify(MOUNT_CANDIDATES)};
+  for (var i = 0; i < mounts.length; i++) {
+    var el = document.querySelector(mounts[i]);
+    if (el && rendered(el)) return mounts[i];
+  }
+  var children = Array.prototype.slice.call(document.body.children);
+  for (var j = 0; j < children.length; j++) {
+    var child = children[j];
+    if (SKIP.indexOf(child.tagName) !== -1) continue;
+    if (!rendered(child)) continue;
+    if (child.id) return '#' + esc(child.id);
+    return 'body > :nth-child(' + (j + 1) + ')';
+  }
+  return null;
+})()`;
+
+/**
+ * 解析根元素选择器：显式指定 → [data-figma=<rootId>] → 页面内自动探测
  */
 export async function resolveRootSelector(page: Page, options: DomExtractOptions): Promise<string> {
-  const candidates: string[] = [];
-  if (options.rootSelector) candidates.push(options.rootSelector);
-  if (options.rootFigmaId) candidates.push(`[data-figma="${options.rootFigmaId}"]`);
-  candidates.push('#app > *', 'body > *');
+  const explicit: string[] = [];
+  if (options.rootSelector) explicit.push(options.rootSelector);
+  if (options.rootFigmaId) explicit.push(`[data-figma="${options.rootFigmaId}"]`);
 
-  for (const selector of candidates) {
+  for (const selector of explicit) {
     const count = await page.locator(selector).count();
     if (count > 0) {
       if (count > 1) {
@@ -53,8 +90,15 @@ export async function resolveRootSelector(page: Page, options: DomExtractOptions
       return selector;
     }
   }
+
+  const auto = (await page.evaluate(FIND_ROOT_SCRIPT)) as string | null;
+  if (auto) {
+    log.debug(`Auto-detected root element: ${auto}`);
+    return auto;
+  }
+
   throw new Error(
-    `Cannot locate root element. Tried: ${candidates.join(', ')}. ` +
+    `Cannot locate a rendered root element. Tried: ${[...explicit, ...MOUNT_CANDIDATES, 'first visible child of <body>'].join(', ')}. ` +
       'Pass --selector or add data-figma="<rootNodeId>" to the page root.',
   );
 }

@@ -22,15 +22,40 @@ describe('resolveFigmaToken', () => {
       else process.env.FIGMA_TOKEN = prev;
     }
   });
-  it('throws with guidance when missing', () => {
-    const prev = { a: process.env.FIGMA_TOKEN, b: process.env.FIGMA_ACCESS_TOKEN };
+  it('accepts FIGMA_API_KEY (the Figma MCP server convention)', () => {
+    const prev = {
+      a: process.env.FIGMA_TOKEN,
+      b: process.env.FIGMA_ACCESS_TOKEN,
+      c: process.env.FIGMA_API_KEY,
+    };
     delete process.env.FIGMA_TOKEN;
     delete process.env.FIGMA_ACCESS_TOKEN;
+    process.env.FIGMA_API_KEY = 'mcp-token';
+    try {
+      expect(resolveFigmaToken()).toBe('mcp-token');
+    } finally {
+      if (prev.a !== undefined) process.env.FIGMA_TOKEN = prev.a;
+      if (prev.b !== undefined) process.env.FIGMA_ACCESS_TOKEN = prev.b;
+      if (prev.c === undefined) delete process.env.FIGMA_API_KEY;
+      else process.env.FIGMA_API_KEY = prev.c;
+    }
+  });
+
+  it('throws with guidance when missing', () => {
+    const prev = {
+      a: process.env.FIGMA_TOKEN,
+      b: process.env.FIGMA_ACCESS_TOKEN,
+      c: process.env.FIGMA_API_KEY,
+    };
+    delete process.env.FIGMA_TOKEN;
+    delete process.env.FIGMA_ACCESS_TOKEN;
+    delete process.env.FIGMA_API_KEY;
     try {
       expect(() => resolveFigmaToken()).toThrow(/file_content:read/);
     } finally {
       if (prev.a !== undefined) process.env.FIGMA_TOKEN = prev.a;
       if (prev.b !== undefined) process.env.FIGMA_ACCESS_TOKEN = prev.b;
+      if (prev.c !== undefined) process.env.FIGMA_API_KEY = prev.c;
     }
   });
 });

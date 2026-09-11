@@ -50,10 +50,16 @@ function safePath(url: string): string {
  * 从配置与环境变量解析 Figma token；缺失时抛出带获取路径的错误
  */
 export function resolveFigmaToken(configured?: string): string {
-  const token = configured ?? process.env.FIGMA_TOKEN ?? process.env.FIGMA_ACCESS_TOKEN;
+  const token =
+    configured ??
+    process.env.FIGMA_TOKEN ??
+    process.env.FIGMA_ACCESS_TOKEN ??
+    // figma-developer-mcp 等 Figma MCP server 用的变量名；项目里配过 MCP 就已经有它了，
+    // 一并接受可以省掉「明明配了 token 却报缺失」的困惑
+    process.env.FIGMA_API_KEY;
   if (!token) {
     throw new Error(
-      'Figma access token is missing. Set FIGMA_TOKEN (or baseline.figma.accessToken). ' +
+      'Figma access token is missing. Set FIGMA_TOKEN / FIGMA_API_KEY (or baseline.figma.accessToken). ' +
         'Create one at Figma → Settings → Security → Personal access tokens, ' +
         'with scopes "file_content:read" and "file_metadata:read".',
     );

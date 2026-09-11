@@ -59,7 +59,7 @@ pnpm add -D @anthropic-ai/sdk
 # 使用 OpenAI GPT-4o 分析
 pnpm add -D openai
 
-# Figma 基准图 / fidelity：走 REST API，不需要额外依赖，只需 FIGMA_TOKEN
+# Figma 基准图 / fidelity：走 REST API，不需要额外依赖，只需 FIGMA_TOKEN（或 FIGMA_API_KEY）
 # （已废弃的 figma-mcp provider 才需要 @modelcontextprotocol/sdk）
 ```
 
@@ -75,7 +75,7 @@ npx visual-test init
 
 交互式填写项目名、基准图 provider（`local` 或 `figma-api`）与是否启用 LLM 分析，生成
 `visual-test.config.ts` 和 `.visual-test/`（含 `fidelity/`）目录结构。选 `figma-api` 时可
-顺带填 Figma fileKey；access token 一律走环境变量 `FIGMA_TOKEN`，init 不会把任何密钥写进配置文件。
+顺带填 Figma fileKey；access token 一律走环境变量 `FIGMA_TOKEN`（也接受 Figma MCP server 用的 `FIGMA_API_KEY`），init 不会把任何密钥写进配置文件。
 
 生成的配置已包含 `screenshot.deviceScaleFactor`、`ci.gate: 'pixel'` 和 `fidelity` 段，
 按需取消注释即可。
@@ -732,7 +732,7 @@ LLM 分析后的结构化总结：
 | `ANTHROPIC_API_KEY` | Anthropic API Key | 使用 Claude 时 |
 | `OPENAI_API_KEY` | OpenAI API Key | 使用 GPT-4o 时 |
 | `FIGMA_FILE_KEY` | Figma 文件 Key（配置里 `baseline.figma.fileKey` 的常见来源） | 基线用纯 nodeId 引用时 |
-| `FIGMA_TOKEN` | Figma Personal Access Token（scope：`file_content:read`、`file_metadata:read`） | `figma-api` provider 与 `fidelity` 命令 |
+| `FIGMA_TOKEN` | Figma Personal Access Token（scope：`file_content:read`、`file_metadata:read`）。也接受 `FIGMA_ACCESS_TOKEN` / `FIGMA_API_KEY`，后者是 Figma MCP server 的约定 | `figma-api` provider 与 `fidelity` 命令 |
 
 ---
 

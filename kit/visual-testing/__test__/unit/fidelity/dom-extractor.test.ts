@@ -69,7 +69,7 @@ describe('extractRenderSpec (chromium)', () => {
       maxDepth: 10,
       maxNodes: 100,
     });
-    expect(fallback).toBe('#app > *');
+    expect(fallback).toBe('#app');
   });
 
   it('extracts bounds relative to root, computed styles and direct text', async ({ skip }) => {
@@ -157,8 +157,69 @@ describe('extractRenderSpec (chromium)', () => {
     const blank = await browser!.newPage();
     await blank.setContent('<html><body></body></html>');
     await expect(extractRenderSpec(blank, { maxDepth: 5, maxNodes: 10 })).rejects.toThrow(
-      /Cannot locate root element/,
+      /Cannot locate a rendered root element/,
     );
     await blank.close();
+  });
+
+  // 以下三例来自 vue-admin-template 真实项目实测暴露的问题
+  it('lifts children of display:contents wrappers instead of dropping the subtree', async ({
+    skip,
+  }) => {
+    if (!browser) return skip();
+    const p = await browser!.newPage();
+    await p.setContent(`<!doctype html><html><body style="margin:0">
+      <div id="main-app" style="width:400px;height:200px">
+        <div class="error-boundary" style="display:contents">
+          <div class="page" style="width:400px;height:200px;display:flex">
+            <h1 class="title" style="width:100px;height:30px;margin:0">404</h1>
+          </div>
+        </div>
+      </div>
+    </body></html>`);
+
+    const out = await extractRenderSpec(p, {
+      rootSelector: '#main-app',
+      maxDepth: 10,
+      maxNodes: 100,
+    });
+
+    // display:contents 自身不成节点，其子树被提升到根下，而不是整棵丢失
+    expect(out.root.children.map((c) => c.tag)).toEqual(['div']);
+    expect(out.root.children[0]!.selector).toContain('.page');
+    expect(out.root.children[0]!.children[0]!.text).toBe('404');
+    expect(out.nodeCount).toBe(3);
+    await p.close();
+  });
+
+  it('skips the hidden svg sprite that plugins inject as the first body child', async ({
+    skip,
+  }) => {
+    if (!browser) return skip();
+    const p = await browser!.newPage();
+    // vite-plugin-svg-icons 注入的 sprite：body 首个子元素，零尺寸且 aria-hidden
+    await p.setContent(`<!doctype html><html><body style="margin:0">
+      <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"><symbol id="i"></symbol></svg>
+      <div id="main-app" style="width:400px;height:200px;background:#fff"></div>
+    </body></html>`);
+
+    const sel = await resolveRootSelector(p, { maxDepth: 10, maxNodes: 100 });
+    expect(sel).toBe('#main-app');
+
+    const out = await extractRenderSpec(p, { maxDepth: 10, maxNodes: 100 });
+    expect(out.root.bounds).toMatchObject({ width: 400, height: 200 });
+    await p.close();
+  });
+
+  it('reports a clear error when the given root itself renders no box', async ({ skip }) => {
+    if (!browser) return skip();
+    const p = await browser!.newPage();
+    await p.setContent(
+      '<!doctype html><html><body><div id="wrap" style="display:contents"></div></body></html>',
+    );
+    await expect(
+      extractRenderSpec(p, { rootSelector: '#wrap', maxDepth: 5, maxNodes: 10 }),
+    ).rejects.toThrow(/is not rendered as a single box/);
+    await p.close();
   });
 });
