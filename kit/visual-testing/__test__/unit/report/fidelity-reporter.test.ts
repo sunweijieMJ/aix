@@ -177,8 +177,19 @@ describe('summarize', () => {
       major: 1,
       minor: 2,
       info: 0,
+      responsive: 0,
+      interaction: 0,
       score: 100 - 5 - 2 - 8 - 2,
     });
+  });
+
+  it('keeps responsive / interaction counts out of the design-fidelity score', () => {
+    const matches = buildResult().matches;
+    const withProbes = summarize(matches, { responsive: 3, interaction: 5 });
+    expect(withProbes.responsive).toBe(3);
+    expect(withProbes.interaction).toBe(5);
+    // score 只反映与设计稿的静态吻合度，不被工程质量探测稀释
+    expect(withProbes.score).toBe(summarize(matches).score);
   });
 });
 

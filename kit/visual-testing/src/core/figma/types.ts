@@ -76,6 +76,9 @@ export interface FigmaNode {
   clipsContent?: boolean;
   // auto-layout
   layoutMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL';
+  /** 自动布局节点的伸缩意图，FILL 表示实现侧不应写死尺寸 */
+  layoutSizingHorizontal?: 'FIXED' | 'HUG' | 'FILL';
+  layoutSizingVertical?: 'FIXED' | 'HUG' | 'FILL';
   primaryAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN';
   counterAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE';
   paddingLeft?: number;

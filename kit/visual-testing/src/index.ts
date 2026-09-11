@@ -23,6 +23,13 @@ export { matchNodes, iou, similarity } from './core/fidelity/node-matcher';
 export { diffMatches, diffNode, fontFamilyMatches } from './core/fidelity/property-diff';
 export { TokenMapper } from './core/fidelity/token-mapper';
 export { cropRegions, isUnexplainedRegion } from './core/fidelity/crop';
+export {
+  analyzeResponsive,
+  defaultProbeWidths,
+  measureAtWidths,
+  countBySeverity,
+} from './core/fidelity/responsive-probe';
+export { probeInteraction, diffSnapshot } from './core/fidelity/interaction-probe';
 export { FidelityReporter, renderMarkdown } from './core/report/fidelity-reporter';
 export { FigmaClient, FigmaApiError, resolveFigmaToken } from './core/figma/client';
 export { parseFigmaRef, normalizeNodeId, isBareNodeId } from './core/figma/url';
@@ -43,6 +50,11 @@ export type {
   FidelitySummary,
   FidelitySeverity,
   MatchMethod,
+  DesignSizing,
+  ResponsiveFinding,
+  ResponsiveFindingType,
+  InteractionFinding,
+  InteractionFindingType,
 } from './core/fidelity/types';
 export type { FigmaNode, FigmaNodesResponse, FigmaFileMeta } from './core/figma/types';
 

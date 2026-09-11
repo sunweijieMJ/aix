@@ -83,6 +83,10 @@ function convertNode(node: FigmaNode, origin: FigmaRect): DesignNode | null {
       height: round2(box.height),
     },
     opacity: node.opacity ?? 1,
+    sizing:
+      node.layoutSizingHorizontal || node.layoutSizingVertical
+        ? { horizontal: node.layoutSizingHorizontal, vertical: node.layoutSizingVertical }
+        : undefined,
     fills: type === 'TEXT' ? [] : solidColors(fills),
     fillKind: type === 'TEXT' ? 'none' : fillKind,
     strokes: (node.strokes ?? [])

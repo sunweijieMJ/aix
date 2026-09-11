@@ -283,6 +283,24 @@ const fidelitySchema = z.object({
       padding: z.number().int().min(0).default(8),
     })
     .default({ enabled: true, padding: 8 }),
+  /**
+   * 多宽度健壮性探测：在更窄的视口重新测量，发现横向溢出、写死宽度、内容裁切。
+   * 静态比对只在设计稿尺寸下进行，会奖励写死宽高的实现，这里做兜底。
+   */
+  responsive: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** 探测宽度；留空则由设计稿宽度自动推导（70% / 768 / 375） */
+      widths: z.array(z.number().int().positive()).default([]),
+    })
+    .default({ enabled: true, widths: [] }),
+  /** 交互反馈探测：真实 hover 每个可交互元素，报告毫无视觉反馈的 */
+  interaction: z
+    .object({
+      enabled: z.boolean().default(true),
+      maxElements: z.number().int().positive().default(40),
+    })
+    .default({ enabled: true, maxElements: 40 }),
   /** 对无法用结构化差异解释的区域做 LLM 视觉描述（默认关闭，需 llm 配置） */
   vision: z.object({ enabled: z.boolean().default(false) }).default({ enabled: false }),
   output: z

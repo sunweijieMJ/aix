@@ -12,6 +12,8 @@
 ## 特性
 
 - **设计还原度校验（fidelity）** - Figma 节点树 vs DOM computed style 的属性级比对，输出选择器 + 期望值 + 实际值的结构化差异清单，供 AI 自检回路消费；像素比对只做区域定位与裁图，LLM 仅在开启时描述结构化无法解释的区域
+- **响应式健壮性探测** - 在更窄的视口重新测量，发现写死宽度、横向溢出、内容裁切。静态比对只在设计稿尺寸下进行，写死宽高同样能拿满分，这项是兜底
+- **交互反馈探测** - 真实 hover 每个可交互元素，报告 hover 后毫无视觉变化的。设计稿通常只画静态态，这类问题静态比对发现不了
 - **Storybook 自动发现** - 从 `/index.json` 自动发现所有 Story，无需逐一配置测试目标
 - **Figma REST 基准图** - 直接通过 Figma REST API 拉取节点位图，按文件版本缓存，倍率与截图 DPR 自动对齐
 - **LLM 智能分析（可选，默认关闭）** - 支持 Anthropic Claude / OpenAI GPT-4o，对回归差异做分类说明
@@ -295,6 +297,14 @@ export default defineConfig({
     match: { textSimilarity: 0.9, geometryIoU: 0.6 },
     extract: { maxDepth: 12, maxNodes: 2000 },
     crops: { enabled: true, padding: 8 },
+    responsive: {                      // 多宽度健壮性探测
+      enabled: true,
+      widths: [],                      // 留空则由设计稿宽度推导（70% / 768 / 375）
+    },
+    interaction: {                     // 交互反馈探测
+      enabled: true,
+      maxElements: 40,
+    },
     vision: { enabled: false },        // 对未解释区域做 LLM 视觉描述（需 llm 配置）
     output: { dir: '.visual-test/fidelity', formats: ['md', 'json'] },
   },
@@ -554,6 +564,21 @@ visual-test fidelity \
 | 未匹配到 DOM 元素 | — | missing | 容器 / 文本缺失进 Major；图标等叶子缺失进 Minor，由像素裁图兜底 |
 
 `score = 100 − major×5 − minor×1 − 容器缺失×8 − 叶子缺失×2`，仅供趋势观察。
+
+### 工程质量探测（与设计稿无关）
+
+静态比对只在设计稿那一个尺寸下进行，**写死宽高加绝对定位同样能拿满分**。这类实现在别的屏幕上不可用，
+交互反馈也不会体现在与设计稿的差异里。以下两项独立于 major / minor 计数，也不计入 score：
+
+| 探测 | 发现什么 | 判定依据 |
+|---|---|---|
+| 响应式健壮性 | `no-reflow` 根容器宽度不随视口变化、`overflow` 出现横向滚动、`fixed-width-should-fill` 设计稿声明 FILL 但实现不变、`clipped` 元素越过根容器边界 | 在 1008 / 768 / 375px（可配）重新测量真实几何 |
+| 交互反馈 | `no-hover-feedback` hover 后计算样式毫无变化、`missing-pointer-cursor` 可交互元素没有手型光标 | 真实 hover 后对比 computed style，JS 驱动的效果同样能测到 |
+
+`fixed-width-should-fill` 用的是 Figma REST 的 `layoutSizingHorizontal`：设计师在自动布局里声明了
+FILL / HUG / FIXED，工具把「设计稿说该自适应」和「实现实际不自适应」交叉比对，结论比单纯的启发式扫描可靠。
+
+用 `fidelity.responsive.enabled` / `fidelity.interaction.enabled` 关闭。
 
 ### `data-figma` 约定（让匹配从「推断」变成「确定」）
 

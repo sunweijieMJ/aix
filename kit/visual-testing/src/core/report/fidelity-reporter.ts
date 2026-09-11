@@ -53,7 +53,19 @@ export function renderMarkdown(result: FidelityResult, reportDir: string): strin
       ` · matched ${summary.matched}/${summary.total} · major ${summary.major} · minor ${summary.minor} · missing ${summary.missing}` +
       ` · pixel mismatch ${pixel.mismatchPercentage.toFixed(1)}%`,
   );
-  lines.push(`- score ${summary.score}（仅供趋势观察，不作判定）`);
+  if (result.responsive || result.interaction) {
+    const parts: string[] = [];
+    if (result.responsive) parts.push(`响应式问题 ${summary.responsive}`);
+    if (result.interaction) {
+      parts.push(
+        `交互反馈 ${result.interaction.withFeedback}/${result.interaction.total} 有 hover 效果`,
+      );
+    }
+    lines.push(`- ${parts.join(' · ')}`);
+  }
+  lines.push(
+    `- score ${summary.score}（只反映与设计稿的静态吻合度，不含响应式与交互，仅供趋势观察）`,
+  );
   lines.push(
     `- design: ${rel(pixel.designImage)} · render: ${rel(pixel.renderImage)}${pixel.diffPath ? ` · diff: ${rel(pixel.diffPath)}` : ''}`,
   );
@@ -120,6 +132,59 @@ export function renderMarkdown(result: FidelityResult, reportDir: string): strin
     if (region?.cropDesign)
       out.push(`- 裁图: ${rel(region.cropDesign)} · ${rel(region.cropRender)}`);
     return out;
+  }
+
+  // ---- 响应式健壮性 ----
+  if (result.responsive) {
+    lines.push('');
+    lines.push('## 响应式健壮性');
+    lines.push('');
+    if (result.responsive.findings.length === 0) {
+      lines.push(`在 ${result.responsive.widths.join(' / ')}px 宽度下未发现问题。`);
+    } else {
+      lines.push(
+        `在 ${result.responsive.widths.join(' / ')}px 宽度下重新测量。静态比对只在设计稿尺寸下进行，` +
+          '写死宽高同样能拿满分，以下问题不体现在上面的 major / minor 里。',
+      );
+      const order: Record<string, number> = {
+        'no-reflow': 0,
+        overflow: 1,
+        'fixed-width-should-fill': 2,
+        clipped: 3,
+      };
+      const sorted = [...result.responsive.findings].sort(
+        (a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9),
+      );
+      for (const f of sorted) {
+        const sev = f.severity === 'major' ? '**major**' : f.severity;
+        const where = f.selector ? ` · \`${f.selector}\`` : '';
+        const node = f.figmaId ? ` · Figma ${f.figmaId}` : '';
+        lines.push('');
+        lines.push(`- [${sev}] ${f.detail}${where}${node}`);
+      }
+    }
+  }
+
+  // ---- 交互反馈 ----
+  if (result.interaction) {
+    const { total, withFeedback, findings } = result.interaction;
+    lines.push('');
+    lines.push('## 交互反馈');
+    lines.push('');
+    if (total === 0) {
+      lines.push('未检出可交互元素。');
+    } else if (findings.length === 0) {
+      lines.push(`${total} 个可交互元素全部具备 hover 反馈。`);
+    } else {
+      lines.push(
+        `检出 ${total} 个可交互元素，其中 ${withFeedback} 个 hover 后有视觉变化。` +
+          '设计稿通常只画静态态，这类问题静态比对发现不了。',
+      );
+      for (const f of findings) {
+        lines.push('');
+        lines.push(`- [${f.severity}] ${f.detail} · \`${f.selector}\``);
+      }
+    }
   }
 
   // ---- 未解释区域 ----

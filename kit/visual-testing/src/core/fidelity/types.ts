@@ -66,12 +66,22 @@ export interface DesignText {
   color: Color | null;
 }
 
+/**
+ * Figma 的布局伸缩意图（仅自动布局节点有值）
+ * - FIXED：固定尺寸
+ * - HUG：由内容撑开
+ * - FILL：填满父容器剩余空间，实现侧不应写死尺寸
+ */
+export type DesignSizing = 'FIXED' | 'HUG' | 'FILL';
+
 export interface DesignNode {
   id: string;
   name: string;
   type: DesignNodeType;
   visible: boolean;
   bounds: Bounds;
+  /** 设计稿声明的伸缩意图，用于判断实现是否不该写死尺寸 */
+  sizing?: { horizontal?: DesignSizing; vertical?: DesignSizing };
   opacity: number;
   fills: Color[];
   fillKind: FillKind;
@@ -210,6 +220,40 @@ export interface FidelityRegion {
   note?: string;
 }
 
+// ---- 工程质量探测（与设计稿无关的兜底检查）----
+
+export type ResponsiveFindingType =
+  /** 页面在该宽度下出现横向滚动 */
+  | 'overflow'
+  /** 视口变窄但根元素宽度纹丝不动，基本是写死了宽度 */
+  | 'no-reflow'
+  /** 设计稿声明 FILL，实现却不随视口变化 */
+  | 'fixed-width-should-fill'
+  /** 元素超出根容器右边界 */
+  | 'clipped';
+
+export interface ResponsiveFinding {
+  type: ResponsiveFindingType;
+  /** 探测时使用的视口宽度 */
+  width: number;
+  selector?: string;
+  figmaId?: string;
+  designSizing?: DesignSizing;
+  detail: string;
+  severity: FidelitySeverity;
+}
+
+export type InteractionFindingType = 'no-hover-feedback' | 'missing-pointer-cursor';
+
+export interface InteractionFinding {
+  type: InteractionFindingType;
+  selector: string;
+  /** 元素文案，便于人工定位 */
+  label?: string;
+  detail: string;
+  severity: FidelitySeverity;
+}
+
 export interface FidelitySummary {
   total: number;
   matched: number;
@@ -220,7 +264,11 @@ export interface FidelitySummary {
   major: number;
   minor: number;
   info: number;
-  /** 0-100，仅供趋势观察 */
+  /** 响应式健壮性问题数（不计入 score，独立呈现） */
+  responsive: number;
+  /** 交互反馈问题数（不计入 score，独立呈现） */
+  interaction: number;
+  /** 0-100，仅反映与设计稿的静态吻合度，不含上面两项 */
   score: number;
 }
 
@@ -237,6 +285,19 @@ export interface FidelityResult {
   matches: NodeMatch[];
   /** DOM 有、设计没有的元素（只列出，不判 severity） */
   unmatchedRender: RenderNode[];
+  /** 多宽度健壮性探测；未开启时为 undefined */
+  responsive?: {
+    widths: number[];
+    findings: ResponsiveFinding[];
+  };
+  /** 交互反馈探测；未开启时为 undefined */
+  interaction?: {
+    /** 检出的可交互元素总数 */
+    total: number;
+    /** 其中 hover 有视觉反馈的数量 */
+    withFeedback: number;
+    findings: InteractionFinding[];
+  };
   pixel: {
     mismatchPercentage: number;
     diffPath: string | null;

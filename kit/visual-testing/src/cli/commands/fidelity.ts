@@ -109,6 +109,18 @@ async function runFidelity(options: FidelityCliOptions): Promise<void> {
     console.log(
       `  pixel mismatch ${result.pixel.mismatchPercentage.toFixed(1)}%  score ${s.score} ${chalk.gray('(advisory)')}`,
     );
+    if (result.responsive) {
+      const label = `responsive ${s.responsive}`;
+      console.log(
+        `  ${s.responsive > 0 ? chalk.red(label) : chalk.green(label)} ` +
+          chalk.gray(`(probed at ${result.responsive.widths.join('/')}px)`),
+      );
+    }
+    if (result.interaction) {
+      const { total, withFeedback } = result.interaction;
+      const label = `interaction ${withFeedback}/${total} with hover feedback`;
+      console.log(`  ${s.interaction > 0 ? chalk.yellow(label) : chalk.green(label)}`);
+    }
     for (const w of result.warnings) console.log(chalk.yellow(`  ⚠ ${w}`));
     console.log('');
     console.log(chalk.bold('Reports:'));

@@ -26,6 +26,13 @@ import { LLMCostController } from '../llm/cost-controller';
 import { DESCRIBE_CROP_PROMPT } from '../llm/prompts/describe-crop';
 import { extractDesignSpec } from './figma-spec-extractor';
 import { extractRenderSpec } from './dom-extractor';
+import {
+  analyzeResponsive,
+  defaultProbeWidths,
+  measureAtWidths,
+  type ResponsiveMeasurement,
+} from './responsive-probe';
+import { probeInteraction, type InteractionProbeResult } from './interaction-probe';
 import { matchNodes } from './node-matcher';
 import { diffMatches } from './property-diff';
 import { TokenMapper } from './token-mapper';
@@ -136,26 +143,57 @@ export class FidelityOrchestrator {
         : viewportSetting;
 
     const renderImage = path.join(outDir, 'render.png');
-    let extraction;
+    const probeWidths = fcfg.responsive.enabled
+      ? fcfg.responsive.widths.length > 0
+        ? fcfg.responsive.widths.filter((w) => w < viewport.width)
+        : defaultProbeWidths(viewport.width)
+      : [];
+
+    let probe: {
+      spec: Awaited<ReturnType<typeof extractRenderSpec>>;
+      measurements: ResponsiveMeasurement[];
+      interaction?: InteractionProbeResult;
+    };
     try {
       // initialize 在 try 内：newContext / addCookies 失败时已启动的浏览器也要被关闭
       await this.engine.initialize();
-      extraction = await this.engine.withPage(
+      probe = await this.engine.withPage(
         { url: options.url, viewport, theme: options.theme },
         async (page) => {
-          const out = await extractRenderSpec(page, {
+          const spec = await extractRenderSpec(page, {
             rootSelector: options.selector ?? fcfg.rootSelector,
             rootFigmaId: nodeId,
             maxDepth: fcfg.extract.maxDepth,
             maxNodes: fcfg.extract.maxNodes,
           });
-          await page.locator(out.rootSelector).first().screenshot({ path: renderImage });
-          return out;
+          // 截图必须在任何探测之前：探测会改视口、加临时标记、留下 hover 态
+          await page.locator(spec.rootSelector).first().screenshot({ path: renderImage });
+
+          const measurements =
+            probeWidths.length > 0
+              ? await measureAtWidths(page, {
+                  rootSelector: spec.rootSelector,
+                  widths: probeWidths,
+                  baseViewport: viewport,
+                  maxDepth: fcfg.extract.maxDepth,
+                  maxNodes: fcfg.extract.maxNodes,
+                })
+              : [];
+
+          const interaction = fcfg.interaction.enabled
+            ? await probeInteraction(page, {
+                rootSelector: spec.rootSelector,
+                maxElements: fcfg.interaction.maxElements,
+              })
+            : undefined;
+
+          return { spec, measurements, interaction };
         },
       );
     } finally {
       await this.engine.close();
     }
+    const extraction = probe.spec;
     if (extraction.truncated) {
       warnings.push(
         `DOM 提取在 maxDepth=${fcfg.extract.maxDepth} / maxNodes=${fcfg.extract.maxNodes} 处截断（${extraction.nodeCount} 个元素），深层元素未参与比对`,
@@ -227,8 +265,17 @@ export class FidelityOrchestrator {
       await this.describeRegions(regions, matches, design, warnings);
     }
 
-    // ---- 7. 汇总 + 报告 ----
-    const summary = summarize(matches);
+    // ---- 7. 工程质量探测的结论（依赖匹配结果，故在此汇总）----
+    const responsiveFindings =
+      probe.measurements.length > 0
+        ? analyzeResponsive(extraction.root.bounds, probe.measurements, matches)
+        : [];
+
+    // ---- 8. 汇总 + 报告 ----
+    const summary = summarize(matches, {
+      responsive: responsiveFindings.length,
+      interaction: probe.interaction?.findings.length ?? 0,
+    });
     const result: FidelityResult = {
       meta: {
         figma: { fileKey, nodeId, version, name },
@@ -241,6 +288,11 @@ export class FidelityOrchestrator {
       warnings,
       matches,
       unmatchedRender,
+      responsive:
+        probe.measurements.length > 0
+          ? { widths: probe.measurements.map((m) => m.width), findings: responsiveFindings }
+          : undefined,
+      interaction: probe.interaction,
       pixel: {
         mismatchPercentage: comparison.mismatchPercentage,
         diffPath: comparison.diffPath,
@@ -398,7 +450,10 @@ export class FidelityOrchestrator {
 
 // ---- 辅助 ----
 
-export function summarize(matches: NodeMatch[]): FidelitySummary {
+export function summarize(
+  matches: NodeMatch[],
+  extras: { responsive?: number; interaction?: number } = {},
+): FidelitySummary {
   let major = 0;
   let minor = 0;
   let info = 0;
@@ -430,6 +485,9 @@ export function summarize(matches: NodeMatch[]): FidelitySummary {
     major,
     minor,
     info,
+    // 工程质量探测独立计数：score 只反映与设计稿的静态吻合度，不该被这两项稀释
+    responsive: extras.responsive ?? 0,
+    interaction: extras.interaction ?? 0,
     score,
   };
 }
