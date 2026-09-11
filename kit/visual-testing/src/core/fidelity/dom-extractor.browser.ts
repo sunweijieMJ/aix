@@ -24,6 +24,8 @@ export interface BrowserRenderNode {
   figmaId?: string;
   tag: string;
   text?: string;
+  /** 整棵子树的文本，保留文档顺序；用于设计稿单个 TEXT 被拆成多元素的情况 */
+  fullText?: string;
   bounds: { x: number; y: number; width: number; height: number };
   styles: {
     color: string;
@@ -198,6 +200,7 @@ export function extractRenderTree(options: BrowserExtractOptions): BrowserExtrac
       figmaId,
       tag: el.tagName.toLowerCase(),
       text: text || undefined,
+      fullText: normalizeText(el.textContent || '').slice(0, 200) || undefined,
       bounds: {
         x: Math.round((rect.left - origin.left) * 100) / 100,
         y: Math.round((rect.top - origin.top) * 100) / 100,

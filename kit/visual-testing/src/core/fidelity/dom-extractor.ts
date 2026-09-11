@@ -232,6 +232,7 @@ function convertNode(node: BrowserRenderNode): RenderNode {
     figmaId: node.figmaId,
     tag: node.tag,
     text: node.text,
+    fullText: node.fullText,
     bounds: node.bounds,
     styles: parseStyles(node.styles, node.bounds),
     children: node.children.map(convertNode),
@@ -254,6 +255,9 @@ export function walkRender(
  * 子树内所有直接文本拼接（用于 TEXT 节点匹配到容器时的文案比对）
  */
 export function subtreeText(node: RenderNode): string {
+  // 优先用浏览器侧按文档顺序采集的 textContent；
+  // 子树遍历拼接会把父元素的直接文本整段排到子元素之前，顺序不对
+  if (node.fullText) return node.fullText;
   const parts: string[] = [];
   walkRender(node, (n) => {
     if (n.text) parts.push(n.text);

@@ -148,6 +148,37 @@ describe('diffNode', () => {
     expect(diffs.find((d) => d.property === 'text')!.severity).toBe('major');
   });
 
+  it('tolerates sub-pixel font sizes from clamp() / vw', () => {
+    // 48px 经 clamp 计算常落成 47.95，不该报成 major
+    // titleDesign 的字号是 28
+    expect(diffNode(titleDesign, titleRender({ fontSize: 27.95 }), { tolerances })).toEqual([]);
+    expect(
+      diffNode(titleDesign, titleRender({ fontSize: 27 }), { tolerances }).find(
+        (d) => d.property === 'fontSize',
+      )!.severity,
+    ).toBe('major');
+  });
+
+  it('downgrades split inline text to info when the subtree text still matches', () => {
+    const design: DesignNode = {
+      ...titleDesign,
+      text: { ...titleDesign.text!, content: '共 1234 条相关结果' },
+    };
+    // 实现把数字单独包了一层换颜色，直接文本只剩两段
+    const render = titleRender({}, titleDesign.bounds, '共  条相关结果');
+    // fullText 由浏览器按文档顺序采集，父元素直接文本与子元素文本是交错的
+    render.fullText = '共 1234 条相关结果';
+    const diff = diffNode(design, render, { tolerances }).find((d) => d.property === 'text')!;
+    expect(diff.severity).toBe('info');
+    expect(diff.hint).toContain('拆分');
+
+    // 合并后仍然对不上时，照旧报 major
+    render.fullText = '共 9999 条相关结果';
+    expect(
+      diffNode(design, render, { tolerances }).find((d) => d.property === 'text')!.severity,
+    ).toBe('major');
+  });
+
   it('skips lineHeight when design is AUTO', () => {
     const auto: DesignNode = { ...titleDesign, text: { ...titleDesign.text!, lineHeight: null } };
     expect(diffNode(auto, titleRender({ lineHeight: 30 }), { tolerances })).toEqual([]);

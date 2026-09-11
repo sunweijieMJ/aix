@@ -143,6 +143,8 @@ export interface RenderNode {
   tag: string;
   /** 直接文本子节点拼接，归一化空白 */
   text?: string;
+  /** 整棵子树的文本，保留文档顺序 */
+  fullText?: string;
   bounds: Bounds;
   styles: RenderStyles;
   children: RenderNode[];

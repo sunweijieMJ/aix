@@ -41,6 +41,9 @@ export interface DiffOptions {
 
 const fmt = (n: number) => `${Math.round(n * 100) / 100}px`;
 
+/** 字号容差 (px)：响应式字号经 clamp/vw 计算后常有小数尾差 */
+const FONT_SIZE_TOLERANCE = 0.5;
+
 /**
  * 为所有匹配填充 diffs（原地修改并返回）
  */
@@ -116,13 +119,27 @@ export function diffNode(
     if (dt.content) {
       if (render.text !== undefined) {
         if (textKey(render.text) !== textKey(dt.content)) {
-          diffs.push({
-            property: 'text',
-            expected: dt.content,
-            actual: render.text,
-            tolerance: 0,
-            severity: 'major',
-          });
+          // 设计稿的一个 TEXT 节点在实现里可能被拆开（如数字单独包一层换颜色），
+          // 此时直接文本只是其中一段；子树文本一致就视为内容正确，只提示结构差异
+          const whole = subtreeText(render);
+          if (textKey(whole) === textKey(dt.content)) {
+            diffs.push({
+              property: 'text',
+              expected: dt.content,
+              actual: render.text,
+              tolerance: 0,
+              severity: 'info',
+              hint: '文案被拆分到多个元素，合并后与设计稿一致；设计稿此处是单个 TEXT 节点',
+            });
+          } else {
+            diffs.push({
+              property: 'text',
+              expected: dt.content,
+              actual: whole || render.text,
+              tolerance: 0,
+              severity: 'major',
+            });
+          }
         }
       } else {
         // TEXT 节点匹配到了容器（文案在子元素里）：退而比较子树文本，置信度低所以只报 minor
@@ -139,7 +156,8 @@ export function diffNode(
         }
       }
     }
-    if (dt.fontSize && Math.abs(dt.fontSize - rs.fontSize) > 0.01) {
+    // 容差 0.5px：clamp() / vw 算出的字号常带小数（48 → 47.95），精确比较会把响应式写法误报为 major
+    if (dt.fontSize && Math.abs(dt.fontSize - rs.fontSize) > FONT_SIZE_TOLERANCE) {
       diffs.push({
         property: 'fontSize',
         expected: fmt(dt.fontSize),
