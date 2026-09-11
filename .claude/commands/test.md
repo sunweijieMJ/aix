@@ -48,10 +48,13 @@ description: 组件测试清单，覆盖 Props/Emits/Slots
 ## 快速命令
 
 ```bash
-pnpm test                # 运行单元测试
+pnpm test                # 包级单测（turbo 编排）
+pnpm test:unit           # 根口径单测（排除 storybook project）
+pnpm test:stories        # story 的 play 交互测试
 pnpm test:coverage       # 覆盖率
-pnpm test:watch          # 监听模式
 pnpm test:ui             # UI 模式
+
+cd packages/<pkg> && npx vitest   # 监听模式（没有 pnpm test:watch）
 ```
 
 ## 相关工具

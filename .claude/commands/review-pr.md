@@ -71,7 +71,8 @@ description: 快速提醒 PR 审查清单，确保代码质量和项目规范
 - [ ] 业务逻辑真正符合需求（不是看着像）
 
 ### 上下文一致性
-- [ ] **轮子检测**：先查 `@aix/hooks`、`@aix/utils` 是否已有同名/同义实现
+- [ ] **轮子检测**：先查 `@aix/hooks`（`use-namespace` / `use-locale` / `use-controllable`
+      等）与 `@aix/theme` 是否已有同名/同义实现——注意本仓**没有** `@aix/utils` 包
 - [ ] 命名风格与现有代码一致
 - [ ] 注释与代码逻辑同步（AI 常忘改注释）
 

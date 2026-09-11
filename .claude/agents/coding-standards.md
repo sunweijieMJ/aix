@@ -340,36 +340,149 @@ export default {
 ### 类型导出规范
 
 ```typescript
-// ✅ 正确：导出所有公开类型
-export { Button } from './Button.vue';
-export type { ButtonProps, ButtonEmits, ButtonSlots } from './Button.vue';
-export type { ButtonInstance } from './types';
+// ✅ 正确：SFC 是默认导出，先 import 再具名导出；类型从 types.ts 出
+import Button from './Button.vue';
+export { Button };
+export type { ButtonProps, ButtonEmits } from './types';
 
-// ❌ 错误：没有导出类型
+// ❌ 错误：SFC 没有名为 Button 的具名导出，这行解析不出东西
 export { Button } from './Button.vue';
-// 用户无法使用 ButtonProps 类型
+
+// ❌ 错误：只导组件不导类型，消费方无法标注 Props
+export { Button };
 ```
 
+对外组件的 Props/Emits 接口放 `src/types.ts`（`vue-docgen-api` 靠它生成文档站 API 表格，
+必须带 `@default` JSDoc）；包内部子组件（`src/components/*.vue`）的 props 可就地
+`export interface` 声明，不必进 `types.ts`。
+
 ### package.json 配置
+
+产物目录是 **`es/`（ESM）+ `lib/`（CJS）**，不是 `dist/`。字段以
+`scripts/gen/templates/package.json.eta` 为准，由 `pnpm lint:publish` 把关：
 
 ```json
 {
   "name": "@aix/button",
   "type": "module",
-  "main": "./dist/index.cjs.js",
-  "module": "./dist/index.esm.js",
-  "types": "./dist/index.d.ts",
+  "main": "./lib/index.cjs",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": ["*.css", "*.scss", "*.sass"],
   "exports": {
     ".": {
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./es/index.d.ts",
+        "default": "./es/index.js"
+      },
+      "require": {
+        "types": "./lib/index.d.cts",
+        "default": "./lib/index.cjs"
+      }
     },
-    "./style.css": "./dist/style.css"
+    "./style": {
+      "types": "./es/style.d.ts",
+      "default": "./es/index.css"
+    },
+    "./package.json": "./package.json"
   },
-  "files": ["dist"],
-  "sideEffects": ["*.css"]
+  "files": ["es", "lib"]
 }
+```
+
+**三个高频踩坑**：
+
+```json
+// ❌ 扁平 exports：CJS 消费方会拿到 ESM 的 .d.ts（masquerading），attw 报错
+"exports": { ".": { "types": "./es/index.d.ts", "import": "...", "require": "..." } }
+
+// ❌ 子路径写成 ./style.css：实际暴露的是 ./style（不带扩展名）
+"./style.css": "./es/index.css"
+
+// ❌ 加通配：vue-tsc 逐模块 .d.ts 带无扩展名相对引用，node16 下报 TS2834，
+//    且 attw 对通配 entrypoint 整段跳过，门禁看不见破损
+"./es/*": "./es/*"
+```
+
+消费端正确写法是 `import '@aix/button/style'`（不带 `.css`）。
+
+---
+
+## 🌍 多语言（i18n）规范
+
+**组件内不允许出现硬编码的用户可见文案**，包括 `aria-label` 这类无障碍文本。
+`packages/{button,flow-graph,pdf-viewer,popper,rich-text-editor,ai-chat}` 均已接入。
+
+新建包时加 `pnpm gen <name> --i18n` 直接生成 `src/locale/` 骨架。
+
+### 包内语言包结构
+
+```
+src/locale/
+├── types.ts     # XxxLocale 接口，每个 key 带 JSDoc
+├── zh-CN.ts     # const zhCN: XxxLocale = { ... }; export default zhCN;
+├── en-US.ts     # 同上
+└── index.ts     # 模块增强 + 导出 ComponentLocale
+```
+
+```typescript
+// src/locale/index.ts
+import type { ComponentLocale } from '@aix/hooks';
+import enUS from './en-US';
+import type { ButtonLocale } from './types';
+import zhCN from './zh-CN';
+
+// 注册应用级覆盖切片：业务侧写覆盖时获得包名 + key 级类型校验
+declare module '@aix/hooks' {
+  interface AixLocaleMessagesMap {
+    button: ButtonLocale;
+  }
+}
+
+export type { ButtonLocale } from './types';
+export { default as zhCN } from './zh-CN';
+export { default as enUS } from './en-US';
+
+export const locale: ComponentLocale<ButtonLocale> = {
+  'zh-CN': zhCN,
+  'en-US': enUS,
+};
+```
+
+### 组件内使用
+
+```vue
+<script setup lang="ts">
+import { useLocale, useNamespace } from '@aix/hooks';
+import { locale as buttonLocale } from './locale';
+
+const ns = useNamespace('button');
+const { t } = useLocale({ name: 'button', messages: buttonLocale });
+// 模板里 t.loadingText（自动解包）；script 里是 t.value.loadingText
+</script>
+```
+
+### 三条铁律
+
+1. **`useLocale` 的 `name` 必须与 `declare module` 注册的 key 完全一致**。
+   不一致时业务侧的 `createLocale(locale, { messages: { button: ... } })` 覆盖不生效，
+   且不会报错。两者要写在同一个 `locale/index.ts` 里相邻声明，避免漂移。
+2. **模块增强只能声明在 `@aix/hooks` 包根入口对应的接口上**。
+   `AixLocaleMessagesMap` 在 `packages/hooks/src/index.ts` 中**直接声明**（空接口），
+   正因为 TS 模块增强只能合并目标模块里直接声明的接口——若从 `use-locale` 子模块
+   re-export，业务侧的 `declare module '@aix/hooks'` 将无法合并。
+3. **只把组件自己渲染、用户无法通过插槽控制的文案放进语言包**。
+   Button 的可见文字来自 `<slot />`，属于业务侧内容，所以它的语言包里只有
+   loading 态的 `aria-label`。别把插槽内容也塞进来。
+
+### 从包导出
+
+`src/index.ts` 要把语言包一并导出，供业务做应用级覆盖：
+
+```typescript
+export { locale as buttonLocale, zhCN as buttonZhCN, enUS as buttonEnUS } from './locale';
+export type { ButtonLocale } from './locale';
 ```
 
 ---
@@ -502,6 +615,45 @@ const count = options.length;  // 获取选项数量
 // ❌ 错误：缺少前缀
 .button { }
 ```
+
+#### 模板里的 class 由 `useNamespace` 生成，不手写字符串
+
+**这是本仓强约定，全库 35 个源文件已统一。** 手写前缀是漂移源头（改块名时模板和样式
+容易只改一处），`useNamespace` 把前缀收口在 `@aix/hooks` 一处：
+
+```vue
+<template>
+  <!-- ✅ 正确 -->
+  <button :class="[ns.b(), ns.m(type), { [ns.m('disabled')]: disabled }]">
+    <span :class="ns.e('content')"><slot /></span>
+  </button>
+</template>
+
+<script setup lang="ts">
+import { useNamespace } from '@aix/hooks';
+
+const ns = useNamespace('button');
+</script>
+```
+
+```vue
+<!-- ❌ 错误：手写模板字符串拼接 -->
+<button :class="['aix-button', `aix-button--${type}`]">
+```
+
+API（`packages/hooks/src/use-namespace/index.ts`）：
+
+| 调用 | 产出 | 用途 |
+|------|------|------|
+| `ns.b()` | `aix-button` | Block |
+| `ns.b('icon')` | `aix-button-icon` | 独立 block 变体 |
+| `ns.e('text')` | `aix-button__text` | Element |
+| `ns.m('primary')` | `aix-button--primary` | Modifier |
+| `ns.em('text','sm')` | `aix-button__text--sm` | Element + Modifier |
+| `ns.is('active')` | `is-active` | 状态类（`ns.is('active', false)` → `''`）|
+
+SCSS 侧仍然照常写 `.aix-button { &__text {} &--primary {} }`——`useNamespace`
+只负责模板侧，两边靠同一个 block 名对齐。
 
 ### BEM 命名规范
 
@@ -736,22 +888,29 @@ $spacing-md: 16px;
 ## 🛠️ 代码质量工具
 
 ```bash
-# ESLint 检查
+# ESLint + Stylelint（turbo 编排各包的 lint:script / lint:style）
 pnpm lint
 pnpm lint --filter @aix/button
 
 # TypeScript 类型检查
 pnpm type-check
 
-# Stylelint 样式检查（如果配置了）
-pnpm stylelint "packages/**/*.{vue,scss,css}"
-
-# 构建检查
-pnpm build --filter @aix/button
+# 构建检查 —— 单包必须用 build:filter
+pnpm build:filter @aix/button
 
 # 运行测试
 pnpm test --filter @aix/button
+
+# 发布形态体检（exports / files / 类型解析）
+pnpm lint:publish --strict
 ```
+
+> ⚠️ **`pnpm build --filter @aix/button` 是错的**。`build` 脚本自带
+> `--filter=!./apps/*`，两个 filter 会被 turbo 取**并集**，实测构建 7 个包而非 1 个。
+> `lint` / `test` / `clean` 没有预置 filter，`--filter` 可以正常用。
+>
+> 样式单独跑用 `npx stylelint "packages/**/*.{vue,scss,css}"`——根 package.json
+> 没有 `stylelint` 脚本，但根配置 `stylelint.config.mjs` 存在。
 
 ---
 

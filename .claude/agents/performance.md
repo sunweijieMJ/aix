@@ -457,17 +457,13 @@ export function useDebouncedRef<T>(value: T, delay = 300) {
 ```json
 // package.json
 {
-  "sideEffects": [
-    "*.css",
-    "*.scss"
-  ],
+  "sideEffects": ["*.css", "*.scss", "*.sass"],
   "exports": {
     ".": {
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
+      "import": { "types": "./es/index.d.ts", "default": "./es/index.js" },
+      "require": { "types": "./lib/index.d.cts", "default": "./lib/index.cjs" }
     },
-    "./style.css": "./dist/style.css"
+    "./style": { "types": "./es/style.d.ts", "default": "./es/index.css" }
   }
 }
 ```

@@ -79,18 +79,31 @@ aix/
 
 ## 组件包结构规范
 
+**新建包一律用 `pnpm gen <kebab-name>`**（`scripts/gen/`，含 20 个 `.eta` 模板），不要手写脚手架文件。
+`--dry-run` 可先预览。生成结果：
+
 ```
 packages/<name>/
 ├── src/
-│   ├── index.vue        # 组件主文件
-│   ├── index.ts         # 导出入口
-│   └── types.ts         # 类型定义
-├── __test__/            # 测试文件
-├── stories/             # Storybook Stories
-├── rollup.config.js     # 构建配置
+│   ├── <Pascal>.vue      # 组件主文件（如 DatePicker.vue）
+│   ├── index.ts          # 导出入口：具名导出 + default install 插件
+│   ├── types.ts          # Props/Emits 接口（带 @default JSDoc，供 vue-docgen 抽取）
+│   ├── use<Pascal>.ts    # 组件逻辑 composable
+│   ├── index.scss        # 组件样式
+│   └── locale/           # 多语言（`pnpm gen --i18n`）
+├── __test__/             # 测试文件
+├── stories/              # Storybook Stories
 ├── package.json
-└── tsconfig.json
+├── tsconfig.json         # noEmit 检查配置，须 include stories/ 与 __test__/
+├── tsconfig.build.json   # 声明产出，只 include src/
+├── rollup.config.js
+├── vitest.config.ts      # 必需，根 vitest projects 靠它发现包，缺失则测试被静默跳过
+├── eslint.config.ts
+└── stylelint.config.ts
 ```
+
+> 主组件文件名是 **`<Pascal>.vue`**，不是 `index.vue`。早期的 `code-editor` / `pdf-viewer` /
+> `subtitle` / `video` 用的是 `index.vue`，属历史遗留，新包不要跟随。
 
 ---
 
@@ -106,13 +119,15 @@ packages/<name>/
 | 跳过类型定义 | Props/Emits 必须有完整 TypeScript 类型 |
 | 使用标签选择器 | 组件样式必须使用 `.aix-` 前缀的 class |
 | 在组件中使用 `scoped` | 组件库使用 BEM + 命名空间隔离，不用 scoped |
+| 手写 `aix-xxx` class 字符串 | 用 `useNamespace`：`ns.b()` / `ns.e()` / `ns.m()`（全库 35 个文件已统一）|
+| 组件内硬编码用户可见文案 | 走 `useLocale` + `src/locale/`（`pnpm gen --i18n` 可直接生成）|
 
 ### 必须遵守
 
 | 规范 | 说明 |
 |------|------|
-| Props/Emits 类型定义 | 在 `types.ts` 中定义完整的 TypeScript 接口 |
-| 样式命名空间 | 所有 class 使用 `.aix-<component>` 前缀 |
+| Props/Emits 类型定义 | **对外暴露的组件**：接口写在 `src/types.ts` 并从 `index.ts` 导出（带 `@default` JSDoc，`vue-docgen` 靠它生成 API 文档）。**包内部子组件**（`src/components/*.vue`）可就地声明，不必进 `types.ts`。两种情况都必须有完整类型，不允许裸 `defineProps` |
+| 样式命名空间 | class 一律由 `useNamespace`（`@aix/hooks`）生成，不手写 `aix-` 字符串 |
 | CSS Variables | 颜色/间距/圆角等使用 `var(--aix-*)` |
 | 导出规范 | `index.ts` 统一导出组件和类型 |
 | 测试覆盖 | 新组件必须编写单元测试 |
@@ -123,16 +138,22 @@ packages/<name>/
 ## 常用命令
 
 ```bash
+pnpm gen <kebab-name>     # 新建组件包（唯一正确姿势，--dry-run 可预览）
 pnpm dev                  # 启动所有包的 dev 模式
 pnpm build                # 全量构建
-pnpm build:filter @aix/<name>  # 单包构建
+pnpm build:filter @aix/<name>  # 单包构建（勿用 pnpm build --filter，见下）
 pnpm lint                 # ESLint 检查
 pnpm type-check           # TypeScript 类型检查
 pnpm cspell               # 拼写检查
 pnpm test                 # 单元测试
 pnpm storybook:dev        # 启动 Storybook
+pnpm lint:publish --strict # 发布形态体检（CI 用的就是 --strict）
 pnpm commit               # 交互式提交 (czg)
 ```
+
+> ⚠️ **单包构建必须用 `pnpm build:filter`**。`build` 脚本自带 `--filter=!./apps/*`，
+> 再写 `pnpm build --filter @aix/button` 会变成两个 filter 取**并集**，实测构建 7 个包而非 1 个。
+> `test` / `clean` 没有预置 filter，`pnpm test --filter @aix/button` 是正常的。
 
 ## 智能工作流
 

@@ -45,88 +45,69 @@ model: inherit
 
 ## 🛠️ 测试工具配置
 
-### Vitest 配置
+### 不要手写 vitest 配置
+
+本仓每个包的 `vitest.config.ts` **都只有三行**，全部继承 `@kit/vitest-config`：
 
 ```typescript
-// vitest.config.ts
+import { createVueConfig } from '@kit/vitest-config';
 import { defineConfig } from 'vitest/config';
-import vue from '@vitejs/plugin-vue';
 
-export default defineConfig({
-  plugins: [vue()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./tests/setup.ts'],
-    include: ['packages/**/*.{test,spec}.{js,ts,jsx,tsx}'],
-    exclude: ['node_modules', 'dist', 'coverage', '**/node_modules/**'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
-      include: ['packages/*/src/**/*.{vue,ts}'],
-      exclude: [
-        '**/*.stories.ts',
-        '**/*.d.ts',
-        '**/index.ts',
-        '**/types.ts',
-      ],
-      thresholds: {
-        global: {
-          branches: 80,
-          functions: 80,
-          lines: 80,
-          statements: 80,
-        },
-      },
-    },
-  },
-});
+export default defineConfig(createVueConfig());
 ```
 
-### 测试设置文件
+纯 Node 包（`kit/*`、`internal/*`）用 `createNodeConfig()`（node 环境，无 DOM / 网络 mock）。
+
+> ⚠️ **`vitest.config.ts` 是必需文件**。根 `vitest.config.ts` 的 `projects` 按
+> `packages/*/vitest.config.ts` 发现包，缺这个文件的包在根口径测试中被**静默跳过**——
+> 不报错，只是测试从来没跑过。`pnpm gen` 生成的模板已包含。
+
+需要覆盖某项时走 `overrides` 参数，不要另起炉灶：
 
 ```typescript
-// tests/setup.ts
-import { beforeAll, afterEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/vue';
-import '@testing-library/jest-dom/vitest';
-
-beforeAll(() => {
-  // Mock window.matchMedia
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation(query => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-
-  // Mock ResizeObserver
-  global.ResizeObserver = vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  }));
-
-  // Mock IntersectionObserver
-  global.IntersectionObserver = vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  }));
-});
-
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-});
+export default defineConfig(createVueConfig({ test: { testTimeout: 20_000 } }));
 ```
+
+`plugins` 传入时是**整体替换**而非合并（ai-chat 就是这样换成 `unplugin-vue` 的）。
+
+### 基座提供了什么
+
+`createVueConfig()` 的默认值（见 `internal/vitest-config/index.js`）：
+
+| 项 | 值 |
+|----|-----|
+| `environment` | `jsdom` |
+| `globals` | `true`（不用逐文件 import describe/it/expect）|
+| `include` | `__test__/**/*.{test,spec}.?(c\|m)[jt]s?(x)` —— **测试必须放 `__test__/`** |
+| `passWithNoTests` | `true` |
+| `setupFiles` | `@kit/vitest-config` 的共享 `setup.ts` |
+| 项目名 | 缺省取 package.json 的 `name`（全仓唯一）|
+
+共享 `setup.ts` 已经做掉的事，**不要在包里重复 mock**：
+
+- `global.fetch` —— 默认返回 `{ ok: true, status: 200 }`
+- `localStorage` —— 用 `defineProperty` 覆盖（vitest 5 起 jsdom 全局是只读 getter，
+  直接 `global.localStorage = ...` 会抛 "has only a getter"）
+- `console.error` 静音（`console.warn` 有意放行，便于发现 Vue 开发警告回归）
+- `document.elementFromPoint` 空实现（jsdom 未实现，tiptap/ProseMirror 会调它）
+
+需要断言 error 输出的测试请自建局部 spy，不要去改共享 setup。
+
+`matchMedia` / `ResizeObserver` / `IntersectionObserver` **没有**全局 mock——
+用到的包自行在测试里按需 stub。
+
+### 两条测试流水线
+
+```bash
+pnpm test           # turbo 编排的包级单测（各包跑自己的 vitest.config.ts）
+pnpm test:unit      # 根口径单测，--project '!storybook'
+pnpm test:stories   # story 的 play 交互测试，--project storybook（真实 Chromium）
+pnpm test:coverage  # 覆盖率，--project '!storybook' --coverage
+pnpm test:ui        # Vitest UI
+```
+
+`storybook` project 只存在于根 `vitest.config.ts`（playwright browser mode，
+`testTimeout: 60_000`），`pnpm test` 不含它。
 
 ---
 
@@ -622,30 +603,54 @@ describe('Input Methods', () => {
 
 ## 📊 测试覆盖率要求
 
-### 覆盖率目标
+### CI 门禁是「防退化棘轮」，不是 80%
 
-| 类型 | 目标覆盖率 | 说明 |
-|------|-----------|------|
-| **Props** | > 80% | 所有 Props 的不同值都应测试 |
-| **Emits** | > 80% | 所有事件都应有测试用例 |
-| **Slots** | > 80% | 所有插槽都应有测试用例 |
-| **方法** | 100% | defineExpose 的方法必须全部测试 |
-| **分支** | > 80% | if/else 等分支逻辑 |
-| **语句** | > 80% | 代码执行覆盖率 |
+根 `vitest.config.ts` 里的 `thresholds` 取的是**当前实测水位下调约 1 个点**，
+作用是「不许再掉」，不是「已经达标」：
 
-### 运行覆盖率测试
-
-```bash
-# 运行所有测试并生成覆盖率报告
-pnpm test --coverage
-
-# 运行特定包的测试
-pnpm test --coverage --filter @aix/button
-
-# 查看覆盖率报告
-open coverage/index.html
+```
+实测于 2026-08-22：statements 73.67 / branches 67.38 / functions 72.68 / lines 74.77
+门禁值：      statements 72.5  / branches 66    / functions 71.5  / lines 73.5
 ```
 
+直接把 80 接进 CI 只会立刻红、然后被 `continue-on-error` 绕过，所以采用棘轮。
+**补测试拉高水位后，请同步上调 `vitest.config.ts` 里的数字**（实测口径：`pnpm test:coverage`）。
+
+80% 仍是团队目标，写新代码时按 80% 要求自己；但**不要拿 80% 去判定某个包"不达标"**——
+以 `vitest.config.ts` 的当前值为准。
+
+### 统计口径
+
+```
+include: packages/*/src/**/*.{ts,vue}   ← 组件包
+         kit/*/src/**/*.ts              ← 工具包
+         internal/*/src/**/*.ts         ← 内部基础设施
+exclude: *.d.ts / types.ts / locale/** / __test__/** / stories/**
+         packages/*/src/index.ts        ← 只排包入口的纯重导出
+```
+
+> ⚠️ 排除项是 `packages/*/src/index.ts`，**不是 `**/index.ts`**。嵌套 index.ts
+> 常含真实逻辑（`hooks/src/use-locale`、`subtitle/src/parsers`），全排会虚高覆盖率。
+
+### 单个组件的自查维度
+
+| 维度 | 要求 |
+|------|------|
+| Props | 每个 Prop 的默认值 + 变更响应 |
+| Emits | 每个事件的触发时机 + 参数 |
+| Slots | 默认 / 具名 / 作用域插槽都有渲染断言 |
+| `defineExpose` 方法 | 100%，这是对外 API |
+| 分支 | if/else、三元、可选链兜底 |
+
+### 运行
+
+```bash
+pnpm test:coverage          # 根口径覆盖率（--project '!storybook' --coverage）
+open coverage/index.html    # HTML 报告
+```
+
+> 单包覆盖率没有现成脚本；要看单包就到包目录下跑 `npx vitest run --coverage`。
+> 注意 `pnpm test --coverage` 传给的是 turbo，不会按预期生成根口径报告。
 ---
 
 ## 📋 测试最佳实践
@@ -739,24 +744,33 @@ Object.defineProperty(window, 'localStorage', {
 ## 🛠️ 测试命令
 
 ```bash
-# 运行所有测试
+# 全量（turbo 编排各包）
 pnpm test
 
-# 运行特定包的测试
+# 特定包（test 脚本没有预置 filter，--filter 可以正常用）
 pnpm test --filter @aix/button
 
-# 监听模式
-pnpm test --watch
-
-# 运行覆盖率测试
-pnpm test --coverage
-
-# 运行特定测试文件
-pnpm test Button.test.ts
-
-# 更新快照
-pnpm test -u
+# 根口径
+pnpm test:unit        # 单测，排除 storybook project
+pnpm test:stories     # story 的 play 交互测试
+pnpm test:coverage    # 覆盖率
+pnpm test:ui          # Vitest UI
 ```
+
+包目录内直接用 vitest（监听、单文件、更新快照等都在这一层）：
+
+```bash
+cd packages/button
+npx vitest                      # 监听模式
+npx vitest run Button.test.ts   # 单文件
+npx vitest run -u               # 更新快照
+npx vitest run --coverage       # 单包覆盖率
+```
+
+> ⚠️ 没有 `pnpm test:watch` 脚本。`pnpm test --watch` 会把 `--watch` 透传给 turbo，
+> 不是你想要的监听模式——监听请到包目录下跑 `npx vitest`。
+>
+> ⚠️ 判断是否真实回归时用 `pnpm test --concurrency=1`：并行跑偶发会随机挂一个包。
 
 ---
 

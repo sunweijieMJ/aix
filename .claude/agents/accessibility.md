@@ -763,18 +763,12 @@ describe('Dialog Focus Management', () => {
 # 使用 axe-core 进行自动化检测
 pnpm add -D axe-core @axe-core/playwright
 
-# 在 Storybook 中集成 a11y 插件
-pnpm add -D @storybook/addon-a11y
 ```
 
-```typescript
-// .storybook/main.ts
-export default {
-  addons: [
-    '@storybook/addon-a11y',
-  ],
-};
-```
+> ⚠️ **本仓没有装 `@storybook/addon-a11y`**（`.storybook/main.ts` 只有
+> `addon-links` / `addon-docs` / `addon-vitest`）。在 story 里写 `parameters.a11y`
+> 不会生效。当前无障碍检查走 `/a11y-checker` skill 和本 Agent 的清单；
+> 如果要引入该插件，属于工具链变更，请先和维护者确认再改 `main.ts`。
 
 ---
 

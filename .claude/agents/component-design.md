@@ -501,19 +501,20 @@ export default {
 ```json
 {
   "name": "@aix/button",
-  "main": "./dist/index.cjs.js",
-  "module": "./dist/index.esm.js",
-  "types": "./dist/index.d.ts",
+  "main": "./lib/index.cjs",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": ["*.css", "*.scss", "*.sass"],
   "exports": {
     ".": {
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
+      "import": { "types": "./es/index.d.ts", "default": "./es/index.js" },
+      "require": { "types": "./lib/index.d.cts", "default": "./lib/index.cjs" }
     },
-    "./style.css": "./dist/style.css"
+    "./style": { "types": "./es/style.d.ts", "default": "./es/index.css" },
+    "./package.json": "./package.json"
   },
-  "files": ["dist"],
-  "sideEffects": ["*.css"]
+  "files": ["es", "lib"]
 }
 ```
 
