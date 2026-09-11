@@ -1,6 +1,6 @@
 {
   "name": "@kit/visual-testing",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Visual regression testing and Figma design-fidelity checks for AI-generated UI",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
