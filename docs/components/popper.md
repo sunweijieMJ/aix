@@ -253,8 +253,7 @@ outline: deep
 
 如需更新 API 文档，请：
 1. 修改组件源码中的 JSDoc 注释
-2. 运行 `pnpm docs:gen` 生成到 README.md
-3. 运行 `pnpm docs:sync` 同步到此文档
+2. 运行 `pnpm docs:gen`（= `gen:docs` 生成到 README.md + `sync:docs` 同步到此文档）
 :::
 
 ### Popper Props
@@ -415,6 +414,12 @@ outline: deep
 | `label` | `string` | - | - | 显示文本 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
 | `divided` | `boolean` | `false` | - | 是否在此项前显示分割线 |
+
+### DropdownItem Events
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `click` | `string \| number \| undefined` | 菜单项被点击时触发，载荷为 `command`；一般用 Dropdown 的 `command` 事件统一处理，需要单项自己响应时用它 |
 
 ### DropdownItem Slots
 

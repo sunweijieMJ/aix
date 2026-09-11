@@ -282,8 +282,7 @@ const onSubtitleChange = (cue: SubtitleCue | null, index: number) => {
 
 如需更新 API 文档，请：
 1. 修改组件源码中的 JSDoc 注释
-2. 运行 `pnpm docs:gen` 生成到 README.md
-3. 运行 `pnpm docs:sync` 同步到此文档
+2. 运行 `pnpm docs:gen`（= `gen:docs` 生成到 README.md + `sync:docs` 同步到此文档）
 :::
 
 ### Props

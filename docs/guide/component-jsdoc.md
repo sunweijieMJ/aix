@@ -193,10 +193,12 @@ export interface ButtonEmits {
 ## 文档生成流程
 
 1. **编写组件** - 添加 JSDoc 注释
-2. **生成 API** - 运行 `pnpm docs:gen`
+2. **生成 API** - 运行 `pnpm gen:docs`
    - 从组件提取 API → `packages/*/README.md`
-3. **同步文档** - 运行 `pnpm docs:sync`
+3. **同步文档** - 运行 `pnpm sync:docs`
    - 从 README 注入 API → `docs/components/*.md`
+
+> 日常直接用 `pnpm docs:gen`，它等于上面第 2、3 步串起来（`gen:docs && sync:docs`）。
 
 ## 常见问题
 

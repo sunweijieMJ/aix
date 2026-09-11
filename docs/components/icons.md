@@ -329,8 +329,7 @@ import {
 
 如需更新 API 文档，请：
 1. 修改组件源码中的 JSDoc 注释
-2. 运行 `pnpm docs:gen` 生成到 README.md
-3. 运行 `pnpm docs:sync` 同步到此文档
+2. 运行 `pnpm docs:gen`（= `gen:docs` 生成到 README.md + `sync:docs` 同步到此文档）
 :::
 
 ### 图标组件属性
@@ -344,6 +343,9 @@ import {
 | color | string | 'currentColor' | ❌ | 图标颜色 |
 | style | CSSProperties | - | ❌ | 自定义样式对象（支持所有 CSS 属性） |
 | class | string | - | ❌ | CSS 类名 |
+
+> 没有 `title` 属性。透传上去只会变成 `<svg title="…">`，SVG 不认这个属性、不会有提示气泡；
+> 需要无障碍名称请用 `aria-label`，需要悬浮提示请在外层包一个带 `title` 的元素。
 
 **事件支持**：通过 `v-bind="$attrs"` 支持所有原生 DOM 事件，包括：
 - `@click` - 点击事件
@@ -381,7 +383,7 @@ import {
   <!-- 在 Ant Design Vue 中使用 -->
   <a-button>
     <template #icon>
-      <Search :style="{ fontSize: '16px' }" />
+      <IconSearch :style="{ fontSize: '16px' }" />
     </template>
     搜索
   </a-button>
@@ -395,7 +397,7 @@ import {
 </template>
 
 <script setup lang="ts">
-import { Camera, Search, Setting } from '@aix/icons';
+import { Camera, IconSearch, Setting } from '@aix/icons';
 </script>
 ```
 
