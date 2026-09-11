@@ -27,6 +27,12 @@ metadata:
 - ✅ **调用组件生成器** - 传递设计数据给 `/component-generator`
 
 > **Figma MCP 详细操作**: 数据提取、异常处理等详见 [figma-extraction-guide.md](../../agents/figma-extraction-guide.md)
+>
+> ℹ️ **前置条件**：需要用户级 figma MCP server（`mcp__figma__*` 工具），本仓 `.mcp.json`
+> 不包含它。工具不可用时直接告知用户，不要凭 Figma 链接猜测设计内容。
+>
+> ℹ️ 本文中的 `--package` / `--with-story` 等是**给模型读的语义提示，不是真实 CLI 参数**
+> （项目内没有同名可执行脚本）。用自然语言表达同样的意图即可。
 
 ---
 
@@ -67,9 +73,23 @@ metadata:
 
    🎨 颜色映射:
    - #1890FF → var(--aix-colorPrimary)
-   - #FFFFFF → var(--aix-colorWhite)
+   - #FFFFFF → var(--aix-colorTextLight)   ← 用作深色底上的文字
+   - #FFFFFF → var(--aix-colorBgContainer) ← 用作容器背景
    - #D9D9D9 → var(--aix-colorBorder)
 ```
+
+> ⚠️ **映射必须看用途，不能只看色值**。同一个 `#FFFFFF` 在 Figma 里可能是反白文字、
+> 也可能是卡片底色，对应的 token 完全不同：
+>
+> | Figma 里的角色 | 正确 token | 说明 |
+> |---------------|-----------|------|
+> | 深色底上的文字 | `--aix-colorTextLight` | 主题感知：亮色主题下是白、暗色下是黑 |
+> | 容器/卡片背景 | `--aix-colorBgContainer` | 随主题反转 |
+> | 确实要「永远是白」 | `--aix-colorWhite` | **不随主题变**，用在文字上会让暗色主题失效 |
+>
+> 无条件把 `#FFFFFF` 映射成 `--aix-colorWhite` 是最常见的破坏主题的方式。
+> 落笔前先 `grep -rn -- "--aix-<token>" packages/theme/src/vars/` 确认 token 存在——
+> 拼错不会报错，只会静默失效。
 
 ### 步骤 3: 下载切图
 
@@ -77,10 +97,14 @@ metadata:
 📥 下载切图资源...
 
    ✓ 已下载 1 个资源:
-   packages/button/assets/images/
+   packages/button/src/assets/
    └── icon.svg (16x16 px, 1 KB)
 ```
 
+> 切图放 `packages/<pkg>/src/assets/`（`ai-chat` / `flow-graph` 的既有约定）。
+> 本仓没有 `assets/images/` 这层目录；`packages/icons/assets/` 是 icons 包的特例
+> （按分类归档 SVG 源文件，由 `packages/icons/scripts/generate.ts` 生成组件），不要照搬。
+>
 > **详细操作**: 见 [figma-extraction-guide.md#step-4-下载图片资源](../../agents/figma-extraction-guide.md#️-step-4-下载图片资源)
 
 ### 步骤 4: 调用组件生成器
@@ -131,15 +155,15 @@ metadata:
        └── Button.stories.ts
 
 3️⃣ 颜色映射
-   #1890FF → var(--aix-colorPrimary)
-   #FFFFFF → var(--aix-colorWhite)
+   #1890FF → var(--aix-colorPrimary)      (主色)
+   #FFFFFF → var(--aix-colorTextLight)    (反白文字，主题感知)
 
 ─────────────────────────────────────────
 
 💡 下一步:
    1. 运行 Storybook: pnpm storybook:dev
    2. 添加单元测试
-   3. 构建组件包: pnpm build --filter @aix/button
+   3. 构建组件包: pnpm build:filter @aix/button
 ```
 
 ---
@@ -159,7 +183,7 @@ metadata:
 pnpm storybook:dev
 
 # 步骤 4: 构建和检查
-pnpm build --filter @aix/button
+pnpm build:filter @aix/button
 pnpm type-check && pnpm lint
 
 # 步骤 5: 提交代码

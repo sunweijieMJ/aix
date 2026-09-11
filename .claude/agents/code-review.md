@@ -46,24 +46,31 @@ model: inherit
 AI 最大的问题是"一本正经地胡说八道"，以下场景需特别警惕：
 
 ```typescript
-// ❌ 幻觉库：AI 编造的不存在的包
-import { formatDate } from 'vue-date-formatter'; // 不存在！
-import { useVirtualList } from '@vueuse/virtual'; // 路径错误
+// ❌ 幻觉库：包根本不存在
+import { formatDate } from 'vue-date-formatter';
 
-// ✅ 正确：使用项目已有的依赖
+// ❌ 更隐蔽的一类：包真实存在、用法也对，但**本仓没装**。
+//    @vueuse/* 和 dayjs 都属于这类——npm 上查得到，装不上。
 import { useVirtualList } from '@vueuse/core';
 import dayjs from 'dayjs';
 
-// ✅ 验证方法：检查 package.json 或 npm 官网
-// npm view vue-date-formatter
+// ✅ 正确：用本仓真实依赖
+import { Virtualizer } from 'virtua/vue';      // packages/ai-chat 的 dependencies
+import { useNamespace } from '@aix/hooks';     // workspace 内部包
 
-// ❌ 幻觉 API：混淆不同版本的函数签名
-import dayjs from 'dayjs';
-dayjs().format('YYYY-MM-DD', { locale: 'zh-cn' }); // format 不接受第二个参数！
+// ✅ 验证方法（按可信度排序）
+// 1. grep 目标包的 package.json —— 依赖必须声明在**用它的那个包**里，
+//    根 package.json 有不代表子包能用
+// 2. grep pnpm-workspace.yaml 的 catalog: —— 版本真相来源
+// 3. npm view <pkg>  —— 只能证明包存在，不能证明本仓装了
 
-// ✅ 正确：查阅官方文档确认 API
-import dayjs from 'dayjs';
-dayjs().format('YYYY-MM-DD');
+// ❌ 幻觉 API：混淆不同库 / 不同版本的签名
+//    错：<Virtualizer :data="items" :item-height="40" />
+//    virtua 的 Virtualizer 不接受 itemHeight，那是 useVirtualList 的参数
+//
+// ✅ 正确：照包里真实的 d.ts 或仓库既有用法写
+//    <Virtualizer v-slot="{ item, index }" :data="items" />
+//    参考 packages/ai-chat/src/components/BubbleList.vue
 
 // ❌ 幻觉正则：看似正确但实际不匹配
 const emailRegex = /\w+@\w+\.\w+/; // 无法匹配 user.name@sub.domain.com

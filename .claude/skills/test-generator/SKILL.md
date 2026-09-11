@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:
   author: aix
-  version: "1.0.0"
+  version: "2.0.0"
   category: quality
 ---
 
@@ -23,18 +23,38 @@ metadata:
 ## 使用方式
 
 ```bash
-# 为单个组件生成测试
+# 为单个包生成测试
 /test-generator packages/button
 
 # 为指定组件文件生成
-/test-generator packages/select/src/Select.vue
+/test-generator packages/popper/src/components/Popover.vue
 
 # 同时生成 Story
 /test-generator packages/button --with-story
 
-# 只生成缺失的测试
+# 只补缺失的部分
 /test-generator packages/button --missing-only
 ```
+
+> ℹ️ `--with-story` / `--missing-only` 是**给模型读的语义提示，不是真实 CLI 参数**。
+>
+> ⚠️ **包名只能从 `ls packages/` 的真实结果取**。本仓 13 个包：
+> `ai-chat` `audio` `button` `code-editor` `flow-graph` `hooks` `icons`
+> `pdf-viewer` `popper` `rich-text-editor` `subtitle` `theme` `video`。
+> 下文示例里的 `Select` 是**虚构的示意组件**（本仓没有 select 包），
+> 用来演示 Props/Emits/Slots/键盘 四个维度该怎么覆盖——照搬结构，不要照搬包名。
+
+## 本仓的既有约定（先看这四条）
+
+| 约定 | 写法 | 依据 |
+|------|------|------|
+| 导入路径 | `import { Button } from '../src'`（走包入口） | `packages/button/__test__/Button.test.ts` |
+| 测试基座 | 各包 `vitest.config.ts` → `createVueConfig()`（`@kit/vitest-config`） | 包里已有，不用自己配 jsdom |
+| 文件位置 | `packages/<pkg>/__test__/<Pascal>.test.ts` | `pnpm gen` 模板 |
+| **多语言** | **有 locale 的包必须测文案与覆盖** | 见下方「i18n 测试」 |
+
+> ⚠️ 没有 `vitest.config.ts` 的包会被根 `projects` **静默跳过**，测试等于没跑。
+> 往已有包补测试一般不用担心（`pnpm gen` 模板已含），但遇到"测试明明写了却没执行"先查这个。
 
 ## 执行流程
 
@@ -280,10 +300,63 @@ describe('Select', () => {
    - 总计: 25 个测试用例
 
 💡 下一步:
-   1. 运行测试: pnpm test --filter @aix/select
-   2. 检查覆盖率: /coverage-analyzer packages/select
+   1. 运行测试: pnpm test --filter @aix/<pkg>
+   2. 检查覆盖率: /coverage-analyzer packages/<pkg>
    3. 补充业务逻辑测试
 ```
+
+## i18n 测试（本仓特有，容易漏）
+
+CLAUDE.md 把"组件内硬编码用户可见文案"列为禁止项，文案走 `useLocale` + `src/locale/`。
+对应地，有 locale 的包**必须测三件事**（参考 `packages/button/__test__/Button.test.ts`）：
+
+```typescript
+import { createLocale } from '@aix/hooks';
+import { mount } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import { Button, buttonEnUS, buttonLocale, buttonZhCN } from '../src';
+
+describe('i18n', () => {
+  it('默认语言下取 zh-CN 文案', () => {
+    const wrapper = mount(Button, { props: { loading: true } });
+    expect(wrapper.find('.aix-button__loading').attributes('aria-label')).toBe(
+      buttonZhCN.loadingText,
+    );
+  });
+
+  it('切到 en-US 取英文文案', () => {
+    const wrapper = mount(Button, {
+      props: { loading: true },
+      // createLocale(...) 的返回值直接就是 Vue 插件，不要解构 install
+      global: { plugins: [createLocale('en-US')] },
+    });
+    expect(wrapper.find('.aix-button__loading').attributes('aria-label')).toBe(
+      buttonEnUS.loadingText,
+    );
+  });
+
+  it('应用级 messages 覆盖生效', () => {
+    const wrapper = mount(Button, {
+      props: { loading: true },
+      global: {
+        plugins: [
+          createLocale('zh-CN', { messages: { button: { 'zh-CN': { loadingText: '处理中' } } } }),
+        ],
+      },
+    });
+    expect(wrapper.find('.aix-button__loading').attributes('aria-label')).toBe('处理中');
+  });
+
+  it('语言包覆盖两种语言', () => {
+    expect(Object.keys(buttonLocale).sort()).toEqual(['en-US', 'zh-CN']);
+  });
+});
+```
+
+> `messages` 的第一层 key 必须与该包 `src/locale/index.ts` 里
+> `declare module '@aix/hooks'` 注册的名字一致，写错了覆盖不生效且没有类型报错。
+> 具体导出名（`buttonZhCN` / `buttonEnUS` / `buttonLocale`）与文案 key（Button 是
+> `loadingText`）以各包 `src/index.ts` 和 `src/locale/` 实际内容为准，不要凭语义猜 key 名。
 
 ## 测试模板规范
 
@@ -329,9 +402,9 @@ describe('Slots', () => {
 
 ```bash
 # 完整测试工作流
-/test-generator packages/select --with-story  # 1. 生成测试
-pnpm test --filter @aix/select                # 2. 运行测试
-/coverage-analyzer packages/select            # 3. 检查覆盖率
+/test-generator packages/<pkg> --with-story  # 1. 生成测试
+pnpm test --filter @aix/<pkg>                # 2. 运行测试
+/coverage-analyzer packages/<pkg>            # 3. 检查覆盖率
 ```
 
 ## 相关文档

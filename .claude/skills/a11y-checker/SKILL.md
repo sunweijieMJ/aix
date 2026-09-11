@@ -27,10 +27,10 @@ metadata:
 /a11y-checker packages/button/src/Button.vue
 
 # 检查整个包
-/a11y-checker packages/select
+/a11y-checker packages/popper
 
 # 只检查特定规则
-/a11y-checker packages/dialog --rules aria,keyboard
+/a11y-checker packages/popper --rules aria,keyboard
 
 # 生成修复建议（自动修复）
 /a11y-checker packages/button --fix
@@ -41,13 +41,19 @@ metadata:
 
 ### 参数说明
 
-| 参数 | 说明 | 默认值 | 示例 |
-|------|------|-------|------|
-| 路径 | 组件文件或包路径 | 必需 | `packages/button` |
-| `--rules` | 检查规则 | `all` | `--rules aria,keyboard,focus` |
-| `--fix` | 自动修复 | `false` | `--fix` |
-| `--ci` | CI 模式输出 | `false` | `--ci` |
-| `--output` | 报告输出文件 | - | `--output report.json` |
+> ℹ️ **下表的 `--flag` 是给模型解读的语义提示，不是真实 CLI 参数**——项目里没有
+> `a11y-checker` 可执行文件，本 Skill 全部靠模型读源码 + 人工判断完成。
+> 用自然语言表达同样意图即可："只看键盘导航"、"顺手把能改的改掉"。
+>
+> 特别是 `--fix`：没有自动修复引擎，所谓"修复"是模型用 Edit 工具改代码，
+> **每一处都要人 review**。
+
+| 语义提示 | 含义 |
+|---------|------|
+| 路径（必需） | 组件文件或包路径，如 `packages/button` |
+| `--rules aria,keyboard,focus` | 只查指定维度 |
+| `--fix` | 除了报告问题，直接改代码（人工 review 后再合） |
+| `--ci` / `--output` | 把结论整理成结构化文本，便于贴进 PR |
 
 ---
 
@@ -117,14 +123,28 @@ const missingKeys = requiredKeys.filter(k => !handledKeys.includes(k));
 
 #### 检查逻辑
 
-```typescript
-// 检查是否使用了焦点陷阱
-const hasFocusTrap = script.includes('useFocusTrap') ||
-                     script.includes('focus-trap');
+> ⚠️ **本仓没有现成的焦点陷阱实现**：`@aix/hooks` 的 12 个 composable
+> （`use-locale` / `use-namespace` / `use-click-outside` / `use-z-index` / `use-id` /
+> `use-controllable` / `use-event-listener` / `use-resize-observer` / `use-timeout` /
+> `use-interval` / `use-clipboard` / `format-duration`）里**没有 `useFocusTrap`**，
+> `@vueuse/integrations` 也不是本仓依赖。
+>
+> 所以不要去 grep `useFocusTrap` 然后报告"缺焦点陷阱"——那样每个弹层组件都会被判为不合格。
+> 正确做法是看**行为是否实现**：Tab / Shift+Tab 是否被拦截并在容器内循环。
+> 参考实现见 [accessibility.md](../../agents/accessibility.md) 的「焦点管理」章节。
 
-// 检查是否保存了之前的焦点
-const savesFocus = script.includes('previousActiveElement') ||
-                   script.includes('document.activeElement');
+```typescript
+// 判断焦点陷阱：看行为，不看是否 import 了某个特定 hook
+const trapsTab =
+  /key\s*===?\s*['"]Tab['"]/.test(script) ||        // 手写 keydown 拦截
+  /@keydown\.tab/.test(template);
+
+// 检查是否保存并恢复了触发元素的焦点
+const savesFocus = script.includes('document.activeElement');
+const restoresFocus = /\.focus\(\)/.test(script);
+
+// 检查是否有可聚焦元素查询（焦点陷阱的必要条件）
+const queriesFocusable = /tabindex|\[href\]|focusable/i.test(script);
 ```
 
 ---
@@ -134,7 +154,7 @@ const savesFocus = script.includes('previousActiveElement') ||
 ### JSON 报告格式
 
 ```bash
-/a11y-checker packages/select --ci --output a11y-report.json
+/a11y-checker packages/popper --ci --output a11y-report.json
 ```
 
 生成的报告：
@@ -156,12 +176,12 @@ const savesFocus = script.includes('previousActiveElement') ||
       "warnings": 2,
       "issues": [
         {
-          "rule": "aria-role-required",
+          "rule": "aria-state-required",
           "severity": "error",
-          "message": "缺少 role=\"combobox\"",
-          "file": "packages/select/src/Select.vue",
+          "message": "触发器缺少 aria-expanded",
+          "file": "packages/popper/src/components/Popover.vue",
           "line": 3,
-          "suggestion": "添加 role=\"combobox\" 属性"
+          "suggestion": "在触发元素上绑定 :aria-expanded=\"visible\""
         }
       ]
     },
@@ -180,7 +200,7 @@ const savesFocus = script.includes('previousActiveElement') ||
   },
   "files": [
     {
-      "path": "packages/select/src/Select.vue",
+      "path": "packages/popper/src/components/Popover.vue",
       "score": 45,
       "issues": 9
     }
@@ -188,29 +208,23 @@ const savesFocus = script.includes('previousActiveElement') ||
 }
 ```
 
-### GitHub Actions 集成
+### 关于 CI 集成
 
-```yaml
-# .github/workflows/a11y.yml
-- name: A11y Check
-  run: |
-    # 使用 Claude Code 运行检查
-    claude "/a11y-checker packages --ci --output a11y-report.json"
-
-- name: Upload Report
-  uses: actions/upload-artifact@v4
-  with:
-    name: a11y-report
-    path: a11y-report.json
-
-- name: Check Score
-  run: |
-    SCORE=$(jq '.summary.score' a11y-report.json)
-    if [ "$SCORE" -lt 80 ]; then
-      echo "A11y score ($SCORE) is below threshold (80)"
-      exit 1
-    fi
-```
+> ⚠️ **本 Skill 不能作为 CI 门禁**，上面的 JSON 只是**报告的组织格式**，不是某个命令的
+> 真实输出——模型的判断不具备确定性，不能拿来当 `exit 1` 的依据。
+> 本仓也没有接入 `addon-a11y` 或 axe。
+>
+> 真正进 CI 的无障碍检查有两条可选路径，都需要先补依赖（人工决策）：
+>
+> | 方式 | 落点 | 性质 |
+> |------|------|------|
+> | 在单测里断言 ARIA / 键盘行为 | `packages/<pkg>/__test__/` | ✅ 确定性，已被 `pnpm test` 门禁覆盖 |
+> | story 的 `play` 里跑交互断言 | `packages/<pkg>/stories/` | ✅ 确定性，`pnpm test:stories` 覆盖 |
+> | 本 Skill | 人工触发 | ⚠️ 启发式，用于**发现**问题，不用于**阻断** |
+>
+> 所以正确的工作流是：用本 Skill 找出缺口 → 把结论落成 `__test__/` 里的断言 →
+> 由 `pnpm test` 长期守住。测试写法见 [testing.md](../../agents/testing.md)
+> 与 [team-tester](../../agents/team-tester.md)。
 
 ---
 

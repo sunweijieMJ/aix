@@ -170,53 +170,37 @@ onDeactivated(() => {
 
 ## 2. 虚拟滚动
 
-### 2.1 使用 @vueuse/core 虚拟列表
+### 2.1 使用 virtua（本仓既有方案）
+
+本仓的虚拟滚动用 **`virtua`**（`packages/ai-chat` 的 dependencies），不是 `@vueuse/core`
+——`@vueuse/*` 不是本仓任何包的依赖，不要凭印象引入。参考实现见
+`packages/ai-chat/src/components/BubbleList.vue`。
+
+`virtua/vue` 的 `Virtualizer` 支持不定高条目，无需预先声明 `itemHeight`：
 
 ```vue
 <script setup lang="ts">
-import { useVirtualList } from '@vueuse/core';
+import { Virtualizer } from 'virtua/vue';
+import { useNamespace } from '@aix/hooks';
 
-interface Props {
-  items: Item[];
-  itemHeight?: number;
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  itemHeight: 48,
-});
-
-const { list, containerProps, wrapperProps } = useVirtualList(
-  toRef(props, 'items'),
-  {
-    itemHeight: props.itemHeight,
-    overscan: 5, // 预渲染数量
-  }
-);
+const ns = useNamespace('virtual-list');
+const props = defineProps<{ items: Item[] }>();
 </script>
 
 <template>
-  <div v-bind="containerProps" class="aix-virtual-list">
-    <div v-bind="wrapperProps">
-      <div
-        v-for="{ data, index } in list"
-        :key="data.id"
-        class="aix-virtual-list__item"
-      >
-        <slot :item="data" :index="index">
-          {{ data }}
-        </slot>
+  <div :class="ns.b()">
+    <Virtualizer v-slot="{ item, index }" :data="props.items">
+      <div :key="(item as Item).id" :class="ns.e('item')">
+        <slot :item="item" :index="index" />
       </div>
-    </div>
+    </Virtualizer>
   </div>
 </template>
-
-<style lang="scss">
-.aix-virtual-list {
-  height: 400px;
-  overflow-y: auto;
-}
-</style>
 ```
+
+> ⚠️ **默认插槽里只能有一个根节点**。dev 构建下 Vue 会把模板注释编译成真实的注释 vnode，
+> 插槽产出 2 个 vnode 时 virtua 会放弃你给的 `key` 回退到下标，导致复用错位。
+> 注释要写在 `<Virtualizer>` 之外——这个坑 `BubbleList.vue` 已经踩过并留了注释。
 
 ### 2.2 虚拟滚动 Hook
 
@@ -318,9 +302,12 @@ const HeavyComponent = computed(() => {
 
 ### 3.2 图片懒加载
 
+`IntersectionObserver` 直接用原生 API + `onScopeDispose` 收口，不引第三方
+（`@vueuse/*` 不是本仓依赖）：
+
 ```vue
 <script setup lang="ts">
-import { useIntersectionObserver } from '@vueuse/core';
+import { onScopeDispose, ref, useTemplateRef, watch } from 'vue';
 
 interface Props {
   src: string;
@@ -331,20 +318,33 @@ const props = withDefaults(defineProps<Props>(), {
   placeholder: '/placeholder.png',
 });
 
-const imgRef = ref<HTMLImageElement | null>(null);
+const imgRef = useTemplateRef<HTMLImageElement>('imgRef');
 const loaded = ref(false);
 const currentSrc = ref(props.placeholder);
 
-const { stop } = useIntersectionObserver(
-  imgRef,
-  ([{ isIntersecting }]) => {
-    if (isIntersecting) {
+let observer: IntersectionObserver | null = null;
+
+/** 观察者必须在 scope 销毁时断开，否则组件卸载后仍持有 DOM 引用 */
+function disconnect() {
+  observer?.disconnect();
+  observer = null;
+}
+
+watch(imgRef, (el) => {
+  disconnect();
+  if (!el) return;
+  observer = new IntersectionObserver(
+    ([entry]) => {
+      if (!entry?.isIntersecting) return;
       currentSrc.value = props.src;
-      stop();
-    }
-  },
-  { rootMargin: '100px' } // 提前 100px 加载
-);
+      disconnect();
+    },
+    { rootMargin: '100px' }, // 提前 100px 加载
+  );
+  observer.observe(el);
+});
+
+onScopeDispose(disconnect);
 </script>
 
 <template>
@@ -389,30 +389,34 @@ const openDialog = async () => {
 
 ## 4. 防抖与节流
 
-### 4.1 使用 @vueuse/core
+### 4.1 本仓的写法：setTimeout + scope 收口
+
+**本仓没有装 `@vueuse/core`**，`@aix/hooks` 也没有 debounce/throttle。现有三处
+（`pdf-viewer` 的 resize、`rich-text-editor` 的 mention suggestion、`video` 的
+`useStreamAdapter`）都是手写 timer，共同点是**卸载时必须清掉**，否则定时器会在组件销毁后
+回调到已卸载的响应式状态：
 
 ```typescript
-import { useDebounceFn, useThrottleFn } from '@vueuse/core';
+import { onScopeDispose } from 'vue';
 
-// 防抖：搜索输入
-const handleSearch = useDebounceFn((value: string) => {
-  emit('search', value);
-}, 300);
+let timer: ReturnType<typeof setTimeout> | null = null;
 
-// 节流：滚动事件
-const handleScroll = useThrottleFn((e: Event) => {
-  updateScrollPosition(e);
-}, 100);
+function handleSearch(value: string) {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    timer = null;
+    emit('search', value);
+  }, 300);
+}
 
-// 带 maxWait 的防抖
-const handleInput = useDebounceFn(
-  (value: string) => {
-    emit('input', value);
-  },
-  300,
-  { maxWait: 1000 } // 最多等待 1 秒
-);
+onScopeDispose(() => {
+  if (timer) clearTimeout(timer);
+});
 ```
+
+> 要引入 `@vueuse/core` 得先过人工决策（改 `pnpm-workspace.yaml` 的 `catalog:` + 子包
+> package.json），不是随手 import 就能用的——CLAUDE.md 的 Sentinel 规范明确把依赖变更
+> 划归人工。真需要通用实现时，正确做法是往 `@aix/hooks` 加 `use-debounce`。
 
 ### 4.2 自定义 Hook
 
@@ -470,32 +474,37 @@ export function useDebouncedRef<T>(value: T, delay = 300) {
 
 ### 5.2 按需导入
 
-```typescript
-// 正确：按需导入
-import { Button, Input } from '@aix/components';
-import { useDebounce } from '@aix/hooks';
+本仓**没有** `@aix/components` 这种聚合包，每个组件是独立的 `@aix/<name>` 包
+（`ls packages/` 可查），按包导入天然就是按需的：
 
-// 错误：全量导入
-import * as Components from '@aix/components';
+```typescript
+// 正确：从具体包导入
+import { Button } from '@aix/button';
+import { useNamespace } from '@aix/hooks';
+
+// 错误：命名空间导入会挡掉 Tree-shaking
+import * as Hooks from '@aix/hooks';
 ```
 
 ### 5.3 外部化依赖
 
+**不要手写 external 列表。** 根 `rollup.config.js` 的 `external` 是一个从
+`package.json` 依赖推导的函数（见 `collectExternalDeps` / `matchesDep`）：ESM/CJS 外部化
+全部声明依赖，UMD 只外部化 `vue`。
+
 ```javascript
-// rollup.config.js
-export default {
-  external: [
-    'vue',
-    '@vueuse/core',
-    /^@aix\//,  // 外部化所有 @aix 包
-  ],
-  output: {
-    globals: {
-      vue: 'Vue',
-    },
-  },
-};
+// rollup.config.js（实际实现，此处仅说明机制，改动以源码为准）
+external: (id) => {
+  if (outputFile) {
+    // UMD 打包所有依赖，只外部化 Vue
+    return id === 'vue' || id.startsWith('vue/');
+  }
+  return matchesDep(id, collectExternalDeps(pkg));
+},
 ```
+
+这意味着**新依赖只要写进包的 `dependencies` 就会被自动外部化**，无需改构建配置；反过来，
+漏写 dependencies 会让它被打进产物。
 
 ### 5.4 代码分割
 

@@ -46,7 +46,9 @@
       "Bash(git clean -f*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
-      "Bash(git branch -D*)"
+      "Bash(git branch -D*)",
+      "Bash(git stash drop*)",
+      "Bash(git stash clear*)"
     ]
   },
   "enabledMcpjsonServers": ["aix"],

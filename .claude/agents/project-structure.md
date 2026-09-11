@@ -190,7 +190,7 @@ hooks (无依赖)
 
 ### 配置文件
 
-**pnpm-workspace.yaml**:
+**pnpm-workspace.yaml**（除 workspace 成员，还承载 `catalog:` 依赖版本表）:
 
 ```yaml
 packages:
@@ -198,6 +198,10 @@ packages:
   - 'internal/*'
   - 'kit/*'
   - 'packages/*'
+
+# 依赖目录（单一版本真相来源）：子包与根用 `catalog:` 引用，版本只在此处维护
+catalog:
+  # …见「依赖版本管理」章节
 ```
 
 ### 常用命令
@@ -444,53 +448,45 @@ packages/tooltip/
 > 构建用 **rollup**（`rollup.config.js`），不是 vite——包里没有 `vite.config.ts`。
 > 生成器实现见 `scripts/gen/`，模板在 `scripts/gen/templates/*.eta`，是新建包的单一事实来源。
 
-#### 2. 手动创建
+#### 2. 不要手动创建
 
-**package.json 模板**:
+`pnpm gen` 是新建包的**单一事实来源**，手写脚手架一定会和
+`scripts/gen/templates/*.eta` 漂移。这里只解释生成出来的 `package.json` 为什么长那样
+——改模板或调整已有包时别踩：
+
+| 字段 | 值 | 为什么 |
+|------|-----|--------|
+| `main` / `module` | `./lib/index.cjs` / `./es/index.js` | 双格式输出，**产物是 `es/` + `lib/`，不是 `dist/`** |
+| `types` | `./es/index.d.ts` | 由 `vue-tsc` 生成到 `es/` |
+| `sideEffects` | `["*.css","*.scss","*.sass"]` | 漏了样式会被 Tree-shaking 删掉 |
+| `exports` | 嵌套双包形式 | 扁平写法会让 CJS 消费方拿到 ESM 的 `.d.ts`（masquerading），attw 报错 |
+| `exports["./style"]` | 必须带 `types` | 否则消费方开 `noUncheckedSideEffectImports` 时解析不到 |
+| `files` | `["es","lib"]` | 只发产物 |
+| 第三方 devDeps | `"catalog:"` | 版本在 `pnpm-workspace.yaml`，不写字面量 |
+| 内部包依赖 | `"workspace:^"` | 发布时替换为 `^x.y.z` |
+| `publishConfig` | **不要加** | registry 由根 `.npmrc` 的 scoped 配置解析 |
+
+完整字段约束与三个高频踩坑（扁平 exports / `./style.css` / 通配 `./es/*`）见
+[coding-standards.md](coding-standards.md) 的「package.json 配置」；由
+`pnpm lint:publish --strict` 把关。
+
+**构建脚本用 rollup，不是 vite**（包里没有 `vite.config.ts`），且顺序有讲究：
 
 ```json
 {
-  "name": "@aix/tooltip",
-  "version": "0.0.0",
-  "description": "Tooltip component for AIX",
-  "type": "module",
-  "main": "./lib/index.cjs",
-  "module": "./es/index.js",
-  "types": "./es/index.d.ts",
-  "style": "./es/index.css",
-  "sideEffects": ["*.css", "*.scss", "*.sass"],
-  "exports": {
-    ".": {
-      "import": { "types": "./es/index.d.ts", "default": "./es/index.js" },
-      "require": { "types": "./lib/index.d.cts", "default": "./lib/index.cjs" }
-    },
-    "./style": { "types": "./es/style.d.ts", "default": "./es/index.css" },
-    "./package.json": "./package.json"
-  },
-  "files": ["es", "lib"]
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && vue-tsc --declaration --emitDeclarationOnly --outDir dist",
-    "test": "vitest",
-    "test:coverage": "vitest --coverage"
-  },
-  "keywords": ["vue", "component", "tooltip", "aix"],
-  "license": "MIT",
-  "peerDependencies": {
-    "vue": "^3.5.31"
-  },
-  "dependencies": {
-    "@aix/hooks": "workspace:^",
-    "@aix/theme": "workspace:^"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-vue": "^5.0.0",
-    "vite": "^5.0.0",
-    "vitest": "^1.0.0",
-    "vue-tsc": "^1.8.0"
+    "dev": "rollup -c -w",
+    "build": "pnpm run clean && pnpm run build:types && pnpm run build:js",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es -p tsconfig.build.json",
+    "build:js": "rollup -c",
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   }
 }
 ```
+
+> ⚠️ **`build:types` 必须在 `build:js` 之前**：`build:js` 的 dts bundle 段依赖
+> `es/*.d.ts` 已存在，顺序颠倒会导致类型产物缺失。
+> 实际内容以 `scripts/gen/templates/package.json.eta` 与各包 `package.json` 为准。
 
 ### 删除包
 
@@ -499,7 +495,7 @@ packages/tooltip/
 rm -rf packages/tooltip
 
 # 2. 更新依赖它的包
-# 在其他包的 package.json 中移除 @aix/tooltip
+# 在其他包的 package.json 中移除 @aix/<old-name>
 
 # 3. 重新安装依赖
 pnpm install
@@ -512,13 +508,13 @@ pnpm build
 
 ```bash
 # 1. 更新 package.json 的 name 字段
-# packages/tooltip/package.json
+# packages/<old-name>/package.json
 {
-  "name": "@aix/popover"  // 修改包名
+  "name": "@aix/<new-name>"  // 修改包名
 }
 
 # 2. 更新所有引用该包的地方
-# 搜索并替换 "@aix/tooltip" → "@aix/popover"
+# 搜索并替换 "@aix/<old-name>" → "@aix/<new-name>"
 
 # 3. 重新安装依赖
 pnpm install
@@ -595,34 +591,68 @@ pnpm build
 }
 ```
 
-### 依赖版本管理
+### 依赖版本管理：catalog 是版本的单一真相来源
 
-#### 统一版本
+**第三方依赖的版本号只写在 `pnpm-workspace.yaml` 的 `catalog:` 里**，子包和根一律用
+`catalog:` 协议引用。这是本仓最容易被写错的一条约定——凭习惯往子包 package.json 里
+填 `"vitest": "^5.0.0"` 会绕过 catalog，造成版本分叉。
 
-**根 package.json 管理公共依赖**:
+```yaml
+# pnpm-workspace.yaml —— 版本只在这里维护
+packages:
+  - 'apps/*'
+  - 'internal/*'
+  - 'kit/*'
+  - 'packages/*'
 
-```json
-{
-  "devDependencies": {
-    "vue": "^3.5.31",
-    "vite": "^5.0.0",
-    "vitest": "^1.0.0",
-    "typescript": "^5.9.3"
-  }
-}
+catalog:
+  eslint: ^10.9.0
+  typescript: ^5.9.3
+  vitest: ^5.0.0
+  vue: ^3.5.41
+  # …完整清单见实际文件
 ```
 
-#### 版本范围
-
 ```json
+// packages/button/package.json —— 引用，不写版本号
 {
   "dependencies": {
-    "vue": "^3.5.31",      // 主版本锁定，允许次版本和补丁版本更新
-    "lodash": "~4.17.0",  // 次版本锁定，只允许补丁版本更新
-    "dayjs": "1.11.10"    // 精确版本，不允许更新
+    "@aix/hooks": "workspace:^",      // workspace 内部包
+    "@aix/theme": "workspace:^"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0"                   // peer 是对外兼容声明，故意宽于 catalog
+  },
+  "devDependencies": {
+    "@kit/vitest-config": "workspace:^",
+    "typescript": "catalog:",         // 第三方一律 catalog:
+    "vitest": "catalog:"
   }
 }
 ```
+
+#### 三种写法各管什么
+
+| 写法 | 用于 | 版本在哪 |
+|------|------|---------|
+| `catalog:` | 所有第三方依赖 | `pnpm-workspace.yaml` 的 `catalog:` |
+| `workspace:^` | monorepo 内部包（`@aix/*`、`@kit/*`） | 目标包自己的 version |
+| 字面量版本号 | **只有 peerDependencies** | 就地（对外兼容区间，通常宽于 catalog） |
+
+#### 升级依赖的正确姿势
+
+```bash
+# 1. 改 pnpm-workspace.yaml 的 catalog: 条目
+# 2. 重装让 lockfile 跟上
+pnpm install
+# 3. 全仓验证（catalog 是共享的，一处升级影响所有引用方）
+pnpm type-check && pnpm test
+```
+
+> ⚠️ **新增第三方依赖需要人工决策**（CLAUDE.md 的 Sentinel 规范把 package.json 变更划归人工）。
+> 流程是：先往 `catalog:` 加版本，再在**用它的那个包**里写 `"<pkg>": "catalog:"`。
+> 依赖声明在哪个包很重要——根 package.json 有不代表子包能 import，而且
+> `rollup.config.js` 的 external 是从**包自己的** package.json 推导的，漏声明会把依赖打进产物。
 
 ### 依赖检查
 
@@ -859,12 +889,12 @@ pnpm list --depth Infinity | grep -E "deduped"
 
 # 示例：
 # ❌ 错误
-@aix/button depends on @aix/input
-@aix/input depends on @aix/button
+@aix/button depends on @aix/popper
+@aix/popper depends on @aix/button
 
 # ✅ 正确
 @aix/button depends on @aix/hooks
-@aix/input depends on @aix/hooks
+@aix/popper depends on @aix/hooks
 ```
 
 ### Q5: 构建缓存不更新怎么办？

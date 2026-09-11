@@ -1,4 +1,4 @@
-# CLAUDE.md - AI 开发助手快速指南
+# AI 开发助手快速指南
 
 ## Git 提交规则
 - **提交格式**: `type: subject` 或 `type(scope): subject`
@@ -114,12 +114,12 @@ packages/<name>/
 | 禁止操作 | 说明 |
 |---------|------|
 | 修改 `es/`、`lib/`、`dist/` | 构建产物，自动生成 |
-| 硬编码颜色值 | 必须使用 `@aix/theme` 的 CSS Variables |
+| 硬编码颜色值 | 必须使用 `@aix/theme` 的 CSS Variables。Stylelint **只拦承载颜色属性上的裸 hex**（`rgb()` / `hsl()` / 命名色有意不拦，仓库大量用 `rgb(0 0 0 / .6)` 做蒙层）——没报错不等于写对了 |
 | 组件间直接引用源码 | 必须通过 `workspace:^` 依赖引用 |
 | 跳过类型定义 | Props/Emits 必须有完整 TypeScript 类型 |
 | 使用标签选择器 | 组件样式必须使用 `.aix-` 前缀的 class |
 | 在组件中使用 `scoped` | 组件库使用 BEM + 命名空间隔离，不用 scoped |
-| 手写 `aix-xxx` class 字符串 | 用 `useNamespace`：`ns.b()` / `ns.e()` / `ns.m()`（全库 35 个文件已统一）|
+| 手写 `aix-xxx` class 字符串 | 用 `useNamespace`：`ns.b()` / `ns.e()` / `ns.m()`。**注意这是零强制力的软约定**：Stylelint 的 `selector-class-pattern` 只校验 `aix-` 前缀，不管 class 是怎么来的。目前仅 `ai-chat`(31) / `flow-graph`(2) / `button`(1) 落地；`popper` / `rich-text-editor` / `pdf-viewer` / `video` 等仍在模板里手写字符串，属待收敛的历史状态——**新代码一律走 `useNamespace`，不要参照这些包** |
 | 组件内硬编码用户可见文案 | 走 `useLocale` + `src/locale/`（`pnpm gen --i18n` 可直接生成）|
 
 ### 必须遵守

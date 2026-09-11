@@ -37,7 +37,8 @@ description: 快速提醒 PR 审查清单，确保代码质量和项目规范
 
 ## 3. 测试与文档
 
-- [ ] 单测覆盖率 ≥ 80%，`pnpm test` 全通
+- [ ] `pnpm test` 全通；`pnpm test:coverage` 不低于 `vitest.config.ts` 的棘轮阈值
+      （**门禁不是 80%**，80% 是长期目标——机制见 [testing.md](../agents/testing.md)）
 - [ ] 复杂逻辑有注释，公共函数有 JSDoc
 - [ ] README / CHANGELOG / API 文档已同步
 

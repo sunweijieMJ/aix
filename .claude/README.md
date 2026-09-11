@@ -32,9 +32,11 @@
 > | 约束 | 真正的执行者 |
 > |------|------------|
 > | 类型完整性 | `pnpm type-check`（CI 门禁）|
-> | 硬编码色值、样式规范 | ESLint + Stylelint（`pnpm lint`，CI 门禁）|
+> | 硬编码色值 | Stylelint（`pnpm lint`，CI 门禁）——**只拦承载颜色属性上的裸 hex**；`rgb()` / `hsl()` / 命名色**有意不拦**（仓库大量用 `rgb(0 0 0 / .6)` 做蒙层），规则与原因见 `internal/stylelint-config/component-library.js` |
+> | class 用 `aix-` 命名空间 | Stylelint 的 `selector-class-pattern`（只管前缀，**不管是否用 `useNamespace` 生成**——那是零强制力的软约定）|
 > | 发布形态（exports / files / 类型解析）| `pnpm lint:publish --strict`（CI 门禁）|
-> | 测试与覆盖率不退化 | `pnpm test` + `vitest.config.ts` 的棘轮阈值 |
+> | 测试不退化 | `pnpm test`（CI `test` job）|
+> | 覆盖率不退化 | `pnpm test:coverage` + `vitest.config.ts` 的棘轮阈值（CI `coverage` job，**门禁不是 80%**）|
 > | commit message 格式 | commitlint + husky |
 >
 > 本仓当前的 Hooks **只做会话信息输出**（见下方「Hooks」章节），不承担任何规则强制。
@@ -54,15 +56,21 @@ Skills 是命令式工具，用于快速完成组件库开发任务。
 | `/component-generator` | `component-generator/SKILL.md` | 往已有包里加子组件（useNamespace / useLocale / CSS 变量） | 生成组件代码 |
 | `/figma-to-component` | `figma-to-component/SKILL.md` | 从 Figma 设计稿生成 Vue 组件，支持动态颜色映射 | 设计稿还原 |
 | `/story-generator` | `story-generator/SKILL.md` | 生成 Storybook story 文件 | 编写 story |
-| `/docs-generator` | `docs-generator/SKILL.md` | 从组件提取 API 生成文档 | 生成 API 文档 |
-| `/test-generator` | `test-generator/SKILL.md` | 自动生成组件测试模板 | 编写测试 |
-| `/coverage-analyzer` | `coverage-analyzer/SKILL.md` | 测试覆盖率分析，支持 CI 集成和趋势对比 | 覆盖率检查 |
-| `/code-optimizer` | `code-optimizer/SKILL.md` | 自动检测并修复性能/类型/包体积问题 | 代码优化 |
-| `/a11y-checker` | `a11y-checker/SKILL.md` | 自动化无障碍检查，ARIA/键盘/焦点管理 | 无障碍检查 |
+| `/docs-generator` | `docs-generator/SKILL.md` | **驱动 `pnpm docs:gen` 管线**；只手写散文部分，API 表格是机器所有的 | 生成 API 文档 |
+| `/test-generator` | `test-generator/SKILL.md` | 生成 Vitest + VTU 测试模板（含 i18n / a11y 维度） | 编写测试 |
+| `/coverage-analyzer` | `coverage-analyzer/SKILL.md` | 跑真实覆盖率并解读**棘轮门禁**，定位缺口 | 覆盖率检查 |
+| `/code-optimizer` | `code-optimizer/SKILL.md` | 检测性能/类型/a11y/包体积问题并给修复（人工 review） | 代码优化 |
+| `/a11y-checker` | `a11y-checker/SKILL.md` | 启发式无障碍检查，ARIA/键盘/焦点管理 | 无障碍检查 |
+
+> ⚠️ Skills 是 prompt 指南，**没有确定性执行引擎**：文中的 `--flag` 不是真实 CLI 参数，
+> "自动修复"是模型用 Edit 工具改代码。要确定性的东西找 `pnpm lint` / `type-check` /
+> `test` / `lint:publish`（见开头「强制力」表）。
 
 ### 建议工作流（非自动编排）
 
-> ⚠️ Claude Code Skills 系统**不支持** skill 间显式调用。下方箭头仅表示**人/模型自行**在上游 skill 完成后接续调用下游 skill 的建议工作流，不是技术依赖。
+> ⚠️ **没有"skill 自动编排"这种机制**。skill 是加载进上下文的指令文本，不存在声明式的
+> 依赖或链式触发；下方箭头表示**模型读完上游 skill 后自行接着调用下游 skill**
+> （技术上可行——Skill 工具就在手里——但那是模型的一次主动决定，不是配置声明出来的流程）。
 
 ```
 figma-to-component ──► component-generator    # 提取设计数据后，手动调用组件生成器产出代码
@@ -108,6 +116,8 @@ Skills 根据任务自动匹配，也可以通过描述任务来触发：
 ### 典型工作流
 
 > ⚠️ **以下命令为意图描述，不是可执行 CLI**。Skills 通过 description 自然语言匹配触发，`--xxx` 风格参数仅作示意，实际使用时用自然语言描述意图即可（例如"用 package-creator 创建 Select 包，描述为下拉选择器"）。
+>
+> `select` 是这个走查里**待新建**的包，本仓当前没有它（现有 13 个包见 `ls packages/`）。
 
 ```bash
 # 完整组件开发流程
@@ -257,25 +267,35 @@ CI 以 `.github/workflows/` 为准。**文档里誊抄一份 JSON 或 YAML，就
 **改动规则**：基础层三个 agent 是规范的单一真实来源；专业层/横切层如果和它们冲突，
 以基础层为准，并回头修专业层。不要在专业层复制一份规范正文。
 
-### 使用说明
+### 使用说明：这 10 个知识型 agent 主要是被**当文档读**的
 
-Agents 通过 Task 工具自动调用，你只需描述任务，Claude 会自动选择合适的 Agent：
+先说清楚机制，否则很容易误判它们的作用：
+
+- agent 通过 Agent 工具的 `subagent_type` 调起，跑在**独立上下文**里；
+  父会话只拿到它的返回摘要，**agent 正文不会进父会话的上下文**。
+- 而这些规范（BEM、CSS 变量、exports 字段、Props 类型）恰恰是**父会话自己动手写代码时**
+  要遵守的。所以「派个 subagent 去读规范」对写代码这件事帮助有限。
+- 实际上更常用、也更有效的方式是**直接读文件**：`.claude/skills/*` 里对它们的引用
+  全都是指向 `agents/*.md` 的相对路径链接——它们一直被当作普通 Markdown 文档在用。
 
 ```bash
-# 示例 1: 直接描述任务，Claude 自动匹配 Agent
-"帮我创建 Dropdown 组件"  → Claude 自动使用 component-design agent
+# 推荐：需要哪条规范就直接读那个文件
+Read .claude/agents/coding-standards.md      # CSS 变量 / BEM / exports / i18n
+Read .claude/agents/component-design.md      # Props / Emits / Slots 设计
+Read .claude/agents/project-structure.md     # Monorepo / catalog / turbo
 
-# 示例 2: 询问规范问题
-"Props 定义有什么规范?"  → Claude 自动使用 component-design agent
-
-# 示例 3: CSS 样式问题
-"CSS 变量怎么使用?"  → Claude 自动使用 coding-standards agent
-
-# 示例 4: Monorepo 操作
-"如何在包之间添加依赖?"  → Claude 自动使用 project-structure agent
+# 适合派 subagent 的场景：需要独立上下文做大范围探查，只要结论
+subagent_type: code-review     "审查这次改动的 API 设计"
+subagent_type: team-designer   "设计 XX 组件的架构方案"
 ```
 
-> **技术细节**: Agents 是 Task 工具的 `subagent_type` 参数，Claude 根据任务内容自动选择。
+> ⚠️ **自动匹配目前不可靠**。这 10 个 agent 的 `description` 都是名词短语
+> （"……完整指南"），而派发正是靠 description 匹配的；对比 `skills/` 用的是
+> `Use when the user asks to...` 触发式描述。指望"问一句 CSS 变量怎么用就自动调起
+> coding-standards"是不成立的——要么显式指定 `subagent_type`，要么直接读文件。
+>
+> 真正需要独立上下文的是 `team-*` 与 `figma-extraction-guide`（后者还需要用户级
+> figma MCP）；其余更接近"带目录的规范手册"。
 
 ---
 
@@ -388,26 +408,30 @@ MCP (Model Context Protocol) 服务器扩展 Claude 的能力。
 |--------|--------|------|
 | `aix` | `@aix/mcp-server` | AIX 组件库专用 MCP，提供组件元数据查询等能力 |
 
-### 完整 `.mcp.json`
+### 它跑的是**本地构建产物**，不是 npm 上的包
 
-```json
-{
-  "mcpServers": {
-    "aix": {
-      "command": "npx",
-      "args": ["@aix/mcp-server@latest"]
-    }
-  }
-}
+`.mcp.json` 指向仓库内构建出来的 `internal/mcp-server/dist/cli.js`（配置以该文件实际内容
+为准，此处只说明机制）。这样 MCP 查到的组件元数据来自**当前源码**，而不是上一次发布的
+`@aix/mcp-server`——对一个组件天天在变的仓库，这是有意的选择。
+
+代价是**它依赖构建产物，而 `internal/*/dist` 被 gitignore**：
+
+```bash
+# 新克隆的仓库首次使用前必须构建，否则 MCP server 启动失败
+pnpm install
+pnpm build:filter @aix/mcp-server
 ```
+
+> ⚠️ 症状：Claude Code 启动后 `aix` MCP 工具全部不可用 / 连接失败。
+> 先确认 `internal/mcp-server/dist/cli.js` 存在。`pnpm install` **不会**自动构建它
+> （根 `postinstall` 只跑 `husky`）。
+>
+> 组件源码改动后，MCP 的数据要重新 `extract` 才会更新——`@aix/mcp-server` 的 `build`
+> 脚本包含 `extract` 步骤，重新构建该包即可。
 
 ### 在 `settings.json` 中启用
 
-```json
-{
-  "enabledMcpjsonServers": ["aix"]
-}
-```
+项目级 server 必须在 `enabledMcpjsonServers` 中显式启用（当前已启用 `aix`）。
 
 ### 常用用户级 MCP（按需自行配置，不在仓库中）
 
@@ -453,6 +477,7 @@ Permissions 控制 Claude 可以自动执行哪些命令（无需确认），配
 | `git clean -f*` | 强制删除未跟踪文件 |
 | `git push --force*` / `git push -f*` | 强制推送可能覆盖远端历史 |
 | `git branch -D*` | 强制删除分支 |
+| `git stash drop*` / `git stash clear*` | allow 里有 `git stash*`，但 drop/clear 会**不可恢复地丢弃已 stash 的工作** |
 
 ### 安全说明
 

@@ -714,8 +714,9 @@ beforeEach(() => {
 });
 
 // ✅ Mock 外部依赖
-vi.mock('@aix/icon', () => ({
-  Icon: { template: '<i></i>' },
+vi.mock('@aix/icons', () => ({
+  Copy: { template: '<i></i>' },
+  Check: { template: '<i></i>' },
 }));
 
 // ✅ Mock 浏览器 API

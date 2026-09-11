@@ -253,8 +253,12 @@ export const Default: Story = {
 > 不要裸挂根部也不要自造前缀——先 `grep "title:" packages/<pkg>/stories/*.stories.ts` 看邻居怎么写的。
 >
 > 交互测试用 `import { expect, userEvent } from 'storybook/test'`（Storybook 10 的路径，
-> **不是** `@storybook/test`）。Story 细则见 [storybook-development](../../agents/storybook-development.md)
-> ——注意该文档目前仍按 Storybook 7 写，配置类内容以 `.storybook/main.ts` 实际为准。
+> **不是** `@storybook/test`——后者本仓未安装）。事件桩用 `args: { onClick: fn() }`，
+> 不要用 `argTypes` 的 `action`。
+>
+> Story 细则见 [storybook-development](../../agents/storybook-development.md)，该文档已按
+> Storybook 10 校准（framework / addons / preview 的全局 context 均与 `.storybook/main.ts`
+> 一致）；配置类内容有疑问时仍以 `.storybook/main.ts` 与 `preview.ts` 实际为准。
 
 ### 步骤 6: 验证
 

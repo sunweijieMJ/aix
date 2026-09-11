@@ -101,7 +101,7 @@ pnpm changeset
 # 交互式选择要发布的包和变更类型
 ? Which packages would you like to include?
   ◉ @aix/button
-  ◯ @aix/input
+  ◯ @aix/popper
 
 ? What kind of change is this for @aix/button?
   ◯ major (1.0.0 -> 2.0.0) - Breaking change

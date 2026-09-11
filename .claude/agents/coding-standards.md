@@ -258,8 +258,8 @@ export const defaultSize = 'medium';  // 应该是 DEFAULT_SIZE
 import { ref, computed, watch, onMounted } from 'vue';
 import type { Component, VNode } from 'vue';
 
-// 2. 第三方库（如果有）
-import dayjs from 'dayjs';
+// 2. 第三方库（如果有；版本走 pnpm-workspace.yaml 的 catalog:）
+import { Virtualizer } from 'virtua/vue';
 
 // 3. 本地组件
 import { Icon } from '../icon';
@@ -291,9 +291,9 @@ import { Button, ButtonProps } from './Button.vue';
 import { Button } from './Button.vue';
 import type { ButtonProps } from './types';
 
-// ✅ 正确：跨包引用使用包名
-import { Icon } from '@aix/icon';
-import type { IconProps } from '@aix/icon';
+// ✅ 正确：跨包引用使用包名（图标是具名导出，包名是 @aix/icons 复数）
+import { Copy, Check } from '@aix/icons';
+import { useNamespace } from '@aix/hooks';
 
 // ❌ 错误：同包内使用绝对路径
 import { Button } from '@aix/button/src/Button.vue';
@@ -890,7 +890,7 @@ $spacing-md: 16px;
 ```bash
 # ESLint + Stylelint（turbo 编排各包的 lint:script / lint:style）
 pnpm lint
-pnpm lint --filter @aix/button
+pnpm exec turbo lint --filter @aix/button   # 单包：不能写 pnpm lint --filter
 
 # TypeScript 类型检查
 pnpm type-check

@@ -430,9 +430,14 @@ describe('Button', () => {
 
 ### 覆盖率要求
 
-- Props 测试覆盖率 > 80%
-- Events 测试覆盖率 > 80%
-- 关键逻辑测试覆盖率 = 100%
+写新组件时的**自我要求**（不是 CI 门禁）：
+
+- 每个 Props 至少一个用例（默认值 + 更新响应）
+- 每个 Emits 至少一个用例（触发时机 + 参数正确性）
+- 关键分支（错误路径、空数据、边界值）必须覆盖
+
+> ℹ️ **CI 门禁是根 `vitest.config.ts` 的防退化棘轮**（当前水位 -1 个点），不是 80%。
+> 80% 是全仓长期目标。机制见 [testing.md](testing.md)。
 
 ---
 
@@ -545,17 +550,23 @@ const classes = [
 
 ### 2. 大数据场景优化
 
-```vue
-<script setup>
-// 虚拟滚动
-import { useVirtualList } from '@vueuse/core';
+长列表走虚拟滚动。本仓既有方案是 **`virtua`**（`packages/ai-chat` 的 dependencies），
+不是 `@vueuse/core`——后者不是本仓任何包的依赖：
 
-const { list, containerProps, wrapperProps } = useVirtualList(
-  largeDataSource,
-  { itemHeight: 50 }
-);
+```vue
+<script setup lang="ts">
+import { Virtualizer } from 'virtua/vue';
 </script>
+
+<template>
+  <Virtualizer v-slot="{ item }" :data="largeDataSource">
+    <div :key="(item as Item).id">{{ item }}</div>
+  </Virtualizer>
+</template>
 ```
+
+> 完整参考实现与踩坑（插槽单根节点约束）见 `packages/ai-chat/src/components/BubbleList.vue`
+> 与 [performance.md](performance.md) 的「虚拟滚动」章节。
 
 ---
 
