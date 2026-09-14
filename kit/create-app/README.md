@@ -135,8 +135,10 @@ create-app my-app --template admin -d "我的项目" \
 | `locale`     | 运行时 | 国际化覆盖（文案覆盖/新增）      |
 | `store`      | 运行时 | 状态覆盖（Pinia action 包装）    |
 
-**前置条件**：覆盖层内核（`src/plugins/override/`）与基础设施（`<output>/types.ts`、`index.ts`、
+**前置条件**：覆盖层内核（`src/plugins/override/`）与基础设施（`<output>/index.ts`、`constants.ts`、
 `registry.ts`）由 admin 模板的 `overrides` 特性提供 —— 生成项目时勾上「多租户定制体系」。
+租户的常量覆盖渲染为单文件 `<output>/<code>/constants.ts`（由基础设施单独 glob，不得 import `@/constants`），
+其余维度聚合在 `<output>/<code>/index.ts`。
 `override add` 只生成「按租户」的那部分（聚合入口 + 各模块骨架），前置文件缺失会直接报
 `E_MISSING_OVERRIDE_KERNEL` 并说明去哪儿拿，不会写出一堆 import 不到内核的死文件。
 

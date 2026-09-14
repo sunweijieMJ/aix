@@ -11,6 +11,13 @@ export interface ModuleDef {
   required?: boolean;
   /** 有独立的 eta 模板目录（`templates-override/overrides/<id>/index.ts.eta`） */
   hasDir?: boolean;
+  /**
+   * 渲染产物相对租户目录的路径，缺省为 `<id>/index.ts`
+   *
+   * 常量模块渲染成单文件 `constants.ts`：模板的 `overrides/constants.ts` 按
+   * `./*\/constants.ts` glob 加载它，与租户 `index.ts` 分属两条加载链。
+   */
+  file?: string;
 }
 
 /**
@@ -25,10 +32,11 @@ export interface ModuleDef {
  */
 const MODULES = {
   constants: {
-    description: '常量覆盖（角色、菜单、API 码等）',
+    description: '常量覆盖（角色、菜单、API 码等，渲染为 constants.ts 单文件）',
     dimension: '静态',
     required: true,
     hasDir: true,
+    file: 'constants.ts',
   },
   router: {
     description: '路由覆盖（替换、新增、禁用）',

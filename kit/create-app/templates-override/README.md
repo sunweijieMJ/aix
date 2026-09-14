@@ -4,11 +4,14 @@
 
 | 模板                              | 渲染到                              | 说明                                  |
 | --------------------------------- | ----------------------------------- | ------------------------------------- |
-| `overrides/project-index.ts.eta`  | `<output>/<code>/index.ts`          | 单个租户的聚合入口，按选中模块动态 import |
-| `overrides/<module>/index.ts.eta` | `<output>/<code>/<module>/index.ts` | 各模块的定制骨架（返回空配置，待填）  |
+| `overrides/project-index.ts.eta`  | `<output>/<code>/index.ts`          | 单个租户的聚合入口（运行时维度 + router），按选中模块动态 import |
+| `overrides/constants/index.ts.eta` | `<output>/<code>/constants.ts`     | 常量覆盖单文件，由基础设施的 `constants.ts` 单独 glob，不进聚合入口 |
+| `overrides/<module>/index.ts.eta` | `<output>/<code>/<module>/index.ts` | 其余模块的定制骨架（返回空配置，待填）  |
+
+模块渲染到哪里由 `src/override/types.ts` 的 `MODULE_REGISTRY[id].file` 决定，缺省为 `<id>/index.ts`。
 
 **这里只有「按租户」的那部分。** 覆盖层内核（`src/plugins/override/`）与基础设施
-（`<output>/types.ts`、`index.ts`、`registry.ts`、`deployment.ts`）由**模板真源**提供
+（`<output>/index.ts`、`constants.ts`、`registry.ts`、`deployment.ts`）由**模板真源**提供
 ——admin 模板的 `overrides` 特性。`override add` 在生成前会检查它们是否存在，
 缺了直接报 `E_MISSING_OVERRIDE_KERNEL` 并说明去哪儿拿。
 
@@ -33,6 +36,9 @@
 
 - Eta 4 **不支持** `<%# … %>` 注释标签（会被当 JS 编译，报 `Bad template syntax`）；
   而 `.eta` 里的 JS 注释会**原样渲染进用户项目**。维护者说明写在本文件里，别写进 `.eta`。
-- 骨架里的 `@/` import 只允许 `@/plugins/override`（内核，由模板提供）与相对路径 `../types`。
+- 骨架里的 `@/` import 只允许 `@/plugins/override` 及其叶子模块（内核，由模板提供）。
   出现别的 `@/xxx` 就会在用户项目里变成死 import ——
   这条由 `__test__/override-add.test.ts` 的自包含用例守着。
+- `constants/index.ts.eta` 渲染出的文件处在 `@/constants` 的同步加载链上：类型只能从叶子
+  `@/plugins/override/override-constants` 取，不得 import `@/constants`、`@/overrides` 或内核 barrel，
+  否则目标项目启动即因循环依赖崩溃（模板侧 eslint 的 `constantsChain` 规则会报错）。

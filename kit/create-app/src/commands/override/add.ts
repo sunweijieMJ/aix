@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import pc from 'picocolors';
 import { assertProjectRoot } from '../../utils/detector';
@@ -151,7 +150,7 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   const outputDir = path.resolve(cwd, options.output);
 
   // 前置条件：内核与基础设施由模板的 `overrides` 特性提供，本包只生成按租户的骨架。
-  // 缺了就生成，等于产出一堆 import 不到 `@/plugins/override` / `../types` 的死文件；
+  // 缺了就生成，等于产出一堆 import 不到 `@/plugins/override`、也没人 glob 的死文件；
   // dry-run 也一并拦——预览一个注定装不上的产物只会误导
   const missingPrereq = findMissingPrerequisites(cwd, outputDir);
   if (missingPrereq.length > 0) {
@@ -215,55 +214,15 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   printFileTree(resolvedFiles, options.output);
 
   // ── 下一步提示 ──
-  // `@` 别名指向 src/，所以只有 output 在 src/ 下才拼得出别名；
-  // 指到 src/ 外时打印原始路径，别给出一个解析不了的 import
-  const overridesAlias = options.output.startsWith('src/')
-    ? `@/${options.output.slice('src/'.length)}`
-    : options.output;
-
+  // 接线由模板提供的基础设施完成（前置检查已保证它们在场）：`index.ts` 的 setupOverrides()
+  // 挂在 main.ts 的 beforeMount 上，router / constants 两个静态维度在模块加载时直接消费
   console.log(pc.bold('\n📝 下一步：'));
   console.log(`  1. 在 ${pc.cyan(`${options.output}/registry.ts`)} 中添加学校 NID 映射`);
-  console.log(`  2. 在各模块的 ${pc.cyan('index.ts')} 中实现定制逻辑\n`);
-
-  // 模板的 overrides 特性自带 setup.ts，接线已经做完了。此时再打印一遍手动接入步骤，
-  // 用户照着做就是重复接入
-  // 必须复用上面 resolve 出的 outputDir：`-o` 传绝对路径时 join(cwd, 绝对路径) 会拼出
-  // <cwd>/abs/... 这条不存在的路径，setup.ts 明明在也判为不在，整段手动接入被误打出来
-  if (fs.existsSync(path.join(outputDir, 'setup.ts'))) {
-    console.log(
-      pc.dim(
-        `  接线已由 ${options.output}/setup.ts 完成，无需手动改 main.ts / router / constants\n`,
-      ),
-    );
-    return;
-  }
-
-  console.log(pc.bold('  手动接入定制系统：\n'));
-
-  // API 覆盖不需要额外传参：内核自行 import `@/api/core/request` 的 instances 消费
-  // config.api（initOverrides 已不收 apiInstances，见 templates-override/README）
-  console.log(`  ${pc.dim('// main.ts — 初始化运行时覆盖')}`);
-  console.log(`  import { initOverrides } from ${pc.cyan("'@/plugins/override'")};`);
-  console.log(`  import overrideConfig from ${pc.cyan(`'${overridesAlias}'`)};`);
+  console.log(`  2. 在各模块的 ${pc.cyan('index.ts')} 中实现定制逻辑`);
   console.log(
-    `  ${pc.cyan('initOverrides')}({ pinia, i18n, config: overrideConfig, app, router });`,
+    `  3. 常量覆盖写在 ${pc.cyan(`${options.output}/${options.project}/constants.ts`)}（不得 import @/constants）\n`,
   );
-
-  console.log('');
-  console.log(`  ${pc.dim('// router/index.ts — 注册路由覆盖（同步，在 createRouter 之前）')}`);
-  console.log(`  import { routerManager } from ${pc.cyan("'@/plugins/override'")};`);
-  console.log(`  import { customRoutes } from ${pc.cyan(`'${overridesAlias}'`)};`);
-  console.log(`  ${pc.cyan('routerManager.register')}(customRoutes);`);
-  console.log(`  routes: [...${pc.cyan('routerManager.applyOverrides')}(staticRoutes)]`);
-  console.log(`  ${pc.cyan('routerManager.addCustomRoutes')}(router);`);
-
-  console.log('');
-  console.log(`  ${pc.dim('// constants/index.ts — 合并静态常量')}`);
-  console.log(`  import { mergeConstants } from ${pc.cyan("'@/plugins/override'")};`);
-  console.log(`  import { customConstants } from ${pc.cyan(`'${overridesAlias}'`)};`);
   console.log(
-    `  export const ROLES = ${pc.cyan('mergeConstants')}(DEFAULT_ROLES, customConstants.roles ?? {});`,
+    pc.dim(`  接线已由 ${options.output}/index.ts 完成，无需手动改 main.ts / router / constants\n`),
   );
-
-  console.log('');
 }

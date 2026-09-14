@@ -27,7 +27,7 @@ const tempDirs: string[] = [];
 /**
  * 造一个「带 Override 内核的项目根」
  *
- * 内核（`src/plugins/override/`）与基础设施（`<output>/types.ts` 等）由模板的 overrides
+ * 内核（`src/plugins/override/`）与基础设施（`<output>/index.ts` 等）由模板的 overrides
  * 特性提供，本包只生成按租户的骨架 —— 所以这些前置文件必须先摆上，否则 add 会直接报
  * E_MISSING_OVERRIDE_KERNEL（缺失路径本身另有用例覆盖）。
  *
@@ -46,7 +46,7 @@ function makeProject(withKernel = true): string {
       '// 模板 overrides 特性提供的内核（测试替身）\nexport {};\n',
     );
     fs.mkdirSync(path.join(dir, 'src/overrides'), { recursive: true });
-    for (const rel of ['types.ts', 'index.ts', 'registry.ts', 'deployment.ts']) {
+    for (const rel of ['index.ts', 'constants.ts', 'registry.ts', 'deployment.ts']) {
       fs.writeFileSync(path.join(dir, 'src/overrides', rel), `// 模板提供：${rel}\nexport {};\n`);
     }
   }
@@ -107,7 +107,7 @@ describe('override add - 内核 / 基础设施前置检查', () => {
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_MISSING_OVERRIDE_KERNEL');
       expect(r.output).toContain('src/plugins/override/index.ts');
-      expect(r.output).toContain('src/overrides/types.ts');
+      expect(r.output).toContain('src/overrides/constants.ts');
       // 一个文件都不该落盘：骨架 import 不到内核，生成出来只是死 import
       expect(fs.existsSync(path.join(cwd, 'src/overrides/sysu'))).toBe(false);
     },
@@ -134,7 +134,7 @@ describe('override add - 内核 / 基础设施前置检查', () => {
 
       const r = runAdd(['sysu', '-m', 'router', '-y'], cwd);
       expect(r.status).not.toBe(0);
-      expect(r.output).toContain('src/overrides/types.ts');
+      expect(r.output).toContain('src/overrides/constants.ts');
       expect(r.output).not.toContain('src/plugins/override/index.ts');
     },
     TIMEOUT,
@@ -229,9 +229,10 @@ describe('override add - 生成物必须自包含', () => {
         fs.readFileSync(file, 'utf-8')
           .split('\n')
           .forEach((line, i) => {
-            const m = /^\s*import\s[^;]*?from\s*'(@\/[^']+)'/.exec(line);
-            if (m && m[1] !== '@/plugins/override') {
-              offenders.push(`${path.relative(cwd, file)}:${i + 1} → ${m[1]}`);
+            const specifier = /^\s*import\s[^;]*?from\s*'(@\/[^']+)'/.exec(line)?.[1];
+            // 允许内核 barrel 与其叶子模块（租户 constants.ts 只能从叶子 override-constants 取类型）
+            if (specifier && !specifier.startsWith('@/plugins/override')) {
+              offenders.push(`${path.relative(cwd, file)}:${i + 1} → ${specifier}`);
             }
           });
       }
@@ -253,11 +254,16 @@ describe('override add - 生成结果', () => {
       // 项目聚合入口
       expect(fs.existsSync(path.join(base, 'sysu/index.ts'))).toBe(true);
       // 基础设施是前置文件，本包不生成也不改写它们
-      for (const rel of ['types.ts', 'index.ts', 'registry.ts', 'deployment.ts']) {
+      for (const rel of ['index.ts', 'constants.ts', 'registry.ts', 'deployment.ts']) {
         expect(fs.readFileSync(path.join(base, rel), 'utf-8'), rel).toContain('模板提供');
       }
-      // 必选模块（constants / router / views）始终生成，即便 -m 里没写
-      expect(fs.existsSync(path.join(base, 'sysu/constants/index.ts'))).toBe(true);
+      // 必选模块（constants / router / views）始终生成，即便 -m 里没写；
+      // constants 是单文件（被基础设施按 ./*/constants.ts glob），不是 constants/index.ts
+      expect(fs.existsSync(path.join(base, 'sysu/constants.ts'))).toBe(true);
+      expect(fs.existsSync(path.join(base, 'sysu/constants'))).toBe(false);
+      const constantsFile = fs.readFileSync(path.join(base, 'sysu/constants.ts'), 'utf-8');
+      expect(constantsFile).toContain('export default');
+      expect(constantsFile).not.toContain("from '@/constants'");
       expect(fs.existsSync(path.join(base, 'sysu/router/index.ts'))).toBe(true);
       expect(fs.existsSync(path.join(base, 'sysu/views/.gitkeep'))).toBe(true);
       // 指定的可选模块
@@ -268,6 +274,10 @@ describe('override add - 生成结果', () => {
       const entry = fs.readFileSync(path.join(base, 'sysu/index.ts'), 'utf-8');
       expect(entry).toContain("from './locale'");
       expect(entry).not.toContain("from './store'");
+      // 常量维度不进聚合入口：它由另一条链单独加载，类型来自内核而非已不存在的 ../types
+      expect(entry).not.toContain("from './constants'");
+      expect(entry).not.toMatch(/^\s*constants:/m);
+      expect(entry).toContain("from '@/plugins/override'");
       // 内核不再由本包生成，原样保持模板提供的那份
       expect(fs.readFileSync(path.join(cwd, 'src/plugins/override/index.ts'), 'utf-8')).toContain(
         '测试替身',

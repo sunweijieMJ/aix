@@ -26,14 +26,20 @@ const PKG_ROOT = findPackageRoot(import.meta.url);
  */
 const REQUIRED_KERNEL_FILE = 'src/plugins/override/index.ts';
 
-/** 覆盖层基础设施：与内核同理，由模板的 `overrides` 特性提供（位于 output 目录下） */
-const REQUIRED_INFRA_FILES = ['types.ts', 'index.ts', 'registry.ts'];
+/**
+ * 覆盖层基础设施：与内核同理，由模板的 `overrides` 特性提供（位于 output 目录下）
+ *
+ * - `index.ts`：glob 租户 `index.ts`（运行时维度 + router），并导出装配函数 `setupOverrides()`
+ * - `constants.ts`：glob 租户 `constants.ts`（常量维度，`@/constants` 在模块加载期消费）
+ * - `registry.ts`：Cookie → 学校代码
+ */
+const REQUIRED_INFRA_FILES = ['index.ts', 'constants.ts', 'registry.ts'];
 
 /**
  * 检查生成骨架所需的前置文件，返回缺失的相对路径（相对 cwd）
  *
- * 骨架会 `import type { OverrideConfig } from '../types'` 和 `from '@/plugins/override'`——
- * 前置条件不满足就生成，等于产出一堆编译不过的死 import。
+ * 骨架的类型来自 `@/plugins/override`，装载依赖基础设施的两条 glob——
+ * 前置条件不满足就生成，等于产出一堆装不上的死文件。
  */
 export function findMissingPrerequisites(cwd: string, outputDir: string): string[] {
   const missing: string[] = [];
@@ -49,7 +55,7 @@ export function findMissingPrerequisites(cwd: string, outputDir: string): string
  * 生成覆盖层文件列表（只含「按租户」的那部分：聚合入口 + 各模块骨架）
  *
  * 不写入磁盘，仅返回 { path, content } 数组，由调用方决定是否写入。
- * 内核（`src/plugins/override/`）与基础设施（`<output>/types.ts` 等）不在此生成，
+ * 内核（`src/plugins/override/`）与基础设施（`<output>/index.ts` 等）不在此生成，
  * 由模板的 `overrides` 特性提供 —— 见 REQUIRED_KERNEL_FILE 的注释。
  */
 export function generateFiles(options: GenerateOptions): GeneratedFile[] {
@@ -81,7 +87,7 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
 
     if (fs.existsSync(path.join(templatesDir, mod, 'index.ts.eta'))) {
       files.push({
-        path: `${project}/${mod}/index.ts`,
+        path: `${project}/${MODULE_REGISTRY[mod].file ?? `${mod}/index.ts`}`,
         content: eta.render(`./${mod}/index.ts.eta`, context),
       });
     }

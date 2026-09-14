@@ -535,7 +535,7 @@ describe('override add 非 TTY 快速失败', () => {
     fs.mkdirSync(path.join(root, 'src/plugins/override'), { recursive: true });
     fs.writeFileSync(path.join(root, 'src/plugins/override/index.ts'), 'export {};\n');
     fs.mkdirSync(path.join(root, output), { recursive: true });
-    for (const rel of ['types.ts', 'index.ts', 'registry.ts', 'deployment.ts']) {
+    for (const rel of ['index.ts', 'constants.ts', 'registry.ts', 'deployment.ts']) {
       fs.writeFileSync(path.join(root, output, rel), `// 模板提供：${rel}\nexport {};\n`);
     }
   };
