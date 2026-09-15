@@ -1,7 +1,13 @@
 import path from 'node:path';
 import pc from 'picocolors';
 import { assertProjectRoot } from '../../utils/detector';
-import { findMissingPrerequisites, generateFiles } from '../../override/generator';
+import {
+  findMissingPrerequisites,
+  findOrphanModuleDirs,
+  generateFiles,
+  OVERRIDE_INFRA_FILES,
+  OVERRIDE_KERNEL_FILE,
+} from '../../override/generator';
 import { checkProjectConflict, resolveConflicts } from '../../utils/conflict';
 import { printFileTree, writeFiles } from '../../utils/fs';
 import { runPrompts } from '../../override/prompts';
@@ -58,6 +64,18 @@ function assertNonInteractiveReady(project: string | undefined, opts: OverrideAd
       .join('\n')}`,
     '非交互场景请补齐全部参数，例如：\n  create-app override add sysu -m router,store -y',
   );
+}
+
+/** 报出盘上没人引用的模块目录，交给用户自己处置（目录里是用户代码，CLI 不替他删） */
+function warnOrphanModuleDirs(outputDir: string, project: string, output: string): void {
+  const orphans = findOrphanModuleDirs(outputDir, project);
+  if (orphans.length === 0) return;
+
+  console.log(pc.yellow(`\n⚠️  以下模块目录没有被 ${project}/index.ts 引用，不会被加载：`));
+  for (const dir of orphans) {
+    console.log(pc.dim(`   ${output}/${project}/${dir}/`));
+  }
+  console.log(pc.dim('   里面是你写的代码，需要的话自行保留或删除'));
 }
 
 export async function overrideAdd(project: string | undefined, opts: OverrideAddOptions) {
@@ -159,9 +177,11 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
       `缺少 Override 内核 / 基础设施，无法生成覆盖层骨架：\n${missingPrereq
         .map((f) => `  - ${f}`)
         .join('\n')}`,
-      '这些文件由模板的 `overrides` 特性提供：\n' +
-        '  · 新项目：生成时勾上「多租户定制体系」特性\n' +
-        '  · 已有项目：从模板真源同步 src/plugins/override/ 与 src/overrides/*.ts\n' +
+      'Override 内核与基础设施由模板提供，只有带 Override 能力的模板才有\n' +
+        '（内置注册表里目前只有 admin 模板的 `overrides` 特性提供，h5 模板没有这项能力）：\n' +
+        '  · 新项目：用带 Override 能力的模板生成，并勾上它的 Override 特性\n' +
+        `  · 已有项目：从该模板真源同步 ${path.posix.dirname(OVERRIDE_KERNEL_FILE)}/ ` +
+        `与输出目录下的 ${OVERRIDE_INFRA_FILES.join(' / ')}\n` +
         '  · 用了 -o 指向非默认目录：基础设施需要先放到该目录下',
     );
   }
@@ -203,8 +223,11 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
     return;
   }
 
+  // 一个文件都没写也要报残留：缩减模块集时生成的文件往往全都已存在（`-y` 下逐个跳过），
+  // 而那正是残留最容易出现的一次运行
   if (resolvedFiles.length === 0) {
     console.log(pc.yellow('所有文件已存在，无需生成'));
+    warnOrphanModuleDirs(outputDir, options.project, options.output);
     return;
   }
 
@@ -212,6 +235,8 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   writeFiles(resolvedFiles, outputDir);
   console.log(pc.green('\n✅ 已生成以下文件：\n'));
   printFileTree(resolvedFiles, options.output);
+
+  warnOrphanModuleDirs(outputDir, options.project, options.output);
 
   // ── 下一步提示 ──
   // 接线由模板提供的基础设施完成（前置检查已保证它们在场）：`index.ts` 的 setupOverrides()

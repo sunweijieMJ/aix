@@ -136,7 +136,8 @@ create-app my-app --template admin -d "我的项目" \
 | `store`      | 运行时 | 状态覆盖（Pinia action 包装）    |
 
 **前置条件**：覆盖层内核（`src/plugins/override/`）与基础设施（`<output>/index.ts`、`constants.ts`、
-`registry.ts`）由 admin 模板的 `overrides` 特性提供 —— 生成项目时勾上「多租户定制体系」。
+`registry.ts`）由带 Override 能力的模板提供，注册表里目前只有 admin 模板的 `overrides` 特性有
+（h5 模板没有这项能力）—— 用 admin 生成项目时勾上「多租户定制体系」即可。
 租户的常量覆盖渲染为单文件 `<output>/<code>/constants.ts`（由基础设施单独 glob，不得 import `@/constants`），
 其余维度聚合在 `<output>/<code>/index.ts`。
 `override add` 只生成「按租户」的那部分（聚合入口 + 各模块骨架），前置文件缺失会直接报
@@ -165,7 +166,7 @@ export default {
   removeScripts: ['check:template'], // 无条件从产物 package.json 移除的脚本（只服务真源自身的）
   substitutions: [
     // 真名 → 占位符，只在 files 白名单内生效
-    { from: 'vite-vue3-temp', to: '{{project-name}}', files: ['package.json'] },
+    { from: 'vue-admin-template', to: '{{project-name}}', files: ['package.json'] },
   ],
   features: {
     i18n: {

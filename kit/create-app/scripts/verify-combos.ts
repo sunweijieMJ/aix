@@ -243,6 +243,92 @@ function resolveSpecifier(spec: string, fromFile: string, root: string): boolean
   return ['/index.ts', '/index.vue', '/index.js'].some((idx) => fs.existsSync(base + idx));
 }
 
+/**
+ * 把注释与模板字面量的内容抹成空白，供 import 扫描使用
+ *
+ * 两类文本长得像 import 却不是本文件的依赖：注释里的示例 import，以及**生成代码的
+ * 模板字面量**——`scripts/api/update-api-exports.ts` 用反引号拼出 `src/api/index.ts`
+ * 的内容，里面那句 `export * from './core'` 属于被生成的文件。
+ *
+ * 普通引号字符串的内容必须原样保留：import 的路径本身就在引号里。跟踪引号状态只为
+ * 让串里的反引号与 `//` 不改变状态，不改写任何字符，所以引号判定失准也不会误伤扫描。
+ * 换行一律保留。
+ */
+/**
+ * 交给 import 扫描的那部分源码：`.vue` 只取 `<script>` 块，其余文件整篇
+ *
+ * SFC 的 `<template>` 是标记语言，喂给 JS 词法器必然出事：英文文案里的撇号（`Don't`）
+ * 会被当成字符串开引号，正文里的反引号会被当成模板字面量起点，从那之后的注释剥离与
+ * import 识别全都失准。import 只会写在 script 里，直接把标记段排除在扫描之外。
+ */
+function scannableSource(rel: string, content: string): string {
+  if (!rel.endsWith('.vue')) return content;
+  return [...content.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((m) => m[1]!)
+    .join('\n');
+}
+
+function stripCommentsAndTemplates(code: string): string {
+  const out: string[] = [];
+  let state: 'code' | 'line' | 'block' | 'quote' | 'template' = 'code';
+  let quote = '';
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i]!;
+    const next = code[i + 1] ?? '';
+
+    if (ch === '\n') {
+      // 普通字符串跨不了裸换行（续行的 `\` 已在转义分支里连同换行一起吃掉），
+      // 到这儿还停在 quote 说明前面有个落单的引号；不复位的话整个后文都当在串里，
+      // `//` 不再起注释作用，注释里的示例 import 会被当真
+      if (state === 'line' || state === 'quote') state = 'code';
+      out.push(ch);
+      continue;
+    }
+
+    if (state === 'quote' || state === 'template') {
+      const keep = state === 'quote';
+      if (ch === '\\') {
+        out.push(keep ? ch + next : next === '\n' ? ' \n' : '  ');
+        i++;
+        continue;
+      }
+      if (ch === (state === 'quote' ? quote : '`')) state = 'code';
+      out.push(keep ? ch : ' ');
+      continue;
+    }
+
+    if (state === 'line' || state === 'block') {
+      if (state === 'block' && ch === '*' && next === '/') {
+        state = 'code';
+        out.push('  ');
+        i++;
+        continue;
+      }
+      out.push(' ');
+      continue;
+    }
+
+    if (ch === '/' && (next === '/' || next === '*')) {
+      state = next === '/' ? 'line' : 'block';
+      out.push('  ');
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      state = 'quote';
+      quote = ch;
+    } else if (ch === '`') {
+      state = 'template';
+      out.push(' ');
+      continue;
+    }
+    out.push(ch);
+  }
+
+  return out.join('');
+}
+
 function staticCheck(outDir: string, realNames: string[]): string[] {
   const problems: string[] = [];
 
@@ -267,14 +353,7 @@ function staticCheck(outDir: string, realNames: string[]): string[] {
     });
 
     if (!/\.(ts|tsx|vue|js|mjs)$/.test(rel)) continue;
-    // 注释行不参与 import 扫描（模板里有大量写在注释中的「示例 import」）
-    const code = content
-      .split('\n')
-      .map((l) => {
-        const t = l.trimStart();
-        return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*') ? '' : l;
-      })
-      .join('\n');
+    const code = stripCommentsAndTemplates(scannableSource(rel, content));
     const specs = [
       ...code.matchAll(/(?:^|\s)(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]/g),
       ...code.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g),

@@ -95,6 +95,11 @@ const ILLEGAL_PARAM_VALUE_CHARS = /['"`\\<>]/;
  */
 export function validateParamValue(value: string): string | undefined {
   if (hasControlChar(value)) return '参数值不能包含控制字符（含换行）';
+  // 占位符替换是单遍的：值里的 `{{x}}` 不会再被展开一次，原样留在产物里当垃圾
+  // （只有排在最后的 `{{project-name}}` 恰好会被替换——同一种写法两种结果，更该挡）
+  if (value.includes('{{')) {
+    return '参数值不能包含 {{（会被当成占位符原样留在产物里）';
+  }
   if (ILLEGAL_PARAM_VALUE_CHARS.test(value)) {
     return '参数值不能包含 \' " ` \\ < > 这些字符（会被原文注入 TS / HTML，产物会带语法错误）';
   }

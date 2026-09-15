@@ -263,8 +263,14 @@ export async function create(projectName: string | undefined, opts: CreateOption
     const destDir = config.outputDir;
     const writeSpinner = p.spinner();
     writeSpinner.start('写入项目文件...');
-    emptyDir(destDir);
-    writeFiles(fileList, destDir);
+    try {
+      emptyDir(destDir);
+      writeFiles(fileList, destDir);
+    } catch (err) {
+      // spinner 不停就直接抛的话，handleError 的报错会打在一个还在转的 spinner 上
+      writeSpinner.stop('写入项目文件失败');
+      throw err;
+    }
     writeSpinner.stop(`已写入 ${fileList.length} 个文件`);
 
     // 后处理（git init + 安装依赖）

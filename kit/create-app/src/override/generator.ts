@@ -24,7 +24,7 @@ const PKG_ROOT = findPackageRoot(import.meta.url);
  *
  * 现在收口成单一真源：内核与基础设施一律来自模板，本包只生成「按租户的那部分骨架」。
  */
-const REQUIRED_KERNEL_FILE = 'src/plugins/override/index.ts';
+export const OVERRIDE_KERNEL_FILE = 'src/plugins/override/index.ts';
 
 /**
  * 覆盖层基础设施：与内核同理，由模板的 `overrides` 特性提供（位于 output 目录下）
@@ -33,7 +33,7 @@ const REQUIRED_KERNEL_FILE = 'src/plugins/override/index.ts';
  * - `constants.ts`：glob 租户 `constants.ts`（常量维度，`@/constants` 在模块加载期消费）
  * - `registry.ts`：Cookie → 学校代码
  */
-const REQUIRED_INFRA_FILES = ['index.ts', 'constants.ts', 'registry.ts'];
+export const OVERRIDE_INFRA_FILES = ['index.ts', 'constants.ts', 'registry.ts'];
 
 /**
  * 检查生成骨架所需的前置文件，返回缺失的相对路径（相对 cwd）
@@ -43,12 +43,45 @@ const REQUIRED_INFRA_FILES = ['index.ts', 'constants.ts', 'registry.ts'];
  */
 export function findMissingPrerequisites(cwd: string, outputDir: string): string[] {
   const missing: string[] = [];
-  if (!fs.existsSync(path.join(cwd, REQUIRED_KERNEL_FILE))) missing.push(REQUIRED_KERNEL_FILE);
-  for (const rel of REQUIRED_INFRA_FILES) {
+  if (!fs.existsSync(path.join(cwd, OVERRIDE_KERNEL_FILE))) missing.push(OVERRIDE_KERNEL_FILE);
+  for (const rel of OVERRIDE_INFRA_FILES) {
     const full = path.join(outputDir, rel);
     if (!fs.existsSync(full)) missing.push(path.relative(cwd, full));
   }
   return missing;
+}
+
+/** 会以 `./<id>` 形式被租户 index.ts 引用的模块（`views` 只是目录，`constants` 渲染成单文件） */
+const IMPORTED_MODULE_DIRS: string[] = Object.entries(MODULE_REGISTRY)
+  .filter(([, def]) => def.hasDir && !def.file)
+  .map(([id]) => id);
+
+/**
+ * 盘上存在、却没有被租户 `index.ts` 引用的模块目录
+ *
+ * 缩减模块集（`-m` 给的比上次少）时旧目录不会被删——里面是用户自己的代码；而基础设施
+ * glob 的是 `<output>/*\/index.ts`（只到租户层），落不到模块层，没被 index.ts 引用即无人加载。
+ *
+ * 判据取**盘上那份 index.ts 的实际 import**，不是本次声明的模块集：不带 `--force` 时
+ * 已存在的 index.ts 会被跳过、仍然引用着旧模块，按声明集判会报出一批其实还在用的目录。
+ * 只认注册表里的模块名，用户自建的目录（`assets` 之类）不在判定范围内。
+ */
+export function findOrphanModuleDirs(outputDir: string, project: string): string[] {
+  const tenantDir = path.join(outputDir, project);
+
+  let index: string;
+  let entries: fs.Dirent[];
+  try {
+    index = fs.readFileSync(path.join(tenantDir, 'index.ts'), 'utf-8');
+    entries = fs.readdirSync(tenantDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const onDisk = new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
+  return IMPORTED_MODULE_DIRS.filter(
+    (id) => onDisk.has(id) && !index.includes(`from './${id}'`),
+  ).sort();
 }
 
 /**
@@ -56,7 +89,7 @@ export function findMissingPrerequisites(cwd: string, outputDir: string): string
  *
  * 不写入磁盘，仅返回 { path, content } 数组，由调用方决定是否写入。
  * 内核（`src/plugins/override/`）与基础设施（`<output>/index.ts` 等）不在此生成，
- * 由模板的 `overrides` 特性提供 —— 见 REQUIRED_KERNEL_FILE 的注释。
+ * 由模板的 `overrides` 特性提供 —— 见 OVERRIDE_KERNEL_FILE 的注释。
  */
 export function generateFiles(options: GenerateOptions): GeneratedFile[] {
   const { project, modules } = options;
