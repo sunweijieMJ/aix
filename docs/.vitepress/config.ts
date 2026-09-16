@@ -92,6 +92,10 @@ export default withMermaid(
             ],
           },
           {
+            text: '导航组件',
+            items: [{ text: 'Menu 菜单', link: '/components/menu' }],
+          },
+          {
             text: '媒体组件',
             items: [
               { text: 'VideoPlayer 视频播放器', link: '/components/video' },

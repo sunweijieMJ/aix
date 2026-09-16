@@ -1564,6 +1564,52 @@ importers:
         specifier: 'catalog:'
         version: 3.3.11(typescript@6.0.3)
 
+  packages/menu:
+    dependencies:
+      '@aix/hooks':
+        specifier: workspace:^
+        version: link:../hooks
+      '@aix/popper':
+        specifier: workspace:^
+        version: link:../popper
+      vue:
+        specifier: ^3.3.0
+        version: 3.5.41(typescript@6.0.3)
+    devDependencies:
+      '@kit/eslint-config':
+        specifier: workspace:^
+        version: link:../../internal/eslint-config
+      '@kit/stylelint-config':
+        specifier: workspace:^
+        version: link:../../internal/stylelint-config
+      '@kit/typescript-config':
+        specifier: workspace:^
+        version: link:../../internal/typescript-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
+      eslint:
+        specifier: 'catalog:'
+        version: 10.9.0(jiti@2.7.0)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      stylelint:
+        specifier: 'catalog:'
+        version: 17.14.1(typescript@6.0.3)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.0(@types/node@26.2.0)(@vitest/browser-playwright@5.0.0)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.6.6)(sass-embedded@1.100.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))
+      vue-tsc:
+        specifier: 'catalog:'
+        version: 3.3.11(typescript@6.0.3)
+
   packages/pdf-viewer:
     dependencies:
       '@aix/hooks':

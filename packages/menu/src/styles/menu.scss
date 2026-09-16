@@ -1,0 +1,544 @@
+// 结构与布局。颜色变量全部定义在 themes.scss，这里只消费 var(--aix-menu-*)。
+
+// 侧栏根节点和 flyout 弹层各自独立挂载（弹层 Teleport 到 body），
+// 尺寸变量要在两处都声明，子项才能在任一容器里拿到同一套口径。
+@mixin structural-vars {
+  --aix-menu-radius: 8px;
+  --aix-menu-item-font-size: 14px;
+  --aix-menu-item-line-height: 20px;
+  --aix-menu-item-font-weight-active: 600;
+  --aix-menu-icon-size: 16px;
+  --aix-menu-icon-gap: 8px;
+  --aix-menu-item-height: 38px;
+  --aix-menu-item-padding: 0 16px 0 24px;
+  --aix-menu-subgroup-item-height: 40px;
+  --aix-menu-subgroup-item-padding: 0 12px;
+  --aix-menu-popup-width: 158px;
+  --aix-menu-popup-width-icon: 182px;
+  --aix-menu-popup-padding: 4px;
+  --aix-menu-popup-item-height: 36px;
+  --aix-menu-popup-item-padding: 0 12px;
+  --aix-menu-popup-item-font-weight-active: 500;
+  --aix-menu-popup-max-visible: 9;
+  --aix-menu-transition-duration: 0.2s;
+}
+
+// 4px 细滚动条：只显示圆角滑块，隐藏轨道与按钮
+@mixin thin-scrollbar($thumb-color) {
+  scrollbar-width: thin;
+  scrollbar-color: #{$thumb-color} transparent;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  &::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-button,
+  &::-webkit-scrollbar-corner {
+    display: none;
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border-radius: 9px;
+    background: #{$thumb-color};
+  }
+}
+
+// 叶子项与子菜单标题共用的按钮外观
+@mixin menu-button {
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  width: 100%;
+  height: var(--aix-menu-item-height);
+  padding: var(--aix-menu-item-padding);
+  transition:
+    background-color var(--aix-menu-transition-duration),
+    color var(--aix-menu-transition-duration);
+  border: 0;
+  border-radius: var(--aix-menu-radius);
+  background: transparent;
+  color: var(--aix-menu-item-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--aix-menu-item-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--aix-menu-focus-ring-color);
+    outline-offset: -2px;
+  }
+}
+
+.aix-menu {
+  @include structural-vars;
+
+  --aix-menu-padding: 8px;
+  --aix-menu-section-gap: 16px;
+  --aix-menu-group-gap: 16px;
+  --aix-menu-item-gap: 8px;
+  --aix-menu-group-title-height: 38px;
+  --aix-menu-group-title-padding: 0 8px;
+  --aix-menu-subgroup-title-height: 32px;
+  --aix-menu-subgroup-title-padding: 0 12px;
+  --aix-menu-subgroup-title-font-size: 12px;
+  --aix-menu-resize-handle-width: 6px;
+  --aix-menu-search-height: 38px;
+  --aix-menu-search-padding: 8px;
+  --aix-menu-search-gap: 10px;
+  --aix-menu-search-icon-size: 22px;
+  --aix-menu-search-font-size: 14px;
+  --aix-menu-search-line-height: 22px;
+
+  display: flex;
+  position: relative;
+  box-sizing: border-box;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--aix-menu-padding);
+  background: var(--aix-menu-bg);
+  color: var(--aix-menu-item-color);
+  font-size: var(--aix-menu-item-font-size);
+  line-height: var(--aix-menu-item-line-height);
+  gap: var(--aix-menu-section-gap);
+
+  &__header,
+  &__footer {
+    flex: none;
+  }
+
+  &__list {
+    @include thin-scrollbar(var(--aix-menu-scrollbar-color));
+
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden auto;
+    gap: var(--aix-menu-item-gap);
+    list-style: none;
+  }
+
+  // 分组与相邻节点之间比普通项间距更宽
+  &__list > .aix-menu-group + .aix-menu-group,
+  &__list > .aix-menu-group + .aix-menu-item,
+  &__list > .aix-menu-group + .aix-menu-submenu,
+  &__list > .aix-menu-item + .aix-menu-group,
+  &__list > .aix-menu-submenu + .aix-menu-group {
+    margin-top: calc(var(--aix-menu-group-gap) - var(--aix-menu-item-gap));
+  }
+
+  &__divider {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--aix-menu-divider-color);
+    list-style: none;
+  }
+
+  &__empty {
+    padding: 12px 8px;
+    color: var(--aix-menu-group-title-color);
+    font-size: var(--aix-menu-item-font-size);
+    list-style: none;
+    text-align: center;
+  }
+
+  &__resize-handle {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    right: calc(var(--aix-menu-resize-handle-width) / -2);
+    bottom: 0;
+    width: var(--aix-menu-resize-handle-width);
+    cursor: col-resize;
+    touch-action: none;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: calc(50% - 0.5px);
+      width: 1px;
+      transition: opacity var(--aix-menu-transition-duration);
+      opacity: 0;
+      background: linear-gradient(
+        180deg,
+        transparent,
+        var(--aix-menu-resize-indicator-color),
+        transparent
+      );
+    }
+
+    &:hover::after,
+    &:focus-visible::after {
+      opacity: 1;
+    }
+
+    &:focus-visible {
+      outline: none;
+    }
+  }
+
+  &--dragging .aix-menu__resize-handle::after {
+    opacity: 1;
+  }
+}
+
+// ---------- 内置搜索框 ----------
+
+.aix-menu-search {
+  display: flex;
+  box-sizing: border-box;
+  flex: none;
+  align-items: center;
+  height: var(--aix-menu-search-height);
+  padding: var(--aix-menu-search-padding);
+  transition: background-color var(--aix-menu-transition-duration);
+  border-radius: var(--aix-menu-radius);
+  background: var(--aix-menu-search-bg);
+  color: var(--aix-menu-search-color);
+  cursor: text;
+  gap: var(--aix-menu-search-gap);
+
+  &:hover,
+  &--focused {
+    background: var(--aix-menu-search-bg-active);
+  }
+
+  &__icon {
+    flex: none;
+    width: var(--aix-menu-search-icon-size);
+    height: var(--aix-menu-search-icon-size);
+    color: var(--aix-menu-search-icon-color);
+  }
+
+  &__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--aix-menu-search-font-size);
+    line-height: var(--aix-menu-search-line-height);
+
+    &::placeholder {
+      color: var(--aix-menu-search-placeholder-color);
+    }
+  }
+}
+
+// ---------- 单色 SVG 图标（mask + currentColor） ----------
+
+.aix-menu-icon {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  mask: var(--aix-menu-icon-src) center / contain no-repeat;
+}
+
+// ---------- 项内容（图标 + 文字 + 后缀） ----------
+
+.aix-menu-item-content {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: var(--aix-menu-icon-gap);
+
+  &__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--aix-menu-icon-size);
+    height: var(--aix-menu-icon-size);
+    font-size: var(--aix-menu-icon-size);
+
+    > * {
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  .aix-tooltip__trigger {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &__label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__suffix {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-left: auto;
+  }
+}
+
+// ---------- 叶子项 ----------
+
+.aix-menu-item {
+  list-style: none;
+
+  &__button {
+    @include menu-button;
+  }
+
+  &--level-2 .aix-menu-item__button {
+    height: var(--aix-menu-subgroup-item-height);
+    padding: var(--aix-menu-subgroup-item-padding);
+  }
+
+  &--active .aix-menu-item__button {
+    background: var(--aix-menu-item-bg-active);
+    color: var(--aix-menu-item-color-active);
+    font-weight: var(--aix-menu-item-font-weight-active);
+  }
+
+  &--popup .aix-menu-item__button {
+    height: var(--aix-menu-popup-item-height);
+    padding: var(--aix-menu-popup-item-padding);
+    color: var(--aix-menu-popup-item-color);
+
+    &:hover {
+      background: var(--aix-menu-popup-item-bg-hover);
+    }
+
+    &:focus-visible {
+      outline-color: var(--aix-menu-popup-focus-ring-color);
+    }
+  }
+
+  &--popup.aix-menu-item--active .aix-menu-item__button {
+    background: var(--aix-menu-popup-item-bg-active);
+    color: var(--aix-menu-popup-item-color-active);
+    font-weight: var(--aix-menu-popup-item-font-weight-active);
+  }
+
+  // 禁用态压过选中 / 弹层配色，放在最后并提高特异性
+  &.aix-menu-item--disabled .aix-menu-item__button {
+    background: transparent;
+    color: var(--aix-menu-item-color-disabled);
+    font-weight: inherit;
+    cursor: not-allowed;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+}
+
+// ---------- 内联分组 ----------
+
+.aix-menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aix-menu-item-gap);
+  list-style: none;
+
+  &__title {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    width: 100%;
+    height: var(--aix-menu-group-title-height);
+    padding: var(--aix-menu-group-title-padding);
+    transition: background-color var(--aix-menu-transition-duration);
+    border: 0;
+    border-radius: var(--aix-menu-radius);
+    background: transparent;
+    color: var(--aix-menu-group-title-color);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    gap: var(--aix-menu-icon-gap);
+
+    &:hover {
+      background: var(--aix-menu-item-bg-hover);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--aix-menu-focus-ring-color);
+      outline-offset: -2px;
+    }
+  }
+
+  &__arrow {
+    flex: none;
+    width: var(--aix-menu-icon-size);
+    height: var(--aix-menu-icon-size);
+    transform: rotate(-90deg);
+    transition: transform var(--aix-menu-transition-duration);
+  }
+
+  &--open .aix-menu-group__arrow {
+    transform: none;
+  }
+
+  &__title-text {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__divider {
+    flex: 1 1 auto;
+    min-width: 10px;
+    height: 1px;
+    background: var(--aix-menu-divider-color);
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    gap: var(--aix-menu-item-gap);
+    list-style: none;
+  }
+
+  &--static .aix-menu-group__title {
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+
+  &--level-2 {
+    .aix-menu-group__title {
+      height: var(--aix-menu-subgroup-title-height);
+      padding: var(--aix-menu-subgroup-title-padding);
+      color: var(--aix-menu-subgroup-title-color);
+      font-size: var(--aix-menu-subgroup-title-font-size);
+    }
+
+    .aix-menu-group__divider {
+      flex: 0 0 10px;
+      margin-left: auto;
+    }
+  }
+}
+
+// ---------- flyout 子菜单 ----------
+
+.aix-menu-submenu {
+  list-style: none;
+
+  &__title {
+    @include menu-button;
+  }
+
+  &__arrow {
+    width: var(--aix-menu-icon-size);
+    height: var(--aix-menu-icon-size);
+    transform: rotate(-90deg);
+  }
+
+  &--level-2 .aix-menu-submenu__title {
+    height: var(--aix-menu-subgroup-item-height);
+    padding: var(--aix-menu-subgroup-item-padding);
+  }
+
+  &--open .aix-menu-submenu__title {
+    background: var(--aix-menu-item-bg-hover);
+  }
+
+  &--active .aix-menu-submenu__title {
+    background: var(--aix-menu-item-bg-active);
+    color: var(--aix-menu-item-color-active);
+    font-weight: var(--aix-menu-popup-item-font-weight-active);
+  }
+
+  &--popup .aix-menu-submenu__title {
+    height: var(--aix-menu-popup-item-height);
+    padding: var(--aix-menu-popup-item-padding);
+    color: var(--aix-menu-popup-item-color);
+
+    &:hover {
+      background: var(--aix-menu-popup-item-bg-hover);
+    }
+
+    &:focus-visible {
+      outline-color: var(--aix-menu-popup-focus-ring-color);
+    }
+  }
+
+  &--popup.aix-menu-submenu--open .aix-menu-submenu__title {
+    background: var(--aix-menu-popup-item-bg-hover);
+  }
+
+  &--popup.aix-menu-submenu--active .aix-menu-submenu__title {
+    background: var(--aix-menu-popup-item-bg-active);
+    color: var(--aix-menu-popup-item-color-active);
+  }
+
+  // 禁用态压过选中 / 展开 / 弹层配色，放在最后并提高特异性
+  &.aix-menu-submenu--disabled .aix-menu-submenu__title {
+    background: transparent;
+    color: var(--aix-menu-item-color-disabled);
+    font-weight: inherit;
+    cursor: not-allowed;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+}
+
+// ---------- flyout 弹层 ----------
+
+.aix-menu-popup {
+  @include structural-vars;
+
+  box-sizing: border-box;
+  width: var(--aix-menu-popup-width);
+  border-radius: var(--aix-menu-radius);
+  background: var(--aix-menu-popup-bg);
+  box-shadow: var(--aix-menu-popup-shadow);
+  color: var(--aix-menu-popup-item-color);
+  font-size: var(--aix-menu-item-font-size);
+  line-height: var(--aix-menu-item-line-height);
+
+  &--with-icon {
+    width: var(--aix-menu-popup-width-icon);
+  }
+
+  &__list {
+    @include thin-scrollbar(var(--aix-menu-popup-scrollbar-color));
+
+    --aix-menu-popup-rows: calc(
+      var(--aix-menu-popup-max-visible) * var(--aix-menu-popup-item-height)
+    );
+
+    display: flex;
+    box-sizing: border-box;
+    flex-direction: column;
+    max-height: calc(var(--aix-menu-popup-rows) + var(--aix-menu-popup-padding) * 2);
+    margin: 0;
+    padding: var(--aix-menu-popup-padding);
+    overflow: hidden auto;
+    list-style: none;
+  }
+}

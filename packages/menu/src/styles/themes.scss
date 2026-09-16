@@ -1,0 +1,104 @@
+/* stylelint-disable declaration-property-value-disallowed-list --
+ * 菜单配色以设计稿原值为准，不映射 @aix/theme 语义 Token；全部 hex 收口在本文件的主题变量块里，
+ * 其他样式只消费 var(--aix-menu-*)。新增主题 = 新增一个 `.aix-menu--<name>, .aix-menu-popup--<name>` 块。 */
+
+// flyout 弹层四套主题共用一套白底配色，业务自定义主题可用 .aix-menu-popup--<name> 覆盖
+.aix-menu-popup {
+  --aix-menu-popup-bg: #fff;
+  --aix-menu-popup-shadow: 0 1px 5px 0 rgb(45 47 51 / 0.1);
+  --aix-menu-popup-item-color: #4e5969;
+  --aix-menu-popup-item-bg-hover: #f2f3f5;
+  --aix-menu-popup-item-bg-active: #e5e6eb;
+  --aix-menu-popup-item-color-active: #1d2129;
+  --aix-menu-popup-scrollbar-color: #e5e6eb;
+  --aix-menu-popup-focus-ring-color: #00c261;
+}
+
+.aix-menu--gray,
+.aix-menu-popup--gray {
+  --aix-menu-bg: #f7f8fa;
+  --aix-menu-item-color: #4e5969;
+  --aix-menu-item-bg-hover: #f2f3f5;
+  --aix-menu-item-bg-active: #e5e6eb;
+  --aix-menu-item-color-active: #1d2129;
+  --aix-menu-item-color-disabled: #c9cdd4;
+  --aix-menu-group-title-color: #86909c;
+  --aix-menu-subgroup-title-color: #4e5969;
+  --aix-menu-divider-color: #e5e6eb;
+  --aix-menu-focus-ring-color: #00c261;
+  --aix-menu-scrollbar-color: #e5e6eb;
+  --aix-menu-search-bg: #fff;
+  --aix-menu-search-bg-active: #f2f3f5;
+  --aix-menu-search-color: #1d2129;
+  --aix-menu-search-icon-color: #1d2129;
+  --aix-menu-search-placeholder-color: #86909c;
+  --aix-menu-resize-indicator-color: #00c261;
+}
+
+.aix-menu--white,
+.aix-menu-popup--white {
+  --aix-menu-bg: #fff;
+  --aix-menu-item-color: #4e5969;
+  --aix-menu-item-bg-hover: #f7f8fa;
+  --aix-menu-item-bg-active: #f2f3f5;
+  --aix-menu-item-color-active: #1d2129;
+  --aix-menu-item-color-disabled: #c9cdd4;
+  --aix-menu-group-title-color: #86909c;
+  --aix-menu-subgroup-title-color: #4e5969;
+  --aix-menu-divider-color: #e5e6eb;
+  --aix-menu-focus-ring-color: #00c261;
+  --aix-menu-scrollbar-color: #e5e6eb;
+  --aix-menu-search-bg: #f7f8fa;
+  --aix-menu-search-bg-active: #f2f3f5;
+  --aix-menu-search-color: #1d2129;
+  --aix-menu-search-icon-color: #1d2129;
+  --aix-menu-search-placeholder-color: #86909c;
+  --aix-menu-resize-indicator-color: #00c261;
+}
+
+.aix-menu--glass-light,
+.aix-menu-popup--glass-light {
+  --aix-menu-bg: rgb(255 255 255 / 0.4);
+  --aix-menu-item-color: #1d2129;
+  --aix-menu-item-bg-hover: rgb(255 255 255 / 0.5);
+  --aix-menu-item-bg-active: rgb(255 255 255 / 0.8);
+  --aix-menu-item-color-active: #1d2129;
+  --aix-menu-item-color-disabled: rgb(29 33 41 / 0.35);
+  --aix-menu-group-title-color: rgb(29 33 41 / 0.6);
+  --aix-menu-subgroup-title-color: #1d2129;
+  --aix-menu-divider-color: #e5e6eb;
+  --aix-menu-focus-ring-color: #00c261;
+  --aix-menu-scrollbar-color: rgb(29 33 41 / 0.2);
+  --aix-menu-search-bg: rgb(255 255 255 / 0.5);
+  --aix-menu-search-bg-active: rgb(255 255 255 / 0.8);
+  --aix-menu-search-color: #1d2129;
+  --aix-menu-search-icon-color: #1d2129;
+  --aix-menu-search-placeholder-color: #86909c;
+  --aix-menu-resize-indicator-color: #00c261;
+}
+
+.aix-menu--glass-dark,
+.aix-menu-popup--glass-dark {
+  --aix-menu-bg: rgb(0 0 0 / 0.2);
+  --aix-menu-item-color: #fff;
+  --aix-menu-item-bg-hover: rgb(0 0 0 / 0.2);
+  --aix-menu-item-bg-active: rgb(0 0 0 / 0.4);
+  --aix-menu-item-color-active: #fff;
+  --aix-menu-item-color-disabled: rgb(255 255 255 / 0.4);
+  --aix-menu-group-title-color: rgb(255 255 255 / 0.6);
+  --aix-menu-subgroup-title-color: #fff;
+  --aix-menu-divider-color: rgb(255 255 255 / 0.4);
+  --aix-menu-focus-ring-color: rgb(255 255 255 / 0.8);
+  --aix-menu-scrollbar-color: rgb(255 255 255 / 0.3);
+  --aix-menu-search-bg: rgb(0 0 0 / 0.5);
+  --aix-menu-search-bg-active: rgb(0 0 0 / 0.3);
+  --aix-menu-search-color: #fff;
+  --aix-menu-search-icon-color: #fff;
+  --aix-menu-search-placeholder-color: rgb(255 255 255 / 0.4);
+  --aix-menu-resize-indicator-color: #00c261;
+}
+
+.aix-menu--glass-light,
+.aix-menu--glass-dark {
+  backdrop-filter: blur(15px);
+}
