@@ -89,15 +89,3 @@ function onConnect(connection: FlowConnection) {
 | 插槽名 | 说明 |
 |--------|------|
 | `bottom-bar` | - |
-
-### 暴露方法
-
-通过模板 ref 获取实例（类型为 `FlowGraphInstance`）：
-
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `fitView` | `(params?: { nodes?: string[]; duration?: number; padding?: number }) => void` | 适应视图（包裹所有节点） |
-| `addNode` | `() => void` | 在视口中心螺旋寻位新建一个圆形节点 |
-| `openSearch` | `() => void` | 打开搜索面板并 focus |
-| `closeSearch` | `() => void` | 关闭搜索面板并清空高亮 |
-| `resetNodeStates` | `() => void` | 重置所有节点的交互状态（active / context / selecting） |
