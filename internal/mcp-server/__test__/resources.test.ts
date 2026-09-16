@@ -1,4 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createResourceManager, ResourceManager } from '../src/mcp-resources/index';
 import type { ComponentIndex, ComponentInfo } from '../src/types/index';
@@ -396,7 +397,7 @@ describe('ResourceManager', () => {
 
       const result = await resourceManager['findSourceFile'](mockComponent, 'src/Button.tsx');
 
-      expect(result).toBe('/repo/packages/button/src/Button.tsx');
+      expect(result).toBe(join('/repo', 'packages/button/src/Button.tsx'));
     });
 
     it('should not resolve a bare basename', async () => {

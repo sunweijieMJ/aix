@@ -40,7 +40,8 @@ export class FidelityReporter {
 }
 
 export function renderMarkdown(result: FidelityResult, reportDir: string): string {
-  const rel = (p?: string | null) => (p ? path.relative(reportDir, p) || '.' : '');
+  const rel = (p?: string | null) =>
+    p ? path.relative(reportDir, p).split(path.sep).join('/') || '.' : '';
   const { meta, summary, pixel } = result;
   const lines: string[] = [];
 

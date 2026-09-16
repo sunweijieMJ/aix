@@ -7,6 +7,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.resolve(__dirname, '..');
 const CLI = path.join(PKG_ROOT, 'src/cli.ts');
-const TSX = path.join(PKG_ROOT, 'node_modules/.bin/tsx');
+const TSX = createRequire(import.meta.url).resolve('tsx/cli');
 
 /** 每个 tsx 冷启动约 1s */
 const TIMEOUT = 60_000;
@@ -31,11 +32,12 @@ function makeProject(): string {
 }
 
 function runList(args: string[], cwd: string): { status: number | null; output: string } {
-  const r = spawnSync(TSX, [CLI, 'override', 'list', ...args], {
+  const r = spawnSync(process.execPath, [TSX, CLI, 'override', 'list', ...args], {
     cwd,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  if (r.error) throw r.error;
   return { status: r.status, output: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 

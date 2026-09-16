@@ -20,11 +20,10 @@ function onCancel(): never {
 /**
  * 收掉 clack 返回值里的取消哨兵：取消即退出，调用方拿到的就是业务类型。
  *
- * 用 typeof 而不是 p.isCancel 收窄：isCancel 的守卫是 `value is typeof CANCEL_SYMBOL`，
- * 从 `T | symbol` 里排除一个 unique symbol 收不掉 symbol 本身；而 clack 各 prompt 的返回值里
- * symbol 只有取消哨兵这一种，按 typeof 判等价且能让类型收干净。
+ * 参数使用 clack 的精确取消哨兵类型，避免泛型 T 把 unique symbol 一起推断进去。
+ * prompt 的业务值不含 symbol，运行时统一按 typeof 识别取消。
  */
-function unwrap<T>(value: T | symbol): T {
+function unwrap<T>(value: T | typeof p.CANCEL_SYMBOL): T {
   if (typeof value === 'symbol') onCancel();
   return value;
 }

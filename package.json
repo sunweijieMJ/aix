@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@11.23.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
     "dev": "turbo dev --concurrency=20",

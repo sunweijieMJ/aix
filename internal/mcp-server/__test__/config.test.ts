@@ -61,7 +61,7 @@ describe('ConfigManager', () => {
       const manager = new ConfigManager({ dataDir: '/explicit/data' });
 
       expect(manager.get('dataDir')).toBe('/explicit/data');
-      expect(manager.get('packagesDir')).toBe('/env/packages');
+      expect(manager.get('packagesDir')).toBe(resolve('/env/packages'));
       expect(manager.get('serverName')).toBe(DEFAULT_CONFIG.serverName);
     });
 

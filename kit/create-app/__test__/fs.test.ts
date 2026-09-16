@@ -10,6 +10,9 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileList } from '../src/types';
 import { emptyDir, printFileTree, writeFiles } from '../src/utils/fs';
+import { supportsFileSymlinks } from './helpers/symlink';
+
+const canSymlink = supportsFileSymlinks();
 
 let logs: string[];
 
@@ -129,7 +132,7 @@ describe('writeFiles - 符号链接', () => {
     fs.rmSync(dest, { recursive: true, force: true });
   });
 
-  it('带 symlinkTarget 的条目落盘为符号链接，且读得到目标内容', () => {
+  it.skipIf(!canSymlink)('带 symlinkTarget 的条目落盘为符号链接，且读得到目标内容', () => {
     writeFiles(
       [
         { path: 'CLAUDE.md', content: '# 指南\n' },
@@ -156,7 +159,7 @@ describe('writeFiles - 符号链接', () => {
     expect(fs.readFileSync(path.join(dest, 'AGENTS.md'), 'utf-8')).toBe('# 指南\n');
   });
 
-  it('目标路径已存在旧文件时先删再建链接（覆盖生成场景）', () => {
+  it.skipIf(!canSymlink)('目标路径已存在旧文件时先删再建链接（覆盖生成场景）', () => {
     fs.writeFileSync(path.join(dest, 'AGENTS.md'), '上一次生成留下的副本\n');
 
     writeFiles(

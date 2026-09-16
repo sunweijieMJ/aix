@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -17,17 +18,24 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const execFileAsync = promisify(execFile);
 
 const packageRoot = join(import.meta.dirname, '..');
-const tsx = join(packageRoot, 'node_modules/.bin/tsx');
+const tsx = createRequire(import.meta.url).resolve('tsx/cli');
 const cli = join(packageRoot, 'src/cli.ts');
 
 /** 运行 CLI，返回输出和退出码（CLI 大量使用 process.exit，非 0 属正常路径） */
-async function runCli(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
+async function runCli(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ stdout: string; stderr: string; code: number }> {
   try {
-    const { stdout, stderr } = await execFileAsync(tsx, [cli, ...args], { timeout: 60_000 });
+    const { stdout, stderr } = await execFileAsync(process.execPath, [tsx, cli, ...args], {
+      env,
+      timeout: 60_000,
+    });
     return { stdout, stderr, code: 0 };
   } catch (error) {
-    const e = error as { stdout?: string; stderr?: string; code?: number };
-    return { stdout: e.stdout ?? '', stderr: e.stderr ?? '', code: e.code ?? 1 };
+    const e = error as { stdout?: string; stderr?: string; code?: number | string };
+    if (typeof e.code !== 'number') throw error;
+    return { stdout: e.stdout ?? '', stderr: e.stderr ?? '', code: e.code };
   }
 }
 
@@ -84,13 +92,10 @@ describe('CLI', () => {
   it('MCP_DATA_DIR 应该生效', async () => {
     // 回归用例：McpServer 构造时会给 dataDir 补默认值，
     // 而显式值优先级高于环境变量，导致 MCP_DATA_DIR 永远被盖掉
-    const { stdout, stderr } = await execFileAsync(tsx, [cli, 'health'], {
-      env: { ...process.env, MCP_DATA_DIR: emptyDataDir },
-      timeout: 60_000,
-    }).catch((e: { stdout?: string; stderr?: string }) => ({
-      stdout: e.stdout ?? '',
-      stderr: e.stderr ?? '',
-    }));
+    const { stdout, stderr } = await runCli(['health'], {
+      ...process.env,
+      MCP_DATA_DIR: emptyDataDir,
+    });
 
     expect(stdout + stderr).toContain(emptyDataDir);
   });

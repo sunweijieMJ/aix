@@ -4,6 +4,12 @@ packages:
   - 'kit/*'
   - 'packages/*'
 
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  unrs-resolver: true
+  vue-demi: true
+
 # 依赖目录（单一版本真相来源）：子包与根用 `catalog:` 引用，版本只在此处维护。
 catalog:
   '@inquirer/prompts': ^8.7.2

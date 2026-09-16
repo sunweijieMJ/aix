@@ -98,7 +98,7 @@ function shellQuote(value: string): string {
 }
 
 function printNextSteps(config: ProjectConfig, destDir: string): void {
-  const rel = destDir.replace(process.cwd() + '/', '');
+  const rel = path.relative(process.cwd(), destDir) || '.';
   const pm = config.packageManager;
 
   const steps = [

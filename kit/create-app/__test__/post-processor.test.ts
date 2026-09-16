@@ -119,8 +119,7 @@ function makeDest(name: string, scripts?: Record<string, string>): string {
 }
 
 beforeEach(() => {
-  // realpath：macOS 的 os.tmpdir() 是 /var 软链，而 printNextSteps 拿 process.cwd()
-  // 去裁前缀，不归一化的话相对路径裁不掉
+  // realpath：macOS 的 os.tmpdir() 是 /var 软链，需要与 process.cwd() 的真实路径一致。
   tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-pp-')));
   process.chdir(tmpRoot);
   cp.calls.length = 0;
@@ -178,12 +177,12 @@ describe('runPostProcess - 安装依赖', () => {
     const dest = makeDest('install', { dev: 'vite' });
     await runPostProcess(makeConfig({ installDeps: true, packageManager: 'yarn' }), dest);
 
-    expect(cp.calls).toEqual(['yarn install']);
+    expect(cp.calls).toEqual([`${process.platform === 'win32' ? 'yarn.cmd' : 'yarn'} install`]);
     expect(clack.stops).toContain('依赖安装完成');
   });
 
   it('安装失败抛 E_INSTALL_FAILED，带可操作的 suggestion', async () => {
-    cp.status.set('pnpm', { status: 1 });
+    cp.status.set(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', { status: 1 });
     const dest = makeDest('installfail', { dev: 'vite' });
 
     await expect(runPostProcess(makeConfig({ installDeps: true }), dest)).rejects.toMatchObject({
@@ -198,7 +197,7 @@ describe('runPostProcess - 安装依赖', () => {
 
   it('git 失败被吞、安装失败仍然抛（两条分支的处置不能串味）', async () => {
     cp.status.set('git', { status: 1 });
-    cp.status.set('npm', { status: 1 });
+    cp.status.set(process.platform === 'win32' ? 'npm.cmd' : 'npm', { status: 1 });
     const dest = makeDest('both', { dev: 'vite' });
 
     await expect(

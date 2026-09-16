@@ -9,6 +9,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.resolve(__dirname, '..');
 const CLI = path.join(PKG_ROOT, 'src/cli.ts');
-const TSX = path.join(PKG_ROOT, 'node_modules/.bin/tsx');
+const TSX = createRequire(import.meta.url).resolve('tsx/cli');
 
 /** 每个 tsx 冷启动约 1s */
 const TIMEOUT = 60_000;
@@ -54,11 +55,12 @@ function makeProject(withKernel = true): string {
 }
 
 function runAdd(args: string[], cwd: string): { status: number | null; output: string } {
-  const r = spawnSync(TSX, [CLI, 'override', 'add', ...args], {
+  const r = spawnSync(process.execPath, [TSX, CLI, 'override', 'add', ...args], {
     cwd,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  if (r.error) throw r.error;
   return { status: r.status, output: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
@@ -107,7 +109,7 @@ describe('override add - 内核 / 基础设施前置检查', () => {
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_MISSING_OVERRIDE_KERNEL');
       expect(r.output).toContain('src/plugins/override/index.ts');
-      expect(r.output).toContain('src/overrides/constants.ts');
+      expect(r.output).toContain(path.join('src', 'overrides', 'constants.ts'));
       // 一个文件都不该落盘：骨架 import 不到内核，生成出来只是死 import
       expect(fs.existsSync(path.join(cwd, 'src/overrides/sysu'))).toBe(false);
     },
@@ -134,7 +136,7 @@ describe('override add - 内核 / 基础设施前置检查', () => {
 
       const r = runAdd(['sysu', '-m', 'router', '-y'], cwd);
       expect(r.status).not.toBe(0);
-      expect(r.output).toContain('src/overrides/constants.ts');
+      expect(r.output).toContain(path.join('src', 'overrides', 'constants.ts'));
       expect(r.output).not.toContain('src/plugins/override/index.ts');
     },
     TIMEOUT,

@@ -10,6 +10,7 @@
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,7 @@ import { gitCacheDir } from '../src/core/git-source';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.resolve(__dirname, '..');
 const CLI = path.join(PKG_ROOT, 'src/cli.ts');
-const TSX = path.join(PKG_ROOT, 'node_modules/.bin/tsx');
+const TSX = createRequire(import.meta.url).resolve('tsx/cli');
 const MINI_DIR = path.join(__dirname, 'fixtures', 'template-mini');
 
 /** 每个 tsx 冷启动约 1s，整组用例给足预算 */
@@ -72,7 +73,7 @@ interface CliResult {
 
 /** spawn 真实 CLI；stdin 是管道（非 TTY），与 CI / `< /dev/null` 同形 */
 function runCli(args: string[], cwd: string): CliResult {
-  const r = spawnSync(TSX, [CLI, ...args], {
+  const r = spawnSync(process.execPath, [TSX, CLI, ...args], {
     cwd,
     encoding: 'utf-8',
     input: '',
@@ -80,6 +81,7 @@ function runCli(args: string[], cwd: string): CliResult {
     // 子进程缓存根须与父进程 gitCacheDir 推导一致
     env: { ...process.env, XDG_CACHE_HOME: CACHE_HOME },
   });
+  if (r.error) throw r.error;
   return { status: r.status, output: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 

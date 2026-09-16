@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Composer } from '../src/core/composer';
 import { TemplateResolver } from '../src/core/resolver';
 import type { FileList, ProjectConfig, TemplateConfig } from '../src/types';
+import { supportsFileSymlinks } from './helpers/symlink';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, 'fixtures', 'template-pc');
@@ -533,7 +534,7 @@ describe('Composer - 排除路径的形态归一', () => {
  * 落成两份静态副本后就会各自漂移，所以要原样带进产物。
  * 但链接只在「目标同在产物内、且指向模板内部」时才有意义，其余一律解引用成副本。
  */
-describe('Composer - 符号链接', () => {
+describe.skipIf(!supportsFileSymlinks())('Composer - 符号链接', () => {
   const composer = new Composer();
   const dirs: string[] = [];
 

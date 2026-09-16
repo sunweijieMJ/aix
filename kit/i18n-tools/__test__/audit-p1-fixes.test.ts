@@ -424,10 +424,12 @@ describe('classifyJsonFile — 合法 null 不算损坏', () => {
 // #13 getFrameworkFiles：软链目录被 Dirent.isDirectory() 判 false 静默跳过
 // ---------------------------------------------------------------------------
 describe('getFrameworkFiles — 跟随软链', () => {
+  // Windows 目录联接无需符号链接权限，同样覆盖目录跟随和循环检测。
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
   it('软链目录内的文件被扫描到', () => {
     write('real/Deep.vue', '<template><div>你好</div></template>\n');
     fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
-    fs.symlinkSync(path.join(tmpDir, 'real'), path.join(tmpDir, 'src', 'linked'), 'dir');
+    fs.symlinkSync(path.join(tmpDir, 'real'), path.join(tmpDir, 'src', 'linked'), linkType);
 
     const files = FileUtils.getFrameworkFiles(path.join(tmpDir, 'src'), ['.vue']);
     expect(files.some((f) => f.endsWith(path.join('linked', 'Deep.vue')))).toBe(true);
@@ -435,7 +437,7 @@ describe('getFrameworkFiles — 跟随软链', () => {
 
   it('指回祖先目录的循环软链不导致无限递归', () => {
     write('src/A.vue', '<template><div>你好</div></template>\n');
-    fs.symlinkSync(path.join(tmpDir, 'src'), path.join(tmpDir, 'src', 'loop'), 'dir');
+    fs.symlinkSync(path.join(tmpDir, 'src'), path.join(tmpDir, 'src', 'loop'), linkType);
 
     const files = FileUtils.getFrameworkFiles(path.join(tmpDir, 'src'), ['.vue']);
     expect(files).toHaveLength(1);

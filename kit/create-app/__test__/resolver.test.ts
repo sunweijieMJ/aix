@@ -60,7 +60,8 @@ describe('isLocalSource', () => {
 
 describe('resolveLocalSource', () => {
   it('绝对路径原样返回', () => {
-    expect(resolveLocalSource('/abs/tpl')).toBe('/abs/tpl');
+    const absolutePath = path.resolve('/abs/tpl');
+    expect(resolveLocalSource(absolutePath)).toBe(absolutePath);
   });
 
   it('相对路径基于 cwd 展开', () => {
@@ -72,8 +73,8 @@ describe('resolveLocalSource', () => {
   });
 
   it('file: 前缀的三种写法都能展开', () => {
-    expect(resolveLocalSource('file:/abs/tpl')).toBe('/abs/tpl');
-    expect(resolveLocalSource('file:///abs/tpl')).toBe('/abs/tpl');
+    expect(resolveLocalSource('file:/abs/tpl')).toBe(path.resolve('/abs/tpl'));
+    expect(resolveLocalSource('file:///abs/tpl')).toBe(path.resolve('/abs/tpl'));
     expect(resolveLocalSource('file:./tpl')).toBe(path.resolve(process.cwd(), 'tpl'));
   });
 });
