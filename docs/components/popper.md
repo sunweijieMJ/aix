@@ -91,6 +91,7 @@ outline: deep
 | `disabled` | `boolean` | `false` | 是否禁用 |
 | `open` | `boolean` | — | 受控的显示状态（`v-model:open`） |
 | `arrowSize` | `number` | `6` | 箭头大小（px） |
+| `popperClass` | `string \| string[] \| Record<string, boolean>` | — | 浮动元素的自定义 class |
 | `transition` | `string` | `'aix-popper-fade'` | 过渡动画名称 |
 | `teleportTo` | `string \| HTMLElement` | `'body'` | Teleport 目标 |
 | `teleportDisabled` | `boolean` | `false` | 是否禁用 Teleport |
@@ -316,6 +317,7 @@ outline: deep
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
 | `open` | `boolean` | - | - | 受控的显示状态（v-model:open） |
 | `arrowSize` | `number` | `6` | - | 箭头大小（px） |
+| `popperClass` | `string \| string[] \| Record<string, boolean>` | - | - | 浮动元素的自定义 class |
 | `transition` | `string` | `'aix-popper-fade'` | - | 过渡动画名称 |
 | `teleportTo` | `string \| HTMLElement` | `'body'` | - | Teleport 目标 |
 | `teleportDisabled` | `boolean` | `false` | - | 是否禁用 Teleport |

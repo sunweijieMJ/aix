@@ -14,7 +14,7 @@
         :id="tooltipId"
         ref="floatingElRef"
         role="tooltip"
-        class="aix-tooltip"
+        :class="['aix-tooltip', popperClass]"
         :style="mergedStyles"
       >
         <slot name="content">{{ content }}</slot>

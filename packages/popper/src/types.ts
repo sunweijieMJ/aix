@@ -169,6 +169,11 @@ export interface TooltipProps {
   arrowSize?: number;
 
   /**
+   * 浮动元素的自定义 class
+   */
+  popperClass?: string | string[] | Record<string, boolean>;
+
+  /**
    * 过渡动画名称
    * @default 'aix-popper-fade'
    */
