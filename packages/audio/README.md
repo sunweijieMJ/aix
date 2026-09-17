@@ -21,6 +21,13 @@ pnpm add @aix/audio
 npm install @aix/audio
 ```
 
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/audio/style';
+import '@aix/theme/style';
+```
+
 ## 快速开始
 
 ### 统一入口：`useSpeech`

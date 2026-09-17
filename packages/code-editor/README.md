@@ -22,6 +22,13 @@ npm install @aix/code-editor
 yarn add @aix/code-editor
 ```
 
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/code-editor/style';
+import '@aix/theme/style';
+```
+
 ## 使用
 
 ### 基础用法

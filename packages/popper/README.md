@@ -23,6 +23,13 @@ npm install @aix/popper
 yarn add @aix/popper
 ```
 
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/popper/style';
+import '@aix/theme/style';
+```
+
 ## 使用
 
 ### Tooltip 提示

@@ -11,6 +11,19 @@ outline: deep
 - 需要支持多种流媒体协议（HLS、DASH、RTSP 等）
 - 需要自定义控制栏或移动端优化
 
+## 安装
+
+```bash
+pnpm add @aix/video
+```
+
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/video/style';
+import '@aix/theme/style';
+```
+
 ## 代码演示
 
 ### 基础用法

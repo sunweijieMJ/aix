@@ -21,6 +21,13 @@ npm install @aix/button
 yarn add @aix/button
 ```
 
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/button/style';
+import '@aix/theme/style';
+```
+
 ## 使用
 
 ### 基础用法

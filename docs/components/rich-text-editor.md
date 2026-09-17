@@ -21,6 +21,19 @@ outline: deep
 - 工具栏可显示/隐藏
 - 多语言支持（zh-CN / en-US）
 
+## 安装
+
+```bash
+pnpm add @aix/rich-text-editor
+```
+
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/rich-text-editor/style';
+import '@aix/theme/style';
+```
+
 ## API
 
 ::: warning 自动生成的 API 文档

@@ -17,9 +17,10 @@ pnpm add @aix/ai-chat
 
 Markdown 渲染的六个增强依赖（`markdown-it` / `highlight.js` / `katex` / `@vscode/markdown-it-katex` / `mermaid` / `echarts`）声明为 `optionalDependencies`，pnpm/npm 会**随包自动安装、开箱即用**，无需手动添加；运行时按需动态加载（详见下文「Markdown 渲染」），个别环境某项安装失败时仅该项能力静默降级（如 `markdown-it` 缺失 → 纯文本），不阻断安装、互不连累。
 
-组件样式依赖 `@aix/theme` 的 CSS 变量，使用前需引入主题样式：
+组件样式需要单独引入，其配色依赖 `@aix/theme` 的 CSS 变量，主题样式同样引入一次：
 
 ```ts
+import '@aix/ai-chat/style';
 import '@aix/theme/style';
 ```
 
@@ -30,6 +31,7 @@ import '@aix/theme/style';
 ```vue
 <script setup lang="ts">
 import { AiChat } from '@aix/ai-chat';
+import '@aix/ai-chat/style';
 import '@aix/theme/style';
 import type { ChatMessage } from '@aix/ai-chat';
 
@@ -82,6 +84,7 @@ const chatRef = ref<InstanceType<typeof AiChat>>();
 ```ts
 import { createApp } from 'vue';
 import AiChat from '@aix/ai-chat';
+import '@aix/ai-chat/style';
 import '@aix/theme/style';
 
 const app = createApp(App);

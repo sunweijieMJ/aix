@@ -181,7 +181,6 @@ const themeSelected = reactive({
   --aix-menu-item-color: #cbd5e1;
   --aix-menu-item-bg-hover: rgb(255 255 255 / 0.08);
   --aix-menu-item-bg-active: #2563eb;
-  --aix-menu-item-bg-highlight: rgb(96 165 250 / 0.16);
   --aix-menu-item-color-highlight: #93c5fd;
   --aix-menu-item-color-active: #fff;
   --aix-menu-item-color-disabled: rgb(203 213 225 / 0.35);
@@ -213,6 +212,19 @@ const themeSelected = reactive({
 - 后台系统、工作台的左侧导航栏
 - 导航层级较深，需要把常用入口平铺在侧栏、次级入口收进 flyout 的场景
 - 需要跟随页面背景做毛玻璃效果，或接入业务自有配色的侧栏
+
+## 安装
+
+```bash
+pnpm add @aix/menu
+```
+
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/menu/style';
+import '@aix/theme/style';
+```
 
 ## 代码演示
 
@@ -571,7 +583,7 @@ const width = ref(200);
 
 ### 长文案与键盘
 
-菜单项单行省略，被截断时悬停显示完整 Tooltip；分组标题只做省略。Tooltip 来自 `@aix/popper`，配色依赖 `@aix/theme` 的 CSS 变量，应用入口需引入一次 `@aix/theme/vars`。
+菜单项单行省略，被截断时悬停显示完整 Tooltip；分组标题只做省略。Tooltip 来自 `@aix/popper`，配色依赖 `@aix/theme` 的 CSS 变量，应用入口需引入一次 `@aix/theme/style`（见「安装」）。
 
 | 按键                        | 作用                                        |
 | --------------------------- | ------------------------------------------- |
@@ -626,8 +638,7 @@ const width = ref(200);
 | `--aix-menu-item-color`                | 菜单项文字                                                      |
 | `--aix-menu-item-bg-hover`             | 菜单项 / 分组标题 hover 背景                                    |
 | `--aix-menu-item-bg-active`            | 选中项背景                                                      |
-| `--aix-menu-item-bg-highlight`         | 搜索命中藏在弹层里时的子菜单触发项背景                          |
-| `--aix-menu-item-color-highlight`      | 搜索命中的文字                                                  |
+| `--aix-menu-item-color-highlight`      | 搜索命中的文字，以及命中藏在弹层里时子菜单触发项的提示圆点      |
 | `--aix-menu-item-color-active`         | 选中项文字                                                      |
 | `--aix-menu-item-color-disabled`       | 禁用项文字（禁用项被选中时同样按此显示）                        |
 | `--aix-menu-group-title-color`         | 一级分组标题文字                                                |
@@ -810,7 +821,7 @@ export type MenuPopupPlacement =
 | `searchPlaceholder` | `string` | - | - | 搜索框占位文案，默认取语言包 |
 | `searchClearable` | `boolean` | `true` | - | 搜索框有关键字时，右侧显示可点击的清除按钮 |
 | `filterMethod` | `any` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
-| `searchHighlight` | `boolean` | `true` | - | 搜索时，命中项藏在 flyout 弹层里的子菜单触发项整行高亮。只对 items 数据驱动写法生效 |
+| `searchHighlight` | `boolean` | `true` | - | 搜索时，命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效 |
 | `width` | `number` | - | - | 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
 | `resizable` | `boolean` | `false` | - | 是否允许拖拽右边缘调整宽度 |
 | `minWidth` | `number` | `150` | - | 可拖拽的最小宽度（px） |

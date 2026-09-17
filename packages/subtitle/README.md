@@ -19,6 +19,12 @@ Vue 3 字幕组件，支持多种字幕格式（VTT、SRT、JSON、SBV、ASS）�
 pnpm add @aix/subtitle
 ```
 
+组件样式需要在应用入口单独引入：
+
+```ts
+import '@aix/subtitle/style';
+```
+
 ## 快速开始
 
 ```vue

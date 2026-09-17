@@ -18,6 +18,19 @@ outline: deep
 - 支持自定义 CodeMirror 扩展，按需扩展功能
 - 通过 `expose` 暴露丰富的编程式操作接口（撤销/重做、插入文本、获取选中等）
 
+## 安装
+
+```bash
+pnpm add @aix/code-editor
+```
+
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/code-editor/style';
+import '@aix/theme/style';
+```
+
 ## API
 
 ::: warning 自动生成的 API 文档

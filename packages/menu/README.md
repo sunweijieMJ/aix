@@ -29,10 +29,16 @@ npm install @aix/menu
 yarn add @aix/menu
 ```
 
-样式随组件入口一起加载，不需要单独引入。长文案溢出时的 Tooltip 来自 `@aix/popper`，其配色使用 `@aix/theme` 的 CSS 变量，请在应用入口引入一次主题变量：
+组件样式需要在应用入口单独引入：
 
 ```ts
-import '@aix/theme/vars';
+import '@aix/menu/style';
+```
+
+长文案溢出时的 Tooltip 来自 `@aix/popper`，其配色使用 `@aix/theme` 的 CSS 变量，同样需要引入一次主题变量：
+
+```ts
+import '@aix/theme/style';
 ```
 
 ## 使用
@@ -361,8 +367,7 @@ flyout 弹层四套主题共用一套白底配色。
 | `--aix-menu-item-color`                | 菜单项文字                                                      |
 | `--aix-menu-item-bg-hover`             | 菜单项 / 分组标题 hover 背景                                    |
 | `--aix-menu-item-bg-active`            | 选中项背景                                                      |
-| `--aix-menu-item-bg-highlight`         | 搜索命中藏在弹层里时的子菜单触发项背景                          |
-| `--aix-menu-item-color-highlight`      | 搜索命中的文字                                                  |
+| `--aix-menu-item-color-highlight`      | 搜索命中的文字，以及命中藏在弹层里时子菜单触发项的提示圆点      |
 | `--aix-menu-item-color-active`         | 选中项文字                                                      |
 | `--aix-menu-item-color-disabled`       | 禁用项文字（禁用项被选中时同样按此显示）                        |
 | `--aix-menu-group-title-color`         | 一级分组标题文字                                                |
@@ -482,7 +487,7 @@ app.use(
 | `searchPlaceholder` | `string` | - | - | 搜索框占位文案，默认取语言包 |
 | `searchClearable` | `boolean` | `true` | - | 搜索框有关键字时，右侧显示可点击的清除按钮 |
 | `filterMethod` | `Function` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
-| `searchHighlight` | `boolean` | `true` | - | 搜索时，命中项藏在 flyout 弹层里的子菜单触发项整行高亮。只对 items 数据驱动写法生效 |
+| `searchHighlight` | `boolean` | `true` | - | 搜索时，命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效 |
 | `width` | `number` | - | - | 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
 | `resizable` | `boolean` | `false` | - | 是否允许拖拽右边缘调整宽度 |
 | `minWidth` | `number` | `150` | - | 可拖拽的最小宽度（px） |

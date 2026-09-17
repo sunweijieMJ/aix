@@ -12,6 +12,19 @@ outline: deep
 - 需要提取 PDF 中的图片
 - 需要生成 PDF 缩略图
 
+## 安装
+
+```bash
+pnpm add @aix/pdf-viewer
+```
+
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/pdf-viewer/style';
+import '@aix/theme/style';
+```
+
 ## 代码演示
 
 ### 基础用法

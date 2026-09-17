@@ -21,6 +21,13 @@
 pnpm add @aix/pdf-viewer
 ```
 
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/pdf-viewer/style';
+import '@aix/theme/style';
+```
+
 ## 快速开始
 
 ```vue

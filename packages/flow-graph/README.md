@@ -8,6 +8,14 @@
 pnpm add @aix/flow-graph
 ```
 
+组件样式与主题变量需要在应用入口各引入一次；节点与连线的右键菜单来自 `@aix/popper`，它的样式也要一并引入：
+
+```ts
+import '@aix/flow-graph/style';
+import '@aix/popper/style';
+import '@aix/theme/style';
+```
+
 ## 使用
 
 ```vue

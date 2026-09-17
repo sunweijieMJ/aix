@@ -52,6 +52,18 @@ onUnmounted(() => {
 - 需要支持多种字幕格式
 - 需要自定义字幕样式或位置
 
+## 安装
+
+```bash
+pnpm add @aix/subtitle
+```
+
+组件样式需要在应用入口单独引入：
+
+```ts
+import '@aix/subtitle/style';
+```
+
 ## 代码演示
 
 ### 交互演示

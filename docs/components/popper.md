@@ -17,6 +17,19 @@ outline: deep
 - 支持 `v-model:open` 受控模式
 - 统一的过渡动画和主题变量
 
+## 安装
+
+```bash
+pnpm add @aix/popper
+```
+
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/popper/style';
+import '@aix/theme/style';
+```
+
 ## 组件列表
 
 | 组件 | 说明 | 导入方式 |
