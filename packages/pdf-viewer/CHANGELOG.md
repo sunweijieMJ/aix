@@ -1,5 +1,12 @@
 # @aix/pdf-viewer
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [018e4a2]
+  - @aix/popper@0.0.10
+
 ## 0.0.10
 
 ### Patch Changes

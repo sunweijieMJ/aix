@@ -1,6 +1,6 @@
 {
   "name": "@aix/menu",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "菜单组件",
   "license": "MIT",
   "type": "module",
