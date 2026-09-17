@@ -108,8 +108,8 @@ function formatType(prop: any): string {
     return `\`${type.name}<${elementsStr}>\``;
   }
 
-  // Handle function types
-  if (type.name === 'func' || type.name === 'function') {
+  // Handle function types (runtime `func` and interface-declared `TSFunctionType`)
+  if (type.name === 'func' || type.name === 'function' || type.name === 'TSFunctionType') {
     return '`Function`';
   }
 
