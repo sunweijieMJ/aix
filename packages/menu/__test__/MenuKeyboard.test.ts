@@ -1,5 +1,7 @@
 import type { VueWrapper } from '@vue/test-utils';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { h } from 'vue';
+import { MenuGroup, MenuItem } from '../src';
 import {
   ITEMS,
   cleanupBody,
@@ -116,5 +118,29 @@ describe('Menu 根列表键盘导航', () => {
 
     await dom(home).trigger('keydown', { key: 'ArrowDown' });
     expect(document.activeElement).toBe(groupTitle(wrapper.element, '分组 A'));
+  });
+});
+
+describe('Menu 不可折叠分组的键盘导航', () => {
+  it('collapsible 为 false 的分组标题不参与焦点移动', () => {
+    wrapper = mountMenu({
+      slots: {
+        default: () => [
+          h(MenuItem, { itemKey: 'i1', label: 'I1' }),
+          h(MenuGroup, { groupKey: 'g', title: 'G', collapsible: false }, () => [
+            h(MenuItem, { itemKey: 'i2', label: 'I2' }),
+          ]),
+        ],
+      },
+    });
+    const title = wrapper.find('.aix-menu-group__title');
+    expect(title.element.tagName).toBe('DIV');
+
+    itemButton(wrapper.element, 'I1').focus();
+    pressOnList('ArrowDown');
+    expect(document.activeElement).toBe(itemButton(wrapper.element, 'I2'));
+
+    pressOnList('ArrowDown');
+    expect(document.activeElement).toBe(itemButton(wrapper.element, 'I1'));
   });
 });

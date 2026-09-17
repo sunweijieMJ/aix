@@ -107,7 +107,9 @@ const slots = useSlots();
 const popupId = `aix-menu-popup-${useId()}`;
 
 provide(MENU_LEVEL_INJECTION_KEY, {
-  path: [...parentLevel.path, props.itemKey],
+  get path() {
+    return [...parentLevel.path, props.itemKey];
+  },
   groupLevel: 0,
   inPopup: true,
 });
@@ -133,13 +135,30 @@ function collectDescendantKeys(nodes: unknown, keys: Set<string>) {
   }
 }
 
-const descendantKeys = new Set<string>();
-try {
-  collectDescendantKeys(slots.default?.(), descendantKeys);
-} catch {
-  // 插槽内容无法在渲染前展开时放弃登记，高亮退回运行时注册表
-}
-onBeforeUnmount(ctx.registerSubMenu(props.itemKey, parentLevel.path, descendantKeys));
+/**
+ * 惰性求值：首次读取发生在渲染期或 post 回调里，此时没有活跃组件实例，
+ * 取插槽不会被 Vue 判为脱离渲染函数；插槽内容变化后随之重算。
+ */
+const descendantKeys = computed(() => {
+  const keys = new Set<string>();
+  try {
+    collectDescendantKeys(slots.default?.(), keys);
+  } catch {
+    // 插槽内容无法在渲染前展开时放弃登记，高亮退回运行时注册表
+  }
+  return keys;
+});
+
+let unregister: (() => void) | undefined;
+watch(
+  () => [props.itemKey, ...parentLevel.path].join('\u0000'),
+  () => {
+    unregister?.();
+    unregister = ctx.registerSubMenu(props.itemKey, parentLevel.path, () => descendantKeys.value);
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => unregister?.());
 
 // ---------- 打开 / 关闭 ----------
 

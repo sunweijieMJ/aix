@@ -58,15 +58,16 @@ const classes = computed(() => [
   },
 ]);
 
-let unregister = ctx.registerItem(props.itemKey, level.path);
+let unregister: (() => void) | undefined;
 watch(
-  () => props.itemKey,
-  (itemKey) => {
-    unregister();
-    unregister = ctx.registerItem(itemKey, level.path);
+  () => [props.itemKey, ...level.path].join('\u0000'),
+  () => {
+    unregister?.();
+    unregister = ctx.registerItem(props.itemKey, level.path);
   },
+  { immediate: true },
 );
-onBeforeUnmount(() => unregister());
+onBeforeUnmount(() => unregister?.());
 
 function onClick() {
   if (props.disabled) return;

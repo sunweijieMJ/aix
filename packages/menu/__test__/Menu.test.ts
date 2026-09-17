@@ -18,6 +18,7 @@ import {
   IconStub,
   ITEMS,
   cleanupBody,
+  click,
   groupLi,
   groupList,
   groupTitle,
@@ -229,8 +230,8 @@ describe('Menu 选中', () => {
 
   it('disabled 叶子点击不触发任何事件', async () => {
     wrapper = mountMenu({ props: { items: ITEMS } });
-    itemButton(wrapper.element, 'A2').click();
-    await nextTick();
+    // 走 dispatchEvent：jsdom 对 disabled 控件的 HTMLElement.click() 不派发事件，打不到组件内的守卫
+    await click(itemButton(wrapper.element, 'A2'));
 
     expect(wrapper.emitted('select')).toBeUndefined();
     expect(wrapper.emitted('update:selectedKey')).toBeUndefined();
@@ -456,6 +457,74 @@ describe('Menu 复合组件', () => {
     groupTitle(host.element, 'G1').click();
     await nextTick();
     expect(menu.emitted('update:openKeys')?.at(-1)).toEqual([['g2', 'g1']]);
+  });
+
+  it('运行时改 groupKey 后，分组内叶子项的 keyPath 与展开登记跟随新 key', async () => {
+    const Host = defineComponent({
+      props: { groupKey: { type: String, default: 'g1' } },
+      setup: (hostProps) => () =>
+        h(Menu, { defaultOpenKeys: [] }, () => [
+          h(MenuGroup, { groupKey: hostProps.groupKey, title: 'G' }, () => [
+            h(MenuItem, { itemKey: 'leaf', label: 'Leaf' }),
+          ]),
+        ]),
+    });
+    const host = mount(Host, { attachTo: document.body });
+    wrapper = host;
+    const menu = host.findComponent(Menu);
+
+    await host.setProps({ groupKey: 'g2' });
+    await click(itemButton(host.element, 'Leaf'));
+
+    const [payload] = menu.emitted<[MenuSelectPayload]>('select')!.at(-1)!;
+    expect(payload.keyPath).toEqual(['g2', 'leaf']);
+    expect(menu.emitted('update:openKeys')?.at(-1)).toEqual([['g2']]);
+  });
+
+  it('同级两个分组互换 groupKey 后，新 key 的登记不被对方注销', async () => {
+    const Host = defineComponent({
+      props: { swap: Boolean },
+      setup: (hostProps) => () =>
+        h(Menu, { defaultOpenKeys: [] }, () => [
+          h(MenuGroup, { groupKey: hostProps.swap ? 'g2' : 'g1', title: 'A' }, () => [
+            h(MenuItem, { itemKey: 'a', label: 'A1' }),
+          ]),
+          h(MenuGroup, { groupKey: hostProps.swap ? 'g1' : 'g2', title: 'B' }, () => [
+            h(MenuItem, { itemKey: 'b', label: 'B1' }),
+          ]),
+        ]),
+    });
+    const host = mount(Host, { attachTo: document.body });
+    wrapper = host;
+    const menu = host.findComponent(Menu);
+
+    await host.setProps({ swap: true });
+    await click(itemButton(host.element, 'A1'));
+
+    expect(menu.emitted('update:openKeys')?.at(-1)).toEqual([['g2']]);
+  });
+
+  it('祖先 groupKey 变化不会重新展开用户已折叠的内层分组', async () => {
+    const Host = defineComponent({
+      props: { outerKey: { type: String, default: 'o1' } },
+      setup: (hostProps) => () =>
+        h(Menu, null, () => [
+          h(MenuGroup, { groupKey: hostProps.outerKey, title: 'Outer' }, () => [
+            h(MenuGroup, { groupKey: 'inner', title: 'Inner' }, () => [
+              h(MenuItem, { itemKey: 'leaf', label: 'Leaf' }),
+            ]),
+          ]),
+        ]),
+    });
+    const host = mount(Host, { attachTo: document.body });
+    wrapper = host;
+    expect(isShown(groupList(host.element, 'Inner'))).toBe(true);
+
+    await click(groupTitle(host.element, 'Inner'));
+    expect(isShown(groupList(host.element, 'Inner'))).toBe(false);
+
+    await host.setProps({ outerKey: 'o2' });
+    expect(isShown(groupList(host.element, 'Inner'))).toBe(false);
   });
 
   it('两个同 key 的 MenuItem 卸载其一后，选中该 key 仍能展开另一项所在分组', async () => {

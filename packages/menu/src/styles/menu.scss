@@ -189,6 +189,18 @@
   }
 }
 
+// ---------- 单色 SVG 图标（mask + currentColor） ----------
+
+// 尺寸兜底为 1em，各使用点的 __icon / __arrow 规则按同特异性覆盖，本块必须排在它们之前
+.aix-menu-icon {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  mask: var(--aix-menu-icon-src) center / contain no-repeat;
+}
+
 // ---------- 内置搜索框 ----------
 
 .aix-menu-search {
@@ -272,17 +284,6 @@
       color: var(--aix-menu-search-placeholder-color);
     }
   }
-}
-
-// ---------- 单色 SVG 图标（mask + currentColor） ----------
-
-.aix-menu-icon {
-  display: inline-block;
-  flex: none;
-  width: 1em;
-  height: 1em;
-  background-color: currentColor;
-  mask: var(--aix-menu-icon-src) center / contain no-repeat;
 }
 
 // ---------- 搜索命中文字 ----------

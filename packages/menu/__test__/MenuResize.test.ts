@@ -229,3 +229,49 @@ describe('Menu 把手键盘调宽', () => {
     expect(wrapper.emitted('update:width')).toBeUndefined();
   });
 });
+
+describe('Menu 宽度上下限', () => {
+  it('resizable 时初始宽度收进上下限，aria-valuenow 与渲染宽度一致', async () => {
+    wrapper = mountMenu({ props: { resizable: true, minWidth: 150, maxWidth: 180 } });
+    expect(wrapper.element.style.width).toBe('180px');
+    expect(handle().attributes('aria-valuenow')).toBe('180');
+
+    await wrapper.setProps({ minWidth: 220, maxWidth: 300 });
+    expect(wrapper.element.style.width).toBe('220px');
+    expect(handle().attributes('aria-valuenow')).toBe('220');
+  });
+
+  it('受控 width 超出上下限时按上限渲染', () => {
+    wrapper = mountMenu({ props: { resizable: true, width: 500, maxWidth: 300 } });
+    expect(wrapper.element.style.width).toBe('300px');
+    expect(handle().attributes('aria-valuenow')).toBe('300');
+  });
+
+  it('受控 width 越界时收回区间并通知外部', async () => {
+    wrapper = mountMenu({ props: { resizable: true, width: 500, maxWidth: 300 } });
+    await nextTick();
+
+    expect(wrapper.element.style.width).toBe('300px');
+    expect(handle().attributes('aria-valuenow')).toBe('300');
+    expect(wrapper.emitted('update:width')?.at(-1)).toEqual([300]);
+  });
+
+  it('非 resizable 时上下限不约束外部传入的 width', () => {
+    wrapper = mountMenu({ props: { width: 500, maxWidth: 300 } });
+    expect(wrapper.element.style.width).toBe('500px');
+  });
+
+  it('拖拽中再次按下指针不覆盖已保存的 body 样式', async () => {
+    document.body.style.cursor = 'auto';
+    wrapper = mountMenu({ props: { resizable: true } });
+
+    await pointerDown(handle().element, { clientX: 100, button: 0, pointerId: 1 });
+    expect(document.body.style.cursor).toBe('col-resize');
+
+    await pointerDown(handle().element, { clientX: 100, button: 0, pointerId: 2 });
+    await releasePointer();
+
+    expect(document.body.style.cursor).toBe('auto');
+    expect(document.body.style.userSelect).toBe('');
+  });
+});

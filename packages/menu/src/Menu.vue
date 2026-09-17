@@ -25,7 +25,7 @@
       aria-orientation="vertical"
       tabindex="0"
       :aria-label="t.resizeHandle"
-      :aria-valuenow="width"
+      :aria-valuenow="clampedWidth"
       :aria-valuemin="minWidth"
       :aria-valuemax="maxWidth"
       @pointerdown="onPointerDown"
@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import { useControllable, useLocale } from '@aix/hooks';
-import { computed, provide, ref, useSlots } from 'vue';
+import { computed, provide, ref, useSlots, watchEffect } from 'vue';
 import MenuItems from './components/MenuItems';
 import MenuSearch from './components/MenuSearch.vue';
 import { handleListNavigation } from './composables/useListKeyboard';
@@ -98,6 +98,7 @@ const { state: width } = useControllable<number>({
 
 const {
   dragging,
+  clampedWidth,
   onPointerDown,
   onKeyDown: onHandleKeydown,
 } = useMenuResize({
@@ -115,9 +116,19 @@ const classes = computed(() => [
   },
 ]);
 
-const rootStyle = computed(() =>
-  props.resizable || props.width !== undefined ? { width: `${width.value}px` } : undefined,
+// 越界的 width 收回区间并通知外部，避免渲染宽度与 v-model 取值、aria-valuenow 长期不一致
+watchEffect(
+  () => {
+    if (props.resizable && width.value !== clampedWidth.value) width.value = clampedWidth.value;
+  },
+  { flush: 'post' },
 );
+
+// 上下限只约束拖拽，不 resizable 时外部给的 width 原样生效
+const rootStyle = computed(() => {
+  if (props.resizable) return { width: `${clampedWidth.value}px` };
+  return props.width !== undefined ? { width: `${width.value}px` } : undefined;
+});
 
 const listRef = ref<HTMLElement | null>(null);
 

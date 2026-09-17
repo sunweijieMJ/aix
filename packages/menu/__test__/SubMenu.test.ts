@@ -143,8 +143,8 @@ describe('SubMenu 悬停展开', () => {
     await advance(SHOW_DELAY);
     expect(popup()).toBeNull();
 
-    title.click();
-    await nextTick();
+    // 走 dispatchEvent：jsdom 对 disabled 控件的 HTMLElement.click() 不派发事件，打不到组件内的守卫
+    await click(title);
     expect(popup()).toBeNull();
   });
 
@@ -250,10 +250,15 @@ describe('SubMenu 弹层样式', () => {
     expect(list.style.getPropertyValue('--aix-menu-popup-max-visible')).toBe('5');
   });
 
-  it('弹层带 z-index 内联样式', async () => {
+  it('后打开的弹层 z-index 高于先打开的', async () => {
     wrapper = mountMenu({ props: { items: ITEMS } });
     await hoverOpen(wrapper.element, '子菜单');
-    expect(Number(popup()!.style.zIndex)).toBeGreaterThan(2000);
+    const outer = Number(popup()!.style.zIndex);
+    expect(Number.isFinite(outer)).toBe(true);
+
+    await hoverOpen(popup()!, '二级子菜单');
+    const [first, second] = popups().map((el) => Number(el.style.zIndex));
+    expect(second).toBeGreaterThan(first!);
   });
 });
 
@@ -556,5 +561,43 @@ describe('SubMenu 复合组件写法祖先高亮', () => {
     await host.setProps({ selectedKey: 'leaf' });
     await nextTick();
     expect(isShown(groupList(host.element, 'G'))).toBe(false);
+  });
+});
+
+describe('SubMenu 登记随 props 与插槽更新', () => {
+  it('运行时改 itemKey 后祖先高亮跟随新 key', async () => {
+    const Host = defineComponent({
+      props: { itemKey: { type: String, default: 'sub-a' } },
+      setup: (hostProps) => () =>
+        h(Menu, { selectedKey: 'leaf' }, () => [
+          h(SubMenu, { itemKey: hostProps.itemKey, label: 'Sub' }, () => [
+            h(MenuItem, { itemKey: 'leaf', label: 'Leaf' }),
+          ]),
+        ]),
+    });
+    const host = mount(Host, { attachTo: document.body });
+    wrapper = host;
+    expect(subMenuLi(host.element, 'Sub').classList).toContain('aix-menu-submenu--active');
+
+    await host.setProps({ itemKey: 'sub-b' });
+    expect(subMenuLi(host.element, 'Sub').classList).toContain('aix-menu-submenu--active');
+  });
+
+  it('插槽内容变化后后代 key 登记随之更新', async () => {
+    const Host = defineComponent({
+      props: { leafKey: { type: String, default: 'leaf-a' } },
+      setup: (hostProps) => () =>
+        h(Menu, { selectedKey: 'leaf-b' }, () => [
+          h(SubMenu, { itemKey: 'sub', label: 'Sub' }, () => [
+            h(MenuItem, { itemKey: hostProps.leafKey, label: 'Leaf' }),
+          ]),
+        ]),
+    });
+    const host = mount(Host, { attachTo: document.body });
+    wrapper = host;
+    expect(subMenuLi(host.element, 'Sub').classList).not.toContain('aix-menu-submenu--active');
+
+    await host.setProps({ leafKey: 'leaf-b' });
+    expect(subMenuLi(host.element, 'Sub').classList).toContain('aix-menu-submenu--active');
   });
 });

@@ -55,7 +55,9 @@ const groupLevel = parent.groupLevel + 1;
 const listId = `aix-menu-group-${useId()}`;
 
 provide(MENU_LEVEL_INJECTION_KEY, {
-  path: [...parent.path, props.groupKey],
+  get path() {
+    return [...parent.path, props.groupKey];
+  },
   groupLevel,
   inPopup: parent.inPopup,
 });
@@ -76,10 +78,10 @@ const classes = computed(() => [
 
 let unregister: (() => void) | undefined;
 watch(
-  () => props.collapsible,
-  (collapsible) => {
+  () => [props.collapsible, props.groupKey, ...parent.path].join('\u0000'),
+  () => {
     unregister?.();
-    unregister = collapsible ? ctx.registerGroup(props.groupKey, parent.path) : undefined;
+    unregister = props.collapsible ? ctx.registerGroup(props.groupKey, parent.path) : undefined;
   },
   { immediate: true },
 );

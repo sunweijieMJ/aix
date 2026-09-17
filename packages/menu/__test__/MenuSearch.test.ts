@@ -102,6 +102,15 @@ describe('Menu 搜索框渲染', () => {
     expect(searchInput().attributes('aria-label')).toBe('找菜单');
   });
 
+  it('有关键字时容器带 filled 修饰', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    const search = wrapper.find('.aix-menu-search');
+    expect(search.classes()).not.toContain('aix-menu-search--filled');
+
+    await type('a1');
+    expect(search.classes()).toContain('aix-menu-search--filled');
+  });
+
   it('输入框聚焦时容器带 focused 修饰，失焦后移除', async () => {
     wrapper = mountMenu({ props: { searchable: true } });
     const search = wrapper.find('.aix-menu-search');
@@ -131,6 +140,7 @@ describe('Menu 搜索事件', () => {
     await type('a1');
     expect(wrapper.emitted('update:searchValue')).toEqual([['a1']]);
     expect(wrapper.emitted('search')).toEqual([['a1']]);
+    expect(searchInput().element.value).toBe('b1');
     expect(visibleLabels()).toEqual(['B1']);
 
     await wrapper.setProps({ searchValue: 'a1' });
@@ -308,7 +318,7 @@ describe('Menu 搜索过滤', () => {
 });
 
 describe('Menu 搜索时分组展开', () => {
-  it('关键字非空时所有可折叠分组强制展开，不改写 openKeys', async () => {
+  it('后代有命中的分组在搜索期间展开，不改写 openKeys', async () => {
     wrapper = mountMenu({ props: { items: ITEMS, searchable: true, defaultOpenKeys: [] } });
     expect(isShown(groupList(wrapper.element, '分组 A'))).toBe(false);
 
@@ -339,210 +349,7 @@ describe('Menu 搜索时分组展开', () => {
     expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(true);
     expect(wrapper.emitted('update:openKeys')).toBeUndefined();
   });
-});
 
-describe('Menu 搜索空态', () => {
-  it('无匹配结果时渲染空态提示，列表中没有菜单项', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    await type('不存在的菜单');
-
-    expect(emptyLi().exists()).toBe(true);
-    expect(emptyLi().text()).toBe(menuZhCN.noResults);
-    expect(emptyLi().element.parentElement?.classList).toContain('aix-menu__list');
-    expect(wrapper.findAll('.aix-menu-item, .aix-menu-group, .aix-menu-submenu')).toHaveLength(0);
-  });
-
-  it('空态文案跟随应用级 locale', async () => {
-    wrapper = mountMenu({
-      props: { items: ITEMS, searchable: true },
-      global: { plugins: [createLocale('en-US')] },
-    });
-    await type('不存在的菜单');
-    expect(emptyLi().text()).toBe(menuEnUS.noResults);
-  });
-
-  it('有匹配结果或未搜索时不渲染空态', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    expect(emptyLi().exists()).toBe(false);
-
-    await type('a1');
-    expect(emptyLi().exists()).toBe(false);
-  });
-
-  it('未传 items 时即便关键字无匹配也不渲染空态', async () => {
-    wrapper = mountMenu({ props: { searchable: true } });
-    await type('zzz');
-    expect(emptyLi().exists()).toBe(false);
-  });
-
-  it('语言包包含搜索相关文案', () => {
-    for (const pack of [menuZhCN, menuEnUS]) {
-      expect(pack.searchPlaceholder).toBeTruthy();
-      expect(pack.noResults).toBeTruthy();
-      expect(pack.searchClear).toBeTruthy();
-    }
-  });
-});
-
-describe('Menu 搜索框清除按钮', () => {
-  it('仅在有关键字时渲染', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    expect(clearButton().exists()).toBe(false);
-
-    await type('a1');
-    expect(clearButton().exists()).toBe(true);
-    expect(clearButton().attributes('aria-label')).toBe(menuZhCN.searchClear);
-  });
-
-  it('searchClearable 为 false 时始终不渲染', async () => {
-    wrapper = mountMenu({
-      props: { items: ITEMS, searchable: true, searchClearable: false },
-    });
-    await type('a1');
-    expect(clearButton().exists()).toBe(false);
-  });
-
-  it('点击清空关键字、还原列表并把焦点交回输入框', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    await type('a1');
-    expect(visibleLabels()).toEqual(['A1']);
-
-    await clearButton().trigger('click');
-    await nextTick();
-
-    expect(searchInput().element.value).toBe('');
-    expect(wrapper.emitted('update:searchValue')?.at(-1)).toEqual(['']);
-    expect(wrapper.emitted('search')?.at(-1)).toEqual(['']);
-    expect(document.activeElement).toBe(searchInput().element);
-    expect(clearButton().exists()).toBe(false);
-    expect(visibleLabels().length).toBeGreaterThan(1);
-  });
-
-  it('aria-label 跟随应用级 locale', async () => {
-    wrapper = mountMenu({
-      props: { items: ITEMS, searchable: true },
-      global: { plugins: [createLocale('en-US')] },
-    });
-    await type('a1');
-    expect(clearButton().attributes('aria-label')).toBe(menuEnUS.searchClear);
-  });
-});
-
-describe('Menu 搜索命中高亮', () => {
-  it('命中项藏在弹层里时，子菜单触发项整行高亮', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
-
-    await type('S1');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).toContain('aix-menu-submenu--highlight');
-  });
-
-  it('子菜单自身命中、后代没命中时不高亮', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    await type('子菜单');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
-  });
-
-  it('内联分组不参与高亮', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    await type('A3');
-    expect(wrapper.findAll('.aix-menu-group--highlight')).toHaveLength(0);
-  });
-
-  it('searchHighlight 为 false 时不高亮', async () => {
-    wrapper = mountMenu({
-      props: { items: ITEMS, searchable: true, searchHighlight: false },
-    });
-    await type('S1');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
-  });
-
-  it('清空关键字后高亮撤销', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    await type('S1');
-    await type('');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
-  });
-});
-
-describe('Menu 搜索命中文字高亮', () => {
-  it('命中的片段包进 mark，其余文字留在外面', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    expect(marks()).toEqual([]);
-
-    await type('分组');
-    const title = groupTitle(wrapper.element, '分组 A');
-    expect(title.querySelector('mark.aix-menu-highlight')?.textContent).toBe('分组');
-    expect(title.textContent?.trim()).toBe('分组 A');
-  });
-
-  it('匹配不区分大小写，标出来的仍是原文大小写', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    await type('a1');
-    expect(marks()).toEqual(['A1']);
-  });
-
-  it('叶子项与子菜单触发项同样高亮', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    await type('子菜单');
-    expect(marks(subMenuLi(wrapper.element, '子菜单'))).toEqual(['子菜单']);
-  });
-
-  it('关键字在同一条 label 里出现多次时逐段标色', async () => {
-    const items: MenuItemData[] = [{ key: 'x', label: '教学-教学中心' }];
-    wrapper = mountMenu({ props: { items, searchable: true } });
-    await type('教学');
-    expect(marks()).toEqual(['教学', '教学']);
-  });
-
-  it('关键字含正则特殊字符时按字面匹配', async () => {
-    const items: MenuItemData[] = [{ key: 'x', label: 'a.b 报表' }];
-    wrapper = mountMenu({ props: { items, searchable: true } });
-    await type('a.b');
-    expect(marks()).toEqual(['a.b']);
-  });
-
-  it('searchHighlight 为 false 时不产生 mark', async () => {
-    wrapper = mountMenu({
-      props: { items: ITEMS, searchable: true, searchHighlight: false },
-    });
-    await type('a1');
-    expect(marks()).toEqual([]);
-  });
-
-  it('文案由插槽接管时不插手', async () => {
-    wrapper = mountMenu({
-      props: { searchable: true },
-      slots: {
-        default: () => h(MenuItem, { itemKey: 'custom', label: '分组 A' }, () => '分组 A'),
-      },
-    });
-    await type('分组');
-    expect(marks()).toEqual([]);
-  });
-
-  it('搜索框按状态切 filled / focused 修饰类', async () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    const search = wrapper.find('.aix-menu-search');
-    expect(search.classes()).not.toContain('aix-menu-search--filled');
-
-    await type('a1');
-    expect(search.classes()).toContain('aix-menu-search--filled');
-
-    await searchInput().trigger('focus');
-    expect(search.classes()).toContain('aix-menu-search--focused');
-  });
-});
-
-describe('Menu 搜索时的分组展开', () => {
   it('分组靠标题命中、子项都没命中时收起', async () => {
     wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
     await type('分组 B');
@@ -620,5 +427,186 @@ describe('Menu 搜索时的分组展开', () => {
 
     await type('');
     expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(true);
+  });
+});
+
+describe('Menu 搜索空态', () => {
+  it('无匹配结果时渲染空态提示，列表中没有菜单项', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('不存在的菜单');
+
+    expect(emptyLi().exists()).toBe(true);
+    expect(emptyLi().text()).toBe(menuZhCN.noResults);
+    expect(emptyLi().element.parentElement?.classList).toContain('aix-menu__list');
+    expect(wrapper.findAll('.aix-menu-item, .aix-menu-group, .aix-menu-submenu')).toHaveLength(0);
+  });
+
+  it('空态文案跟随应用级 locale', async () => {
+    wrapper = mountMenu({
+      props: { items: ITEMS, searchable: true },
+      global: { plugins: [createLocale('en-US')] },
+    });
+    await type('不存在的菜单');
+    expect(emptyLi().text()).toBe(menuEnUS.noResults);
+  });
+
+  it('有匹配结果或未搜索时不渲染空态', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    expect(emptyLi().exists()).toBe(false);
+
+    await type('a1');
+    expect(emptyLi().exists()).toBe(false);
+  });
+
+  it('未传 items 时即便关键字无匹配也不渲染空态', async () => {
+    wrapper = mountMenu({ props: { searchable: true } });
+    await type('zzz');
+    expect(emptyLi().exists()).toBe(false);
+  });
+});
+
+describe('Menu 搜索框清除按钮', () => {
+  it('仅在有关键字时渲染', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    expect(clearButton().exists()).toBe(false);
+
+    await type('a1');
+    expect(clearButton().exists()).toBe(true);
+    expect(clearButton().attributes('aria-label')).toBe(menuZhCN.searchClear);
+  });
+
+  it('searchClearable 为 false 时始终不渲染', async () => {
+    wrapper = mountMenu({
+      props: { items: ITEMS, searchable: true, searchClearable: false },
+    });
+    await type('a1');
+    expect(clearButton().exists()).toBe(false);
+  });
+
+  it('点击清空关键字、还原列表并把焦点交回输入框', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('a1');
+    expect(visibleLabels()).toEqual(['A1']);
+
+    await clearButton().trigger('click');
+    await nextTick();
+
+    expect(searchInput().element.value).toBe('');
+    expect(wrapper.emitted('update:searchValue')?.at(-1)).toEqual(['']);
+    expect(wrapper.emitted('search')?.at(-1)).toEqual(['']);
+    expect(document.activeElement).toBe(searchInput().element);
+    expect(clearButton().exists()).toBe(false);
+    expect(visibleLabels().length).toBeGreaterThan(1);
+  });
+
+  it('aria-label 跟随应用级 locale', async () => {
+    wrapper = mountMenu({
+      props: { items: ITEMS, searchable: true },
+      global: { plugins: [createLocale('en-US')] },
+    });
+    await type('a1');
+    expect(clearButton().attributes('aria-label')).toBe(menuEnUS.searchClear);
+  });
+});
+
+describe('Menu 搜索时子菜单整行高亮', () => {
+  it('命中项藏在弹层里时，子菜单触发项整行高亮', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
+      'aix-menu-submenu--highlight',
+    );
+
+    await type('S1');
+    expect(subMenuLi(wrapper.element, '子菜单').classList).toContain('aix-menu-submenu--highlight');
+  });
+
+  it('子菜单自身命中、后代没命中时不高亮', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('子菜单');
+    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
+      'aix-menu-submenu--highlight',
+    );
+  });
+
+  it('内联分组不参与高亮', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('A3');
+    expect(wrapper.findAll('.aix-menu-group--highlight')).toHaveLength(0);
+  });
+
+  it('searchHighlight 为 false 时不高亮', async () => {
+    wrapper = mountMenu({
+      props: { items: ITEMS, searchable: true, searchHighlight: false },
+    });
+    await type('S1');
+    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
+      'aix-menu-submenu--highlight',
+    );
+  });
+
+  it('清空关键字后高亮撤销', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('S1');
+    await type('');
+    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
+      'aix-menu-submenu--highlight',
+    );
+  });
+});
+
+describe('Menu 搜索命中文字标记', () => {
+  it('命中的片段包进 mark，其余文字留在外面', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    expect(marks()).toEqual([]);
+
+    await type('分组');
+    const title = groupTitle(wrapper.element, '分组 A');
+    expect(title.querySelector('mark.aix-menu-highlight')?.textContent).toBe('分组');
+    expect(title.textContent?.trim()).toBe('分组 A');
+  });
+
+  it('匹配不区分大小写，标出来的仍是原文大小写', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('a1');
+    expect(marks()).toEqual(['A1']);
+  });
+
+  it('叶子项与子菜单触发项同样高亮', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('子菜单');
+    expect(marks(subMenuLi(wrapper.element, '子菜单'))).toEqual(['子菜单']);
+  });
+
+  it('关键字在同一条 label 里出现多次时逐段标色', async () => {
+    const items: MenuItemData[] = [{ key: 'x', label: '教学-教学中心' }];
+    wrapper = mountMenu({ props: { items, searchable: true } });
+    await type('教学');
+    expect(marks()).toEqual(['教学', '教学']);
+  });
+
+  it('关键字含正则特殊字符时按字面匹配', async () => {
+    const items: MenuItemData[] = [{ key: 'x', label: 'a.b 报表' }];
+    wrapper = mountMenu({ props: { items, searchable: true } });
+    await type('a.b');
+    expect(marks()).toEqual(['a.b']);
+  });
+
+  it('searchHighlight 为 false 时不产生 mark', async () => {
+    wrapper = mountMenu({
+      props: { items: ITEMS, searchable: true, searchHighlight: false },
+    });
+    await type('a1');
+    expect(marks()).toEqual([]);
+  });
+
+  it('文案由插槽接管时不插手', async () => {
+    wrapper = mountMenu({
+      props: { searchable: true },
+      slots: {
+        default: () => h(MenuItem, { itemKey: 'custom', label: '分组 A' }, () => '分组 A'),
+      },
+    });
+    await type('分组');
+    expect(marks()).toEqual([]);
   });
 });

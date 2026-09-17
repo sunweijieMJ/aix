@@ -4,11 +4,14 @@ const itemNs = useNamespace('menu-item');
 const subMenuNs = useNamespace('menu-submenu');
 const groupNs = useNamespace('menu-group');
 
-/** 侧栏列表与 flyout 弹层里可获得焦点的控件 */
+/**
+ * 侧栏列表与 flyout 弹层里可获得焦点的控件。
+ * 限定 button 标签：不可折叠分组的标题渲染为 div，没有 tabindex，聚焦会失败并卡住导航。
+ */
 export const FOCUSABLE_SELECTOR = [
-  `.${itemNs.e('button')}:not(:disabled)`,
-  `.${subMenuNs.e('title')}:not(:disabled)`,
-  `.${groupNs.e('title')}:not(:disabled)`,
+  `button.${itemNs.e('button')}:not(:disabled)`,
+  `button.${subMenuNs.e('title')}:not(:disabled)`,
+  `button.${groupNs.e('title')}:not(:disabled)`,
 ].join(',');
 
 /** 容器内当前可聚焦的控件，收起的分组内等不可见节点不计入 */

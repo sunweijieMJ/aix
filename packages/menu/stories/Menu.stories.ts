@@ -318,11 +318,9 @@ const meta: Meta<typeof Menu> = {
     },
     width: {
       control: 'number',
-      description: '宽度（px，v-model:width）',
-      table: {
-        type: { summary: 'number' },
-        defaultValue: { summary: '200' },
-      },
+      description:
+        '宽度（px，v-model:width）。未传且非 resizable 时不设内联宽度，由外层布局决定；resizable 但未传时从 200 起算',
+      table: { type: { summary: 'number' } },
     },
     minWidth: {
       control: 'number',
@@ -381,6 +379,23 @@ const meta: Meta<typeof Menu> = {
       description: '搜索框占位文案，默认取语言包',
       table: { type: { summary: 'string' } },
     },
+    searchClearable: {
+      control: 'boolean',
+      description: '搜索框有关键字时，右侧显示可点击的清除按钮',
+      table: {
+        type: { summary: 'boolean' },
+        defaultValue: { summary: 'true' },
+      },
+    },
+    searchHighlight: {
+      control: 'boolean',
+      description:
+        '搜索时命中文字标色，且命中项藏在 flyout 弹层里的子菜单触发项整行高亮。只对 items 数据驱动写法生效',
+      table: {
+        type: { summary: 'boolean' },
+        defaultValue: { summary: 'true' },
+      },
+    },
     filterMethod: {
       control: false,
       description: '自定义匹配规则；默认对 label 做不区分大小写的包含匹配',
@@ -418,6 +433,22 @@ const meta: Meta<typeof Menu> = {
       description: '搜索关键字变化（已 trim）',
       table: { type: { summary: '(keyword: string) => void' } },
     },
+    'onUpdate:selectedKey': {
+      description: '选中项变化（v-model:selectedKey）',
+      table: { type: { summary: '(key: string) => void' } },
+    },
+    'onUpdate:openKeys': {
+      description: '展开的分组列表变化（v-model:openKeys）',
+      table: { type: { summary: '(keys: string[]) => void' } },
+    },
+    'onUpdate:width': {
+      description: '宽度变化（v-model:width），拖拽过程中持续触发',
+      table: { type: { summary: '(width: number) => void' } },
+    },
+    'onUpdate:searchValue': {
+      description: '搜索框文本变化（v-model:searchValue）',
+      table: { type: { summary: '(value: string) => void' } },
+    },
   },
 };
 
@@ -437,6 +468,7 @@ type StoryArgs = MenuProps & {
  */
 export const Default: Story = {
   args: {
+    width: 200,
     theme: 'gray',
     accordion: false,
     resizable: false,
@@ -448,7 +480,7 @@ export const Default: Story = {
       return { args, items: baseItems };
     },
     template: `
-      <Menu v-bind="args" :items="items" :width="200">
+      <Menu v-bind="args" :items="items">
         ${headerTemplate}
         ${footerTemplate}
       </Menu>
@@ -479,11 +511,15 @@ export const Default: Story = {
  * Esc 清空关键字并阻止冒泡，放在 Modal / Drawer 里不会连带关闭外层。
  * 这里用 `filterMethod` 额外匹配 `meta.keywords`，输入 `course` 也能命中「课程管理」。
  */
+
 export const Search: Story = {
   args: {
+    width: 200,
     searchable: true,
     searchPlaceholder: '搜索菜单',
   },
+  // searchValue 由 story 内部受控演示，面板上的同名控件不会生效
+  argTypes: { searchValue: { control: false } },
   render: (args) => ({
     components: { Menu },
     setup() {
@@ -553,7 +589,6 @@ export const Search: Story = {
       <Menu
         v-bind="args"
         :items="items"
-        :width="200"
         :filter-method="filterMethod"
         v-model:searchValue="searchValue"
         v-model:selectedKey="selectedKey"
@@ -603,7 +638,10 @@ export const Search: Story = {
  * 四套都开了 `searchable`，可以逐个对比搜索框的五态：默认 → 悬停 → 聚焦（加 1px 描边）→
  * 有关键字 → 有关键字再悬停。各态取值都是每主题一份，见 `--aix-menu-search-*`。
  */
+
 export const Themes: Story = {
+  // 四套主题并排对比，render 不接 args，面板上的控件一律不生效
+  parameters: { controls: { disable: true } },
   render: () => ({
     components: { Menu },
     setup() {
@@ -662,8 +700,10 @@ export const Themes: Story = {
  * 「数据报表」有 14 项，超过 `popupMaxVisible`（默认 9）后弹层内部滚动；
  * 子项带图标时弹层宽 182px，否则 158px。禁用的子菜单不会弹出。
  */
+
 export const Flyout: Story = {
   args: {
+    width: 200,
     popupMaxVisible: 9,
     popupPlacement: 'right-start',
   },
@@ -673,7 +713,7 @@ export const Flyout: Story = {
       return { args, items: flyoutItems };
     },
     template: `
-      <Menu v-bind="args" :items="items" :width="200" />
+      <Menu v-bind="args" :items="items" />
       <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
         <p style="margin: 0;">悬停「课程管理 → 课程资源 → 视频」查看三级级联。</p>
         <p style="margin: 0;">悬停「数据报表」查看超出 {{ args.popupMaxVisible }} 项后的内部滚动。</p>
@@ -688,6 +728,7 @@ export const Flyout: Story = {
  * 拖拽右边缘调整宽度，`v-model:width` 同步；把手获得焦点后 ← / → 每次调整 10px。
  * 拖拽时把手捕获指针，拖到浏览器窗口外释放也会正常结束；拖拽中组件卸载会还原 body 样式。
  */
+
 export const Resizable: Story = {
   args: {
     resizable: true,
@@ -718,7 +759,11 @@ export const Resizable: Story = {
  * 复合组件写法：用 MenuGroup / SubMenu / MenuItem 手写结构，可与 `items` 混用（渲染在 items 之后）。
  * `selectedKey` 指向 flyout 内的叶子时祖先 SubMenu 同样高亮，flyout 未展开也成立。
  */
+
 export const Compound: Story = {
+  args: {
+    width: 200,
+  },
   render: (args) => ({
     components: { Menu, MenuGroup, MenuItem, SubMenu },
     setup() {
@@ -737,7 +782,7 @@ export const Compound: Story = {
       };
     },
     template: `
-      <Menu v-bind="args" v-model:selectedKey="selectedKey" :width="200">
+      <Menu v-bind="args" v-model:selectedKey="selectedKey">
         <MenuItem item-key="home" label="首页" :icon="HomeIcon" />
         <MenuGroup group-key="course" title="课程管理">
           <MenuItem item-key="course-list" label="课程列表" :icon="BookIcon" />
@@ -771,7 +816,11 @@ export const Compound: Story = {
  * 受控模式：`v-model:selectedKey` + `v-model:openKeys`，外部按钮改值时菜单同步展开选中项所在分组；
  * 右侧记录 `select` 与 `open-change` 事件。
  */
+
 export const Controlled: Story = {
+  args: {
+    width: 200,
+  },
   render: (args) => ({
     components: { Menu },
     setup() {
@@ -802,7 +851,6 @@ export const Controlled: Story = {
       <Menu
         v-bind="args"
         :items="items"
-        :width="200"
         v-model:selectedKey="selectedKey"
         v-model:openKeys="openKeys"
         @select="onSelect"
@@ -830,8 +878,10 @@ export const Controlled: Story = {
 /**
  * 手风琴：同一层级的分组只保留一个展开，`defaultOpenKeys` 指定初始展开的分组。
  */
+
 export const Accordion: Story = {
   args: {
+    width: 200,
     accordion: true,
     defaultOpenKeys: ['course'],
   },
@@ -840,7 +890,7 @@ export const Accordion: Story = {
     setup() {
       return { args, items: baseItems };
     },
-    template: '<Menu v-bind="args" :items="items" :width="200" />',
+    template: '<Menu v-bind="args" :items="items" />',
   }),
   play: async ({ canvas }) => {
     const course = canvas.getByRole('button', { name: '课程管理' });
@@ -857,6 +907,7 @@ export const Accordion: Story = {
 /**
  * 长文案单行省略，被截断时悬停显示完整 Tooltip；分组标题同样省略。
  */
+
 export const LongLabel: Story = {
   args: {
     width: 180,
@@ -879,7 +930,11 @@ export const LongLabel: Story = {
  * 自定义插槽：`item`（作用域 `{ item, groupLevel, inPopup, active }`）、`icon`、`group-title`，
  * 以及 `header` / `footer`（内置搜索框渲染在 header 之下）。`item.meta` 是业务透传字段，这里用来放角标数。
  */
+
 export const CustomSlots: Story = {
+  args: {
+    width: 220,
+  },
   render: (args) => ({
     components: { Menu, LogoutIcon },
     setup() {
@@ -909,7 +964,7 @@ export const CustomSlots: Story = {
       return { args, items, selectedKey };
     },
     template: `
-      <Menu v-bind="args" :items="items" :width="220" searchable v-model:selectedKey="selectedKey">
+      <Menu v-bind="args" :items="items" searchable v-model:selectedKey="selectedKey">
         ${headerTemplate}
         <template #group-title="{ item }">
           <span>{{ item.label }}</span>
@@ -955,8 +1010,10 @@ export const CustomSlots: Story = {
  * 自定义主题：`theme` 传任意字符串，组件追加 `aix-menu--<name>` / `aix-menu-popup--<name>` 修饰类，
  * 业务在这两个选择器下声明 `--aix-menu-*` 变量即可。
  */
+
 export const CustomTheme: Story = {
   args: {
+    width: 200,
     theme: 'brand',
     searchable: true,
   },
@@ -999,7 +1056,7 @@ export const CustomTheme: Story = {
           --aix-menu-radius: 6px;
         }
       </component>
-      <Menu v-bind="args" :items="items" :width="200" v-model:selectedKey="selectedKey">
+      <Menu v-bind="args" :items="items" v-model:selectedKey="selectedKey">
         ${headerTemplate}
         ${footerTemplate}
       </Menu>
@@ -1011,8 +1068,10 @@ export const CustomTheme: Story = {
  * 弹层内可见项数由 `popupMaxVisible` 决定（默认 9），超出后弹层内部滚动，滚动条为 4px 细滑块。
  * 弹层宽度随子项是否带图标切换：不带图标 158px，带图标 182px。
  */
+
 export const PopupScroll: Story = {
   args: {
+    width: 200,
     popupMaxVisible: 9,
   },
   render: (args) => ({
@@ -1021,7 +1080,7 @@ export const PopupScroll: Story = {
       return { args, items: longPopupItems };
     },
     template: `
-      <Menu v-bind="args" :items="items" :width="200" />
+      <Menu v-bind="args" :items="items" />
       <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
         <p style="margin: 0;">「周报表」20 项、「归档」12 项，均超过 {{ args.popupMaxVisible }}。</p>
         <p style="margin: 0;">调 Controls 里的 popupMaxVisible 可直接看到弹层高度变化。</p>
@@ -1044,8 +1103,10 @@ export const PopupScroll: Story = {
  * flyout 可无限级联，每一级都是独立弹层：悬停逐级展开，指针在整条弹层链内移动都不会关闭；
  * ← / Esc 回退一级并把焦点还给触发项，选中叶子后整条链一起收起。
  */
+
 export const DeepNesting: Story = {
   args: {
+    width: 200,
     popupPlacement: 'right-start',
   },
   render: (args) => ({
@@ -1054,7 +1115,7 @@ export const DeepNesting: Story = {
       return { args, items: deepItems };
     },
     template: `
-      <Menu v-bind="args" :items="items" :width="200" />
+      <Menu v-bind="args" :items="items" />
       <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
         <p style="margin: 0;">悬停「一级菜单」后沿着弹层一路往里，共五级。</p>
         <p style="margin: 0;">空间不足时 floating-ui 会自动翻转到左侧。</p>
@@ -1089,8 +1150,10 @@ export const DeepNesting: Story = {
  * `searchClearable`（默认开启）在关键字非空时于搜索框右侧显示清除按钮，
  * 点击清空关键字、还原列表，焦点留在输入框里，便于继续输入。
  */
+
 export const SearchClear: Story = {
   args: {
+    width: 220,
     searchable: true,
     searchClearable: true,
   },
@@ -1100,7 +1163,7 @@ export const SearchClear: Story = {
       return { args, items: baseItems };
     },
     template: `
-      <Menu v-bind="args" :items="items" :width="220" />
+      <Menu v-bind="args" :items="items" />
       <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
         <p style="margin: 0;">输入关键字后，搜索框右侧出现清除按钮。</p>
         <p style="margin: 0;">Esc 与清除按钮等效，都会清空关键字且保持焦点。</p>
@@ -1143,8 +1206,10 @@ export const SearchClear: Story = {
  * | 分组「课堂教学」 | 标题没命中、子项「智慧助教」命中 → 标题不标色，只保留命中的子项 |
  * | 子菜单「数据报表」 | 命中的「智慧看板」在弹层里 → 触发项整行标底，文字上没有 mark |
  */
+
 export const SearchHighlight: Story = {
   args: {
+    width: 220,
     searchable: true,
     searchHighlight: true,
     searchPlaceholder: '试试输入「智慧」',
@@ -1156,7 +1221,7 @@ export const SearchHighlight: Story = {
       return { args, items: highlightItems, selected };
     },
     template: `
-      <Menu v-bind="args" :items="items" :width="220" v-model:selectedKey="selected" />
+      <Menu v-bind="args" :items="items" v-model:selectedKey="selected" />
       <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
         <p style="margin: 0;">输入「智慧」：分组标题、组内叶子、选中项里的「智慧」两字都标色。</p>
         <p style="margin: 0;">「智慧督导」只有标题命中，分组收起；点标题仍能展开看全部。</p>
@@ -1222,8 +1287,10 @@ export const SearchHighlight: Story = {
  *
  * 图标用的是占位图标（按 `menuIcon` 的值散列），业务侧换成自己的图标字体组件即可。
  */
+
 export const RealData: Story = {
   args: {
+    width: 240,
     searchable: true,
     searchPlaceholder: '搜索菜单',
   },
@@ -1260,7 +1327,6 @@ export const RealData: Story = {
       <Menu
         v-bind="args"
         :items="items"
-        :width="240"
         v-model:selectedKey="selected"
         @select="picked = $event"
       />
@@ -1316,5 +1382,10 @@ export const RealData: Story = {
     await userEvent.type(textarea, '{{');
     await waitFor(() => expect(canvas.getByText(/JSON 解析失败/)).toBeInTheDocument());
     await expect(canvas.getByRole('button', { name: '我的工作台' })).toBeInTheDocument();
+
+    // play 跑完 story 停在最后一步的状态，这里收回示例数据，别把文本框留成一个 `{`
+    await userEvent.click(canvas.getByRole('button', { name: '还原示例' }));
+    await waitFor(() => expect(canvas.getByText(/已渲染/)).toBeInTheDocument());
+    await expect(canvas.queryByText(/JSON 解析失败/)).not.toBeInTheDocument();
   },
 };

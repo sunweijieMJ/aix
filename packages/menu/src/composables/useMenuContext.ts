@@ -42,14 +42,14 @@ export interface MenuContext {
   registerItem: (key: string, path: string[]) => () => void;
   /** 分组登记自身祖先链，返回注销函数；未受控且非 accordion 时登记即默认展开 */
   registerGroup: (key: string, path: string[]) => () => void;
-  /** 子菜单登记自身路径与后代 key，供弹层未挂载时定位选中项所属子菜单 */
-  registerSubMenu: (key: string, path: string[], descendantKeys: Set<string>) => () => void;
+  /** 子菜单登记自身路径与后代 key 取值函数，供弹层未挂载时定位选中项所属子菜单 */
+  registerSubMenu: (key: string, path: string[], descendantKeys: () => Set<string>) => () => void;
 }
 
 /** 逐层下发的位置信息，每个分组与弹层都会覆写一份 */
 export interface MenuLevelContext {
-  /** 祖先 key 链，最近的祖先在末尾 */
-  path: string[];
+  /** 祖先 key 链，最近的祖先在末尾；由 getter 逐层求值，祖先 key 变化后即时生效 */
+  readonly path: string[];
   /** 所在分组的嵌套层级，0 表示不在任何分组内 */
   groupLevel: number;
   /** 是否位于 flyout 弹层内 */

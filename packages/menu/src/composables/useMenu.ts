@@ -13,8 +13,8 @@ interface ItemRecord {
 interface SubMenuRecord {
   /** 祖先 key 链，最近的祖先在末尾 */
   path: string[];
-  /** 弹层内全部后代的 key，弹层未挂载时靠它定位选中项 */
-  descendantKeys: Set<string>;
+  /** 弹层内全部后代的 key，弹层未挂载时靠它定位选中项；插槽内容变化后取值随之更新 */
+  descendantKeys: () => Set<string>;
 }
 
 /** 在数据树里查找 key 的祖先链，找不到返回 undefined */
@@ -97,6 +97,8 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
 
   // 挂载时若既未受控也未给初始值，后续注册进来的分组一律默认展开
   const autoExpand = props.openKeys === undefined && props.defaultOpenKeys === undefined;
+  /** 已经默认展开过的分组 key，重新登记时不再重复展开 */
+  const autoExpanded = new Set<string>();
   const internalOpenKeys = ref<string[]>(props.defaultOpenKeys ?? []);
   const openKeys = computed(() => props.openKeys ?? internalOpenKeys.value);
 
@@ -128,7 +130,7 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   function findPathInSubMenus(key: string): string[] | undefined {
     let best: string[] | undefined;
     for (const [subKey, record] of subMenus) {
-      if (!record.descendantKeys.has(key)) continue;
+      if (!record.descendantKeys().has(key)) continue;
       const candidate = [...record.path, subKey];
       if (!best || candidate.length > best.length) best = candidate;
     }
@@ -188,16 +190,22 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   }
 
   function registerGroup(key: string, path: string[]) {
-    groups.set(key, path);
-    if (autoExpand && !props.accordion && !internalOpenKeys.value.includes(key)) {
-      internalOpenKeys.value = [...internalOpenKeys.value, key];
+    // 存副本而非入参：根层级下发的是同一个共享空数组，拿它当身份会误删同级分组的登记
+    const record = [...path];
+    groups.set(key, record);
+    // 只在首次登记时默认展开；改 key / 改祖先路径引起的重新登记不能推翻用户已折叠的状态
+    if (autoExpand && !props.accordion && !autoExpanded.has(key)) {
+      autoExpanded.add(key);
+      if (!internalOpenKeys.value.includes(key)) {
+        internalOpenKeys.value = [...internalOpenKeys.value, key];
+      }
     }
     return () => {
-      groups.delete(key);
+      if (groups.get(key) === record) groups.delete(key);
     };
   }
 
-  function registerSubMenu(key: string, path: string[], descendantKeys: Set<string>) {
+  function registerSubMenu(key: string, path: string[], descendantKeys: () => Set<string>) {
     const record: SubMenuRecord = { path, descendantKeys };
     subMenus.set(key, record);
     return () => {
