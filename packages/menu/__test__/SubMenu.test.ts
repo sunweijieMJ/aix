@@ -1,7 +1,14 @@
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
-import { Menu, MenuGroup, MenuItem, SubMenu, type MenuSelectPayload } from '../src';
+import {
+  Menu,
+  MenuGroup,
+  MenuItem,
+  SubMenu,
+  type MenuItemData,
+  type MenuSelectPayload,
+} from '../src';
 import {
   ITEMS,
   cleanupBody,
@@ -171,6 +178,18 @@ describe('SubMenu 点击', () => {
     expect(popup()).not.toBeNull();
   });
 
+  it('弹层已展开时键盘激活触发器（detail 为 0）把焦点交给弹层第一项', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS } });
+    const title = subMenuTitle(wrapper.element, '子菜单');
+    await click(title);
+    expect(popup()).not.toBeNull();
+
+    title.focus();
+    await click(title, 0);
+    await nextTick();
+    expect(document.activeElement).toBe(itemButton(popup()!, 'S1'));
+  });
+
   it('键盘激活触发器（detail 为 0）展开并聚焦弹层第一项', async () => {
     wrapper = mountMenu({ props: { items: ITEMS } });
     await click(subMenuTitle(wrapper.element, '子菜单'), 0);
@@ -238,6 +257,20 @@ describe('SubMenu 弹层样式', () => {
     expect(popup()!.classList).toContain('from-menu');
     expect(popup()!.classList).toContain('from-sub');
     expect(popup()!.classList).toContain('aix-menu-popup--with-icon');
+  });
+
+  it('items 中子菜单节点的 popupClass 追加到该弹层', async () => {
+    const items: MenuItemData[] = [
+      {
+        key: 'sub',
+        label: '子菜单',
+        popupClass: 'from-data',
+        children: [{ key: 'c', label: 'C' }],
+      },
+    ];
+    wrapper = mountMenu({ props: { items } });
+    await hoverOpen(wrapper.element, '子菜单');
+    expect(popup()!.classList).toContain('from-data');
   });
 
   it('popupMaxVisible 写入弹层列表的 CSS 变量，默认 9', async () => {

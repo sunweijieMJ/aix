@@ -262,7 +262,8 @@ export function useMenu<M extends MenuItemMeta>(
     },
   });
 
-  const keyword = computed(() => (props.searchable ? searchValue.value.trim() : ''));
+  // 过滤只看关键字，searchable 只决定内置搜索框是否渲染，外部输入框同样能驱动过滤
+  const keyword = computed(() => searchValue.value.trim());
   const searching = computed(() => keyword.value !== '');
 
   const filtered = computed<{ items: MenuItemData<M>[] | undefined; hits: SearchHits }>(() => {

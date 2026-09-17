@@ -128,6 +128,17 @@ describe('宽度持久化', () => {
     expect(wrapper.element.style.width).toBe('200px');
   });
 
+  it('存储值为非正数时忽略，沿用默认宽度', () => {
+    localStorage.setItem('menu-width', '0');
+    wrapper = mountMenu({ props: { widthStorageKey: 'menu-width' } });
+    expect(wrapper.element.style.width).toBe('');
+    wrapper.unmount();
+
+    localStorage.setItem('menu-width', '-5');
+    wrapper = mountMenu({ props: { resizable: true, widthStorageKey: 'menu-width' } });
+    expect(wrapper.element.style.width).toBe('200px');
+  });
+
   it('存储值为空白时忽略，沿用默认宽度', () => {
     localStorage.setItem('menu-width', '   ');
     wrapper = mountMenu({ props: { resizable: true, widthStorageKey: 'menu-width' } });
@@ -164,6 +175,21 @@ describe('宽度持久化', () => {
     wrapper = mountMenu({ props: { resizable: true, widthStorageKey: 'menu-width' } });
     await wrapper.setProps({ width: 260 });
     expect(localStorage.getItem('menu-width')).toBe('260');
+  });
+
+  it('非 resizable 且未传 width 时，读回的宽度同样作为内联宽度', () => {
+    localStorage.setItem('menu-width', '240');
+    wrapper = mountMenu({ props: { widthStorageKey: 'menu-width' } });
+    expect(wrapper.element.style.width).toBe('240px');
+  });
+
+  it('换到没有存值的 key 后，非 resizable 时移除内联宽度', async () => {
+    localStorage.setItem('menu-user-a', '240');
+    wrapper = mountMenu({ props: { widthStorageKey: 'menu-user-a' } });
+    expect(wrapper.element.style.width).toBe('240px');
+
+    await wrapper.setProps({ widthStorageKey: 'menu-user-b' });
+    expect(wrapper.element.style.width).toBe('');
   });
 
   it('未传 widthStorageKey 时不读也不写 localStorage', async () => {

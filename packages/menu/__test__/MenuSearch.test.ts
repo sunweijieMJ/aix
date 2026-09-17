@@ -1,8 +1,8 @@
 import { createLocale } from '@aix/hooks';
-import type { VueWrapper } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { h, nextTick } from 'vue';
-import { MenuGroup, MenuItem, menuEnUS, menuZhCN, type MenuItemData } from '../src';
+import { defineComponent, h, nextTick } from 'vue';
+import { Menu, MenuGroup, MenuItem, menuEnUS, menuZhCN, type MenuItemData } from '../src';
 import {
   ITEMS,
   cleanupBody,
@@ -282,10 +282,10 @@ describe('Menu 搜索过滤', () => {
     expect(wrapper.emitted('search')).toEqual([['']]);
   });
 
-  it('searchable 为 false 时传入 searchValue 也不过滤', () => {
-    wrapper = mountMenu({ props: { items: ITEMS, searchValue: 'zzz' } });
-    expect(visibleLabels()).toContain('首页');
-    expect(emptyLi().exists()).toBe(false);
+  it('searchable 为 false 时 searchValue 同样过滤 items', () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchValue: 'a1' } });
+    expect(searchInput().exists()).toBe(false);
+    expect(visibleLabels()).toEqual(['A1']);
   });
 
   it('filterMethod 接收节点与去空白关键字并替代默认匹配', async () => {
@@ -456,6 +456,34 @@ describe('Menu 搜索空态', () => {
 
     await type('a1');
     expect(emptyLi().exists()).toBe(false);
+  });
+
+  it('items 与默认插槽同时使用时，items 无匹配也不渲染空态', async () => {
+    wrapper = mountMenu({
+      props: { items: ITEMS, searchable: true },
+      slots: { default: () => h(MenuItem, { itemKey: 'x', label: '插槽项' }) },
+    });
+    await type('zzz');
+    expect(emptyLi().exists()).toBe(false);
+    expect(visibleLabels()).toEqual(['插槽项']);
+  });
+
+  it('默认插槽内容出现后空态随之消失', async () => {
+    const Host = defineComponent({
+      props: { extra: Boolean },
+      setup: (props) => () =>
+        h(
+          Menu,
+          { items: ITEMS, searchable: true, searchValue: 'zzz' },
+          props.extra ? { default: () => h(MenuItem, { itemKey: 'x', label: '插槽项' }) } : {},
+        ),
+    });
+    wrapper = mount(Host, { attachTo: document.body });
+    expect(emptyLi().exists()).toBe(true);
+
+    await wrapper.setProps({ extra: true });
+    expect(emptyLi().exists()).toBe(false);
+    expect(visibleLabels()).toEqual(['插槽项']);
   });
 
   it('未传 items 时即便关键字无匹配也不渲染空态', async () => {

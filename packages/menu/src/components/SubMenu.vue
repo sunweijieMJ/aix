@@ -344,9 +344,8 @@ function focusFirstItem() {
 
 /** 点击只负责打开（触屏没有 hover），关闭交给指针离开 / 点击外部 / Esc / 选中子项 */
 function onTriggerClick(event: MouseEvent) {
-  if (open.value) return;
-  openNow();
-  // detail 为 0 说明由键盘 Enter / Space 触发，顺手把焦点交给第一个子项
+  if (!open.value) openNow();
+  // detail 为 0 说明由键盘 Enter / Space 触发，弹层无论刚打开还是已打开都把焦点交给第一个子项
   if (event.detail === 0) focusFirstItem();
 }
 

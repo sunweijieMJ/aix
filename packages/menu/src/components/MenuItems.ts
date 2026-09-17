@@ -37,7 +37,13 @@ const MenuItems = defineComponent({
         const groupTitle = ctx.slots['group-title'];
         return h(
           MenuGroup,
-          { key: node.key, groupKey: node.key, title: node.label, icon: node.icon },
+          {
+            key: node.key,
+            groupKey: node.key,
+            title: node.label,
+            icon: node.icon,
+            collapsible: node.collapsible,
+          },
           {
             default: () => h(MenuItems, { items: node.children ?? [] }),
             ...iconSlot(node),
@@ -57,6 +63,7 @@ const MenuItems = defineComponent({
             icon: node.icon,
             disabled: node.disabled,
             data: node,
+            popupClass: node.popupClass,
             popupWithIcon: children.some((child) => !!child.icon),
           },
           {

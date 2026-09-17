@@ -484,17 +484,17 @@ app.use(
 | `popupPlacement` | `MenuPopupPlacement` | `'right-start'` | - | flyout 弹层位置 |
 | `popupClass` | `string` | - | - | 追加到所有 flyout 弹层根节点的 class |
 | `popupTeleportTo` | `MenuPopupTeleportTo` | `'body'` | - | flyout 弹层的挂载目标。`false` 时弹层就地渲染在触发项所在的 li 内并按 fixed 定位，适用于微前端严格样式隔离等弹层不能离开组件子树的场景 |
-| `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（位于 header 插槽之下、列表之上） |
-| `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items，并按命中位置决定分组展开；复合组件写法只透出事件不过滤 |
+| `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（位于 header 插槽之下、列表之上）。只决定搜索框的渲染，过滤由 searchValue 驱动 |
+| `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items 并按命中位置决定分组展开，不依赖 searchable，可由外部输入框驱动；复合组件写法只透出事件不过滤 |
 | `searchPlaceholder` | `string` | - | - | 搜索框占位文案，默认取语言包 |
 | `searchClearable` | `boolean` | `true` | - | 搜索框有关键字时，右侧显示可点击的清除按钮 |
 | `filterMethod` | `Function` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
-| `searchHighlight` | `boolean` | `true` | - | 搜索时，命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效 |
-| `width` | `number` | - | - | 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
+| `searchHighlight` | `boolean` | `true` | - | 搜索时给命中文字标色；命中项藏在 flyout 弹层里时，子菜单触发项在箭头前显示提示圆点。圆点只对 items 数据驱动写法生效 |
+| `width` | `number` | - | - | 宽度（px，v-model:width）。未传、非 resizable 且没有持久化存值时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
 | `resizable` | `boolean` | `false` | - | 是否允许拖拽右边缘调整宽度 |
 | `minWidth` | `number` | `150` | - | 可拖拽的最小宽度（px） |
 | `maxWidth` | `number` | `300` | - | 可拖拽的最大宽度（px） |
-| `widthStorageKey` | `string` | - | - | 宽度持久化的 localStorage 键。有值或换键时读回该键存的宽度，宽度变化后写入，拖拽期间等松手再写 |
+| `widthStorageKey` | `string` | - | - | 宽度持久化的 localStorage 键。有值或换键时读回该键存的宽度并作为内联宽度生效，不要求开启 resizable；宽度变化后写入，拖拽期间等松手再写 |
 
 ### Events
 
@@ -518,12 +518,6 @@ app.use(
 | `item` | 自定义数据驱动叶子项的内容 |
 | `icon` | 自定义数据驱动节点的图标，只对带 icon 的节点生效 |
 | `group-title` | 自定义数据驱动分组的标题 |
-
-### 工具函数
-
-| 函数 | 签名 | 说明 |
-|------|------|------|
-| `resolveSelectedKey` | `(items, matcher) => string \| undefined` | 遍历叶子按 `matcher` 打分，返回分值最高者的 key，见「路由联动」 |
 
 ## 子组件 API
 
@@ -581,6 +575,12 @@ app.use(
 | `title`   | 自定义触发项文案，默认渲染 `label` |
 | `icon`    | 自定义图标                         |
 
+## 工具函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `resolveSelectedKey` | `(items, matcher) => string \| undefined` | 遍历叶子按 `matcher` 打分，返回分值最高者的 key，见「路由联动」 |
+
 ## 类型定义
 
 ```typescript
@@ -597,8 +597,8 @@ export type MenuIconSource = Component | string;
 /** flyout 弹层挂载目标，false 就地渲染 */
 export type MenuPopupTeleportTo = string | HTMLElement | false;
 
-/** 业务透传字段的默认形状 */
-export type MenuItemMeta = Record<string, unknown>;
+/** 业务透传字段的默认形状；索引签名取 any，interface 与 type 声明的 meta 都能满足约束 */
+export type MenuItemMeta = Record<string, any>;
 
 export interface MenuItemData<M extends MenuItemMeta = MenuItemMeta> {
   /** 唯一标识，作为 selectedKey / openKeys 的取值 */
@@ -613,6 +613,10 @@ export interface MenuItemData<M extends MenuItemMeta = MenuItemMeta> {
   type?: MenuItemType;
   /** 子节点 */
   children?: MenuItemData<M>[];
+  /** 分组是否可折叠，只对 group 节点生效；false 时始终展开、标题不可点击，默认 true */
+  collapsible?: boolean;
+  /** 追加到本节点 flyout 弹层根节点的 class，只对带 children 的非分组节点生效 */
+  popupClass?: string;
   /** 业务透传字段（路由、权限码等），组件不解读，随 select 事件原样返回 */
   meta?: M;
 }
@@ -658,17 +662,21 @@ export interface MenuEmits<M extends MenuItemMeta = MenuItemMeta> {
 }
 ```
 
-组件本身按默认的 `MenuItemMeta` 声明 props 与 emits；业务给 `meta` 定了形状时，在自己的数据与处理函数上标注泛型即可：
+`Menu` 是泛型组件，`meta` 的类型由传入的 `items` 推导，`@select` 等事件的载荷随之带上同一类型，无需断言；`interface` 声明的 meta 也能直接使用：
 
 ```ts
-interface RouteMeta extends MenuItemMeta {
+interface RouteMeta {
   path: string;
   menuType: 'internal' | 'qiankun' | 'redirect';
 }
 
 const items: MenuItemData<RouteMeta>[] = [...];
 
-function onSelect(payload: MenuSelectPayload) {
-  const meta = payload.data?.meta as RouteMeta | undefined;
+function onSelect(payload: MenuSelectPayload<RouteMeta>) {
+  payload.data?.meta?.path; // string | undefined
 }
+```
+
+```vue
+<Menu :items="items" @select="onSelect" />
 ```

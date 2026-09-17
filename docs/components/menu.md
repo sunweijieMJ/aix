@@ -311,7 +311,7 @@ function onSelect(payload: MenuSelectPayload) {
 
 ### 内置搜索
 
-`searchable` 开启后搜索框渲染在 `header` 之下、列表之上。关键字非空时按 label 过滤 `items`：自身匹配的节点连同整棵子树保留，否则只在有匹配后代时保留并收窄 `children`；分割线不参与；分组按命中位置展开：后代里有命中的展开，只有标题命中的收起（点标题仍可展开）；无结果显示「暂无匹配结果」；Esc 清空关键字并阻止事件冒泡，放在 Modal / Drawer 里不会连带关闭外层。复合组件写法不过滤，只透出 `search` 事件。`filterMethod` 可自定义匹配规则，下例额外匹配 `meta.keywords`（试试输入 `home` 或 `live`）。
+`searchable` 开启后搜索框渲染在 `header` 之下、列表之上。关键字非空时按 label 过滤 `items`：自身匹配的节点连同整棵子树保留，否则只在有匹配后代时保留并收窄 `children`；分割线不参与；分组按命中位置展开：后代里有命中的展开，只有标题命中的收起（点标题仍可展开）；无结果显示「暂无匹配结果」；Esc 清空关键字并阻止事件冒泡，放在 Modal / Drawer 里不会连带关闭外层。复合组件写法不过滤，只透出 `search` 事件。过滤只看 `searchValue`，不开 `searchable` 也能用外部输入框经 `v-model:searchValue` 驱动。`filterMethod` 可自定义匹配规则，下例额外匹配 `meta.keywords`（试试输入 `home` 或 `live`）。
 
 <ClientOnly>
 <div class="demo-block menu-demo">
@@ -812,22 +812,24 @@ export type MenuPopupPlacement =
 | `items` | `Array<MenuItemData>` | - | - | 数据驱动的菜单结构；与默认插槽可同时使用 |
 | `selectedKey` | `string` | - | - | 当前选中项 key（v-model:selectedKey） |
 | `openKeys` | `Array<string>` | - | - | 展开的分组 key 列表（v-model:openKeys）。只管理内联分组，flyout 的悬停展开为组件内部状态 |
-| `defaultOpenKeys` | `Array<string>` | - | - | 非受控模式下的初始展开分组。未传 openKeys 也未传本项时，所有分组默认展开；accordion 开启时不适用，默认全部折叠 |
+| `defaultOpenKeys` | `Array<string>` | - | - | 非受控模式下的展开分组。未传 openKeys 也未传本项时，所有分组默认展开；accordion 开启时不适用，默认全部折叠。用户手动折叠或展开任一分组之前，本项的变化会重新应用，菜单数据异步到达后再传入也生效 |
 | `theme` | `MenuTheme` | `'gray'` | - | 配色主题 |
 | `accordion` | `boolean` | `false` | - | 同一层级的分组只允许展开一个 |
 | `popupMaxVisible` | `number` | `9` | - | flyout 单层最多可见项数，超出后弹层内部滚动 |
 | `popupPlacement` | `MenuPopupPlacement` | `'right-start'` | - | flyout 弹层位置 |
 | `popupClass` | `string` | - | - | 追加到所有 flyout 弹层根节点的 class |
-| `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（位于 header 插槽之下、列表之上） |
-| `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items，并按命中位置决定分组展开；复合组件写法只透出事件不过滤 |
+| `popupTeleportTo` | `MenuPopupTeleportTo` | `'body'` | - | flyout 弹层的挂载目标。`false` 时弹层就地渲染在触发项所在的 li 内并按 fixed 定位，适用于微前端严格样式隔离等弹层不能离开组件子树的场景 |
+| `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（位于 header 插槽之下、列表之上）。只决定搜索框的渲染，过滤由 searchValue 驱动 |
+| `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items 并按命中位置决定分组展开，不依赖 searchable，可由外部输入框驱动；复合组件写法只透出事件不过滤 |
 | `searchPlaceholder` | `string` | - | - | 搜索框占位文案，默认取语言包 |
 | `searchClearable` | `boolean` | `true` | - | 搜索框有关键字时，右侧显示可点击的清除按钮 |
-| `filterMethod` | `any` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
-| `searchHighlight` | `boolean` | `true` | - | 搜索时，命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效 |
-| `width` | `number` | - | - | 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
+| `filterMethod` | `Function` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
+| `searchHighlight` | `boolean` | `true` | - | 搜索时给命中文字标色；命中项藏在 flyout 弹层里时，子菜单触发项在箭头前显示提示圆点。圆点只对 items 数据驱动写法生效 |
+| `width` | `number` | - | - | 宽度（px，v-model:width）。未传、非 resizable 且没有持久化存值时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
 | `resizable` | `boolean` | `false` | - | 是否允许拖拽右边缘调整宽度 |
 | `minWidth` | `number` | `150` | - | 可拖拽的最小宽度（px） |
 | `maxWidth` | `number` | `300` | - | 可拖拽的最大宽度（px） |
+| `widthStorageKey` | `string` | - | - | 宽度持久化的 localStorage 键。有值或换键时读回该键存的宽度并作为内联宽度生效，不要求开启 resizable；宽度变化后写入，拖拽期间等松手再写 |
 
 ### Events
 
@@ -849,4 +851,5 @@ export type MenuPopupPlacement =
 | `default` | 复合组件写法的菜单内容，可与 items 同时使用，渲染在 items 之后 |
 | `footer` | 列表下方区域，设计稿放用户行与设置入口 |
 | `item` | 自定义数据驱动叶子项的内容 |
-| `icon` | 自定义数据驱动节点的图标 |
+| `icon` | 自定义数据驱动节点的图标，只对带 icon 的节点生效 |
+| `group-title` | 自定义数据驱动分组的标题 |

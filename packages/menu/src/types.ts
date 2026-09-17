@@ -31,8 +31,8 @@ export type MenuPopupTeleportTo = string | HTMLElement | false;
  */
 export type MenuItemType = 'item' | 'group' | 'divider';
 
-/** 业务透传字段的默认形状 */
-export type MenuItemMeta = Record<string, unknown>;
+/** 业务透传字段的默认形状；索引签名为 any，interface 与 type 声明的 meta 均满足约束 */
+export type MenuItemMeta = Record<string, any>;
 
 /**
  * 数据驱动写法的菜单节点
@@ -57,6 +57,13 @@ export interface MenuItemData<M extends MenuItemMeta = MenuItemMeta> {
   type?: MenuItemType;
   /** 子节点 */
   children?: MenuItemData<M>[];
+  /**
+   * 分组是否可折叠，只对 `group` 节点生效。为 false 时始终展开，标题不可点击
+   * @default true
+   */
+  collapsible?: boolean;
+  /** 追加到本节点 flyout 弹层根节点的 class，只对带 `children` 的非分组节点生效 */
+  popupClass?: string;
   /** 业务透传字段（路由、权限码等），组件不解读，随 select 事件原样返回 */
   meta?: M;
 }
@@ -134,11 +141,11 @@ export interface MenuProps<M extends MenuItemMeta = MenuItemMeta> {
    */
   popupTeleportTo?: MenuPopupTeleportTo;
   /**
-   * 是否显示内置搜索框（位于 header 插槽之下、列表之上）
+   * 是否显示内置搜索框（位于 header 插槽之下、列表之上）。只决定搜索框的渲染，过滤由 searchValue 驱动
    * @default false
    */
   searchable?: boolean;
-  /** 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items，并按命中位置决定分组展开；复合组件写法只透出事件不过滤 */
+  /** 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items 并按命中位置决定分组展开，不依赖 searchable，可由外部输入框驱动；复合组件写法只透出事件不过滤 */
   searchValue?: string;
   /** 搜索框占位文案，默认取语言包 */
   searchPlaceholder?: string;
@@ -150,11 +157,11 @@ export interface MenuProps<M extends MenuItemMeta = MenuItemMeta> {
   /** 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 */
   filterMethod?: (item: MenuItemData<M>, keyword: string) => boolean;
   /**
-   * 搜索时，命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效
+   * 搜索时给命中文字标色；命中项藏在 flyout 弹层里时，子菜单触发项在箭头前显示提示圆点。圆点只对 items 数据驱动写法生效
    * @default true
    */
   searchHighlight?: boolean;
-  /** 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 */
+  /** 宽度（px，v-model:width）。未传、非 resizable 且没有持久化存值时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 */
   width?: number;
   /**
    * 是否允许拖拽右边缘调整宽度
@@ -171,7 +178,7 @@ export interface MenuProps<M extends MenuItemMeta = MenuItemMeta> {
    * @default 300
    */
   maxWidth?: number;
-  /** 宽度持久化的 localStorage 键。有值或换键时读回该键存的宽度，宽度变化后写入，拖拽期间等松手再写 */
+  /** 宽度持久化的 localStorage 键。有值或换键时读回该键存的宽度并作为内联宽度生效，不要求开启 resizable；宽度变化后写入，拖拽期间等松手再写 */
   widthStorageKey?: string;
 }
 

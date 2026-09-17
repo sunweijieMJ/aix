@@ -268,7 +268,8 @@ const footerTemplate = `
 
 const meta: Meta<typeof Menu> = {
   title: 'Menu',
-  component: Menu,
+  // 泛型 SFC 的导出是函数签名，Storybook 的 component 字段只认 ConcreteComponent，按字段类型断言
+  component: Menu as unknown as Meta<typeof Menu>['component'],
   tags: ['autodocs'],
   parameters: {
     docs: {
@@ -319,7 +320,7 @@ const meta: Meta<typeof Menu> = {
     width: {
       control: 'number',
       description:
-        '宽度（px，v-model:width）。未传且非 resizable 时不设内联宽度，由外层布局决定；resizable 但未传时从 200 起算',
+        '宽度（px，v-model:width）。未传、非 resizable 且无持久化存值时不设内联宽度，由外层布局决定；resizable 但未传时从 200 起算',
       table: { type: { summary: 'number' } },
     },
     minWidth: {
@@ -370,12 +371,13 @@ const meta: Meta<typeof Menu> = {
     },
     widthStorageKey: {
       control: 'text',
-      description: '宽度持久化的 localStorage 键',
+      description: '宽度持久化的 localStorage 键；读回的宽度不要求开启 resizable 也生效',
       table: { type: { summary: 'string' } },
     },
     searchable: {
       control: 'boolean',
-      description: '是否显示内置搜索框（位于 header 插槽之下、列表之上）',
+      description:
+        '是否显示内置搜索框（位于 header 插槽之下、列表之上）；只决定搜索框渲染，过滤由 searchValue 驱动',
       table: {
         type: { summary: 'boolean' },
         defaultValue: { summary: 'false' },
@@ -384,7 +386,7 @@ const meta: Meta<typeof Menu> = {
     searchValue: {
       control: 'text',
       description:
-        '搜索关键字（v-model:searchValue），非空时按 label 过滤 items 并按命中位置展开分组',
+        '搜索关键字（v-model:searchValue），非空时按 label 过滤 items 并按命中位置展开分组，不依赖 searchable',
       table: { type: { summary: 'string' } },
     },
     searchPlaceholder: {
@@ -403,7 +405,7 @@ const meta: Meta<typeof Menu> = {
     searchHighlight: {
       control: 'boolean',
       description:
-        '搜索时命中文字标色，且命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效',
+        '搜索时给命中文字标色；命中项藏在 flyout 弹层里时子菜单触发项在箭头前显示提示圆点，圆点只对 items 数据驱动写法生效',
       table: {
         type: { summary: 'boolean' },
         defaultValue: { summary: 'true' },

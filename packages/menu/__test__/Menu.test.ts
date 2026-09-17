@@ -84,6 +84,23 @@ describe('Menu 渲染', () => {
     ).not.toBeNull();
   });
 
+  it('group 节点的 collapsible 为 false 时渲染为固定分组', () => {
+    const items: MenuItemData[] = [
+      {
+        key: 'g',
+        type: 'group',
+        label: '固定',
+        collapsible: false,
+        children: [{ key: 'g1', label: 'G1' }],
+      },
+    ];
+    wrapper = mountMenu({ props: { items, defaultOpenKeys: [] } });
+
+    expect(groupTitle(wrapper.element, '固定').tagName).toBe('DIV');
+    expect(groupLi(wrapper.element, '固定').classList).toContain('aix-menu-group--static');
+    expect(isShown(groupList(wrapper.element, '固定'))).toBe(true);
+  });
+
   it('带 children 的非 group 节点渲染为 SubMenu 触发器', () => {
     wrapper = mountMenu({ props: { items: ITEMS } });
     const title = subMenuTitle(wrapper.element, '子菜单');
@@ -178,6 +195,18 @@ describe('Menu 选中', () => {
     expect(wrapper.emitted('select')).toEqual([
       [{ key: 'home', keyPath: ['home'], data: ITEMS[0] }],
     ]);
+  });
+
+  it('meta 接受 interface 类型并随 select 原样透出', async () => {
+    interface RouteMeta {
+      path: string;
+    }
+    const items: MenuItemData<RouteMeta>[] = [{ key: 'home', label: '首页', meta: { path: '/' } }];
+    wrapper = mountMenu({ props: { items } });
+    await click(itemButton(wrapper.element, '首页'));
+
+    const [payload] = wrapper.emitted<[MenuSelectPayload<RouteMeta>]>('select')![0]!;
+    expect(payload.data?.meta?.path).toBe('/');
   });
 
   it('分组内叶子的 keyPath 包含全部祖先分组 key', async () => {
@@ -441,7 +470,7 @@ describe('Menu 复合组件', () => {
     });
     const host = mount(Host, { attachTo: document.body });
     wrapper = host;
-    const menu = host.findComponent(Menu);
+    const menu = host.findComponent({ name: 'AixMenu' });
     expect(groupTitle(host.element, 'G2').tagName).toBe('DIV');
 
     await host.setProps({ collapsible: true });
@@ -471,7 +500,7 @@ describe('Menu 复合组件', () => {
     });
     const host = mount(Host, { attachTo: document.body });
     wrapper = host;
-    const menu = host.findComponent(Menu);
+    const menu = host.findComponent({ name: 'AixMenu' });
 
     await host.setProps({ groupKey: 'g2' });
     await click(itemButton(host.element, 'Leaf'));
@@ -496,7 +525,7 @@ describe('Menu 复合组件', () => {
     });
     const host = mount(Host, { attachTo: document.body });
     wrapper = host;
-    const menu = host.findComponent(Menu);
+    const menu = host.findComponent({ name: 'AixMenu' });
 
     await host.setProps({ swap: true });
     await click(itemButton(host.element, 'A1'));
@@ -566,7 +595,9 @@ describe('Menu 复合组件', () => {
     itemButton(host.element, 'X').click();
     await nextTick();
 
-    const [payload] = host.findComponent(Menu).emitted<[MenuSelectPayload]>('select')![0]!;
+    const [payload] = host
+      .findComponent({ name: 'AixMenu' })
+      .emitted<[MenuSelectPayload]>('select')![0]!;
     expect(toRaw(payload.data)).toBe(second);
     expect(payload.data?.meta).toEqual({ v: 2 });
   });
