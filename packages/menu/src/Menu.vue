@@ -7,6 +7,8 @@
       v-if="searchable"
       v-model="searchValue"
       :placeholder="searchPlaceholder ?? t.searchPlaceholder"
+      :clearable="searchClearable"
+      :clear-label="t.searchClear"
     />
     <ul ref="listRef" :class="ns.e('list')" @keydown="onListKeydown">
       <MenuItems v-if="displayItems" :items="displayItems" />
@@ -54,6 +56,8 @@ const props = withDefaults(defineProps<MenuProps>(), {
   popupMaxVisible: 9,
   popupPlacement: 'right-start',
   searchable: false,
+  searchClearable: true,
+  searchHighlight: true,
   resizable: false,
   minWidth: 150,
   maxWidth: 300,

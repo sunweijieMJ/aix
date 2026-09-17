@@ -16,9 +16,11 @@
           <slot name="icon" />
         </template>
         <template #suffix>
-          <MenuIcon :src="chevronDown" :class="ns.e('arrow')" />
+          <MenuIcon :src="chevronRight" :class="ns.e('arrow')" />
         </template>
-        <slot name="title">{{ label }}</slot>
+        <template v-if="$slots.title" #default>
+          <slot name="title" />
+        </template>
       </MenuItemContent>
     </button>
     <Teleport to="body">
@@ -58,7 +60,7 @@ import {
   watch,
   type Slots,
 } from 'vue';
-import chevronDown from '../assets/chevron-down.svg';
+import chevronRight from '../assets/chevron-right.svg';
 import { focusFirst, handleListNavigation } from '../composables/useListKeyboard';
 import {
   MENU_LEVEL_INJECTION_KEY,
@@ -91,6 +93,8 @@ defineSlots<{
 
 const SHOW_DELAY = 100;
 const HIDE_DELAY = 150;
+/** 读不到 --aix-menu-popup-offset 时的兜底值，与样式里的默认值一致 */
+const POPUP_OFFSET = 4;
 
 const ns = useNamespace('menu-submenu');
 const popupNs = useNamespace('menu-popup');
@@ -228,9 +232,32 @@ useClickOutside({
 
 // ---------- 定位 ----------
 
+// floating-ui 的 offset 只认数字，打开时算一次
+const popupOffset = ref(POPUP_OFFSET);
+
+/**
+ * --aix-menu-popup-offset 说的是弹层到容器边缘的留白，而 floating-ui 量的是弹层到触发项。
+ * 触发项被内边距、滚动条挤进来多少由实测得出，避免跟着变量口径推算。
+ */
+function readPopupOffset() {
+  const el = triggerRef.value;
+  if (!el) return POPUP_OFFSET;
+  const raw = Number.parseFloat(getComputedStyle(el).getPropertyValue('--aix-menu-popup-offset'));
+  const gap = Number.isFinite(raw) ? raw : POPUP_OFFSET;
+
+  const container = el.closest<HTMLElement>(`.${popupNs.b()}, .${ctx.ns.b()}`);
+  if (!container) return gap;
+  const trigger = el.getBoundingClientRect();
+  const box = container.getBoundingClientRect();
+  const inset = ctx.popupPlacement.value.startsWith('left')
+    ? trigger.left - box.left
+    : box.right - trigger.right;
+  return gap + Math.max(0, inset);
+}
+
 const { referenceRef, floatingRef, floatingStyles } = usePopper({
   placement: () => ctx.popupPlacement.value,
-  offset: 4,
+  offset: () => popupOffset.value,
   arrow: false,
 });
 
@@ -243,7 +270,9 @@ watch(popupRef, (el) => {
 
 const { currentZIndex, nextZIndex } = useZIndex();
 watch(open, (value) => {
-  if (value) nextZIndex();
+  if (!value) return;
+  nextZIndex();
+  popupOffset.value = readPopupOffset();
 });
 
 const popupStyle = computed(() => ({
@@ -258,12 +287,14 @@ const listStyle = computed(() => ({
 // ---------- 样式 ----------
 
 const active = computed(() => ctx.isInSelectedPath(props.itemKey));
+const highlighted = computed(() => ctx.isSearchHighlighted(props.itemKey));
 
 const classes = computed(() => [
   ns.b(),
   ns.m(`level-${parentLevel.groupLevel}`),
   {
     [ns.m('popup')]: parentLevel.inPopup,
+    [ns.m('highlight')]: highlighted.value,
     [ns.m('open')]: open.value,
     [ns.m('active')]: active.value,
     [ns.m('disabled')]: props.disabled,

@@ -52,11 +52,13 @@ export interface MenuSelectPayload {
 
 /** 根组件 `item` 作用域插槽参数 */
 export interface MenuItemSlotProps {
+  /** 当前渲染的数据节点 */
   item: MenuItemData;
-  /** 所在分组层级：0 根、1 一级分组内、2 二级分组内 */
+  /** 所在分组的嵌套层级，0 表示不在任何分组内 */
   groupLevel: number;
   /** 是否渲染在 flyout 弹层里 */
   inPopup: boolean;
+  /** 是否为当前选中项 */
   active: boolean;
 }
 
@@ -100,9 +102,19 @@ export interface MenuProps {
   searchValue?: string;
   /** 搜索框占位文案，默认取语言包 */
   searchPlaceholder?: string;
+  /**
+   * 搜索框有关键字时，右侧显示可点击的清除按钮
+   * @default true
+   */
+  searchClearable?: boolean;
   /** 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 */
   filterMethod?: (item: MenuItemData, keyword: string) => boolean;
-  /** 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定 */
+  /**
+   * 搜索时，命中项藏在 flyout 弹层里的子菜单触发项整行高亮。只对 items 数据驱动写法生效
+   * @default true
+   */
+  searchHighlight?: boolean;
+  /** 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 */
   width?: number;
   /**
    * 是否允许拖拽右边缘调整宽度
@@ -122,11 +134,15 @@ export interface MenuProps {
 }
 
 export interface MenuEmits {
+  /** 选中项变化（v-model:selectedKey） */
   (e: 'update:selectedKey', key: string): void;
+  /** 展开的分组列表变化（v-model:openKeys） */
   (e: 'update:openKeys', keys: string[]): void;
+  /** 宽度变化（v-model:width），拖拽过程中持续触发 */
   (e: 'update:width', width: number): void;
+  /** 搜索框文本变化（v-model:searchValue） */
   (e: 'update:searchValue', value: string): void;
-  /** 搜索关键字变化 */
+  /** 搜索关键字变化，参数为去除首尾空格后的关键字 */
   (e: 'search', keyword: string): void;
   /** 用户点击叶子项 */
   (e: 'select', payload: MenuSelectPayload): void;

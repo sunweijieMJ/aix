@@ -11,7 +11,9 @@
         <template v-if="$slots.icon" #icon>
           <slot name="icon" />
         </template>
-        <slot>{{ label }}</slot>
+        <template v-if="$slots.default" #default>
+          <slot />
+        </template>
       </MenuItemContent>
     </button>
   </li>

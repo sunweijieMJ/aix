@@ -10,4 +10,6 @@ export interface MenuLocale {
   searchPlaceholder: string;
   /** 搜索无匹配项时的提示 */
   noResults: string;
+  /** 搜索框清除按钮的 aria-label */
+  searchClear: string;
 }

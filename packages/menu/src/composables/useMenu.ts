@@ -34,11 +34,13 @@ function defaultFilterMethod(item: MenuItemData, keyword: string) {
 /**
  * 按关键字过滤数据树：自身匹配的节点连同全部子节点保留，
  * 否则只在有匹配后代时保留并收窄 children；分割线不参与搜索。
+ * 靠后代才留下的 flyout 子菜单记进 hitKeys——它们的命中项藏在弹层里，列表上看不见。
  */
 function filterItems(
   items: MenuItemData[],
   keyword: string,
   match: (item: MenuItemData, keyword: string) => boolean,
+  hitKeys: Set<string>,
 ): MenuItemData[] {
   const result: MenuItemData[] = [];
   for (const node of items) {
@@ -48,8 +50,11 @@ function filterItems(
       continue;
     }
     if (node.children?.length) {
-      const children = filterItems(node.children, keyword, match);
-      if (children.length) result.push({ ...node, children });
+      const children = filterItems(node.children, keyword, match, hitKeys);
+      if (children.length) {
+        if (node.type !== 'group') hitKeys.add(node.key);
+        result.push({ ...node, children });
+      }
     }
   }
   return result;
@@ -197,10 +202,25 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   const keyword = computed(() => (props.searchable ? searchValue.value.trim() : ''));
   const searching = computed(() => keyword.value !== '');
 
-  const displayItems = computed<MenuItemData[] | undefined>(() => {
-    if (!props.items || !searching.value) return props.items;
-    return filterItems(props.items, keyword.value, props.filterMethod ?? defaultFilterMethod);
+  const filtered = computed<{ items: MenuItemData[] | undefined; hitKeys: Set<string> }>(() => {
+    const hitKeys = new Set<string>();
+    if (!props.items || !searching.value) return { items: props.items, hitKeys };
+    const items = filterItems(
+      props.items,
+      keyword.value,
+      props.filterMethod ?? defaultFilterMethod,
+      hitKeys,
+    );
+    return { items, hitKeys };
   });
+
+  const displayItems = computed(() => filtered.value.items);
+
+  const highlightKeyword = computed(() => ((props.searchHighlight ?? true) ? keyword.value : ''));
+
+  function isSearchHighlighted(key: string) {
+    return (props.searchHighlight ?? true) && filtered.value.hitKeys.has(key);
+  }
 
   const context: MenuContext = {
     ns,
@@ -211,6 +231,8 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
     popupPlacement: computed(() => props.popupPlacement ?? 'right-start'),
     popupClass: toRef(props, 'popupClass'),
     searching,
+    highlightKeyword,
+    isSearchHighlighted,
     slots,
     select,
     toggleOpen,

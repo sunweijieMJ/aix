@@ -12,6 +12,10 @@ export interface MenuContext {
   popupClass: Ref<string | undefined>;
   /** 搜索关键字非空，分组全部强制展开 */
   searching: Ref<boolean>;
+  /** 命中文字标色用的关键字；searchHighlight 关闭时恒为空串 */
+  highlightKeyword: Ref<string>;
+  /** 搜索命中项是否藏在该 key 的 flyout 弹层里，用于触发项整行高亮 */
+  isSearchHighlighted: (key: string) => boolean;
   /** 根组件的插槽，供数据驱动渲染时透传 item / icon / group-title */
   slots: Slots;
   select: (payload: MenuSelectPayload) => void;
@@ -28,7 +32,7 @@ export interface MenuContext {
 export interface MenuLevelContext {
   /** 祖先 key 链，最近的祖先在末尾 */
   path: string[];
-  /** 所在分组层级：0 根、1 一级分组内、2 二级分组内 */
+  /** 所在分组的嵌套层级，0 表示不在任何分组内 */
   groupLevel: number;
   /** 是否位于 flyout 弹层内 */
   inPopup: boolean;

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
-import { expect, fn, userEvent } from 'storybook/test';
+import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 import { reactive, ref } from 'vue';
 import { Menu, MenuGroup, MenuItem, SubMenu } from '../src';
 import type { MenuItemData, MenuProps, MenuSelectPayload } from '../src';
@@ -74,6 +74,104 @@ const baseItems: MenuItemData[] = [
     ],
   },
   { key: 'legacy', label: '已停用模块', icon: FolderIcon, disabled: true },
+];
+
+const deepItems: MenuItemData[] = [
+  { key: 'home', label: '首页', icon: HomeIcon },
+  {
+    key: 'l1',
+    label: '一级菜单',
+    icon: FolderIcon,
+    children: [
+      { key: 'l2-sibling', label: '二级叶子' },
+      {
+        key: 'l2',
+        label: '二级菜单',
+        children: [
+          { key: 'l3-sibling', label: '三级叶子' },
+          {
+            key: 'l3',
+            label: '三级菜单',
+            children: [
+              { key: 'l4-sibling', label: '四级叶子' },
+              {
+                key: 'l4',
+                label: '四级菜单',
+                children: [
+                  { key: 'l5-a', label: '五级叶子 A' },
+                  { key: 'l5-b', label: '五级叶子 B' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const longPopupItems: MenuItemData[] = [
+  { key: 'home', label: '首页', icon: HomeIcon },
+  {
+    key: 'report',
+    label: '周报表',
+    icon: ChartIcon,
+    children: Array.from({ length: 20 }, (_, index) => ({
+      key: `report-${index + 1}`,
+      label: `第 ${index + 1} 周`,
+    })),
+  },
+  {
+    key: 'archive',
+    label: '归档（带图标）',
+    icon: FolderIcon,
+    children: Array.from({ length: 12 }, (_, index) => ({
+      key: `archive-${index + 1}`,
+      label: `${2014 + index} 年`,
+      icon: FileIcon,
+    })),
+  },
+];
+
+// 对齐设计稿「搜索结果」那张：搜「智慧」时分组标题、组内叶子、选中项、flyout 触发项四种命中同时出现
+const highlightItems: MenuItemData[] = [
+  { key: 'home', label: '首页', icon: HomeIcon },
+  {
+    key: 'smart-teaching',
+    type: 'group',
+    label: '智慧教学',
+    children: [
+      { key: 'smart-center', label: '智慧中心', icon: GridIcon },
+      { key: 'course-list', label: '课程列表', icon: BookIcon },
+    ],
+  },
+  {
+    key: 'smart-supervise',
+    type: 'group',
+    label: '智慧督导',
+    children: [
+      { key: 'online-patrol', label: '在线巡课', icon: VideoIcon },
+      { key: 'review-task', label: '听评课任务', icon: EditIcon },
+    ],
+  },
+  {
+    key: 'classroom',
+    type: 'group',
+    label: '课堂教学',
+    children: [
+      { key: 'ai-assistant', label: '智慧助教', icon: BellIcon },
+      { key: 'replay', label: '课堂回放', icon: VideoIcon },
+    ],
+  },
+  {
+    key: 'report',
+    label: '数据报表',
+    icon: ChartIcon,
+    children: [
+      { key: 'report-smart', label: '智慧看板' },
+      { key: 'report-daily', label: '日报' },
+    ],
+  },
 ];
 
 const flyoutItems: MenuItemData[] = [
@@ -499,6 +597,9 @@ export const Search: Story = {
 
 /**
  * 四套内置主题并排。glass 两套依赖 `backdrop-filter`，放在有图案的容器里才能看到毛玻璃效果。
+ *
+ * 四套都开了 `searchable`，可以逐个对比搜索框的五态：默认 → 悬停 → 聚焦（加 1px 描边）→
+ * 有关键字 → 有关键字再悬停。各态取值都是每主题一份，见 `--aix-menu-search-*`。
  */
 export const Themes: Story = {
   render: () => ({
@@ -871,10 +972,11 @@ export const CustomTheme: Story = {
           --aix-menu-item-color: #cbd5e1;
           --aix-menu-item-bg-hover: rgb(255 255 255 / 0.08);
           --aix-menu-item-bg-active: #2563eb;
+          --aix-menu-item-bg-highlight: rgb(96 165 250 / 0.16);
+          --aix-menu-item-color-highlight: #93c5fd;
           --aix-menu-item-color-active: #fff;
           --aix-menu-item-color-disabled: rgb(203 213 225 / 0.35);
           --aix-menu-group-title-color: #64748b;
-          --aix-menu-subgroup-title-color: #94a3b8;
           --aix-menu-divider-color: rgb(255 255 255 / 0.12);
           --aix-menu-focus-ring-color: #60a5fa;
           --aix-menu-resize-indicator-color: #60a5fa;
@@ -886,7 +988,9 @@ export const CustomTheme: Story = {
           --aix-menu-popup-scrollbar-color: rgb(255 255 255 / 0.2);
           --aix-menu-scrollbar-color: rgb(255 255 255 / 0.2);
           --aix-menu-search-bg: rgb(255 255 255 / 0.06);
-          --aix-menu-search-bg-active: rgb(255 255 255 / 0.12);
+          --aix-menu-search-bg-hover: rgb(255 255 255 / 0.12);
+          --aix-menu-search-bg-focus: rgb(255 255 255 / 0.06);
+          --aix-menu-search-border-color-focus: #60a5fa;
           --aix-menu-search-color: #f1f5f9;
           --aix-menu-search-icon-color: #94a3b8;
           --aix-menu-search-placeholder-color: #64748b;
@@ -899,4 +1003,189 @@ export const CustomTheme: Story = {
       </Menu>
     `,
   }),
+};
+
+/**
+ * 弹层内可见项数由 `popupMaxVisible` 决定（默认 9），超出后弹层内部滚动，滚动条为 4px 细滑块。
+ * 弹层宽度随子项是否带图标切换：不带图标 158px，带图标 182px。
+ */
+export const PopupScroll: Story = {
+  args: {
+    popupMaxVisible: 9,
+  },
+  render: (args) => ({
+    components: { Menu },
+    setup() {
+      return { args, items: longPopupItems };
+    },
+    template: `
+      <Menu v-bind="args" :items="items" :width="200" />
+      <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
+        <p style="margin: 0;">「周报表」20 项、「归档」12 项，均超过 {{ args.popupMaxVisible }}。</p>
+        <p style="margin: 0;">调 Controls 里的 popupMaxVisible 可直接看到弹层高度变化。</p>
+      </div>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    await userEvent.hover(canvas.getByRole('button', { name: '周报表' }));
+
+    const list = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('.aix-menu-popup__list');
+      if (!el) throw new Error('弹层未打开');
+      return el;
+    });
+    await expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+  },
+};
+
+/**
+ * flyout 可无限级联，每一级都是独立弹层：悬停逐级展开，指针在整条弹层链内移动都不会关闭；
+ * ← / Esc 回退一级并把焦点还给触发项，选中叶子后整条链一起收起。
+ */
+export const DeepNesting: Story = {
+  args: {
+    popupPlacement: 'right-start',
+  },
+  render: (args) => ({
+    components: { Menu },
+    setup() {
+      return { args, items: deepItems };
+    },
+    template: `
+      <Menu v-bind="args" :items="items" :width="200" />
+      <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
+        <p style="margin: 0;">悬停「一级菜单」后沿着弹层一路往里，共五级。</p>
+        <p style="margin: 0;">空间不足时 floating-ui 会自动翻转到左侧。</p>
+      </div>
+    `,
+  }),
+  play: async ({ canvas, canvasElement }) => {
+    const body = within(document.body);
+    const popups = () => Array.from(document.querySelectorAll<HTMLElement>('.aix-menu-popup'));
+
+    await userEvent.hover(canvas.getByRole('button', { name: '一级菜单' }));
+    await waitFor(() => expect(popups()).toHaveLength(1));
+
+    await userEvent.hover(await body.findByRole('button', { name: '二级菜单' }));
+    await waitFor(() => expect(popups()).toHaveLength(2));
+
+    await userEvent.hover(await body.findByRole('button', { name: '三级菜单' }));
+    await waitFor(() => expect(popups()).toHaveLength(3));
+
+    // 留白由 --aix-menu-popup-offset 给出，量的是容器边缘到弹层，不是触发项到弹层；
+    // 空间不足时弹层会翻到左侧，两侧间隙取大的那个。三级之后窄视口会被 shift 压回边缘，不参与断言
+    const menu = canvasElement.querySelector<HTMLElement>('.aix-menu')!;
+    const gap = (a: DOMRect, b: DOMRect) => Math.max(b.left - a.right, a.left - b.right);
+    const [level1, level2] = popups().map((el) => el.getBoundingClientRect());
+
+    await expect(gap(menu.getBoundingClientRect(), level1!)).toBeCloseTo(4, 0);
+    await expect(gap(level1!, level2!)).toBeCloseTo(4, 0);
+  },
+};
+
+/**
+ * `searchClearable`（默认开启）在关键字非空时于搜索框右侧显示清除按钮，
+ * 点击清空关键字、还原列表，焦点留在输入框里，便于继续输入。
+ */
+export const SearchClear: Story = {
+  args: {
+    searchable: true,
+    searchClearable: true,
+  },
+  render: (args) => ({
+    components: { Menu },
+    setup() {
+      return { args, items: baseItems };
+    },
+    template: `
+      <Menu v-bind="args" :items="items" :width="220" />
+      <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
+        <p style="margin: 0;">输入关键字后，搜索框右侧出现清除按钮。</p>
+        <p style="margin: 0;">Esc 与清除按钮等效，都会清空关键字且保持焦点。</p>
+      </div>
+    `,
+  }),
+  play: async ({ canvas, args: _args }) => {
+    const args = _args as StoryArgs;
+    const input = canvas.getByRole('textbox');
+
+    await expect(canvas.queryByRole('button', { name: '清除搜索关键字' })).toBeNull();
+
+    await userEvent.type(input, '课程');
+    await waitFor(() => expect(args.onSearch).toHaveBeenCalledWith('课程'));
+
+    const clear = canvas.getByRole('button', { name: '清除搜索关键字' });
+    await userEvent.click(clear);
+
+    await expect(input).toHaveValue('');
+    await expect(input).toHaveFocus();
+    await expect(canvas.queryByRole('button', { name: '清除搜索关键字' })).toBeNull();
+  },
+};
+
+/**
+ * `searchHighlight`（默认开启）管两件事：
+ *
+ * 1. **命中文字标色**——label 里匹配到的片段包进 `<mark>`，取 `--aix-menu-item-color-highlight`（设计稿 `#1546F2`）。
+ *    分组标题、内联分组里的叶子项、选中项、flyout 触发项一视同仁；文案被插槽接管时不插手。
+ * 2. **整行标底**——命中项落在 flyout 弹层里时列表上看不见，只剩触发项孤零零留着，
+ *    此时给触发项铺 `--aix-menu-item-bg-highlight`，提示「命中在这条里面」。自身命中则不铺，它本来就看得见。
+ *
+ * 两个颜色都是每套主题各一份。搜「智慧」可一次看全四种情形：
+ *
+ * | 节点 | 结果 |
+ * |------|------|
+ * | 分组「智慧教学」 | 标题自身命中 → 标题标色，整组子项全部保留 |
+ * | 叶子「智慧中心」 | 自身命中 → 文字标色；同时是选中项，标色叠在选中底色上 |
+ * | 分组「课堂教学」 | 标题没命中、子项「智慧助教」命中 → 标题不标色，只保留命中的子项 |
+ * | 子菜单「数据报表」 | 命中的「智慧看板」在弹层里 → 触发项整行标底，文字上没有 mark |
+ */
+export const SearchHighlight: Story = {
+  args: {
+    searchable: true,
+    searchHighlight: true,
+    searchPlaceholder: '试试输入「智慧」',
+  },
+  render: (args) => ({
+    components: { Menu },
+    setup() {
+      const selected = ref('smart-center');
+      return { args, items: highlightItems, selected };
+    },
+    template: `
+      <Menu v-bind="args" :items="items" :width="220" v-model:selectedKey="selected" />
+      <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
+        <p style="margin: 0;">输入「智慧」：分组标题、组内叶子、选中项里的「智慧」两字都标色。</p>
+        <p style="margin: 0;">「课堂教学」标题没命中，只留下命中的「智慧助教」，标题不标色。</p>
+        <p style="margin: 0;">「数据报表」命中的是弹层里的「智慧看板」，整行标底代替文字标色。</p>
+      </div>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    const input = canvas.getByRole('textbox');
+    const markIn = (name: string) =>
+      canvas.getByRole('button', { name }).querySelector('mark.aix-menu-highlight');
+
+    await userEvent.type(input, '智慧');
+    await waitFor(() => expect(markIn('智慧教学')).toHaveTextContent('智慧'));
+
+    // 内联分组：标题与组内叶子都标色，选中项也不例外
+    await expect(markIn('智慧中心')).toHaveTextContent('智慧');
+    await expect(canvas.getByRole('button', { name: '智慧中心' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    // 靠后代才留下的分组，标题本身不标色
+    await expect(markIn('课堂教学')).toBeNull();
+    await expect(markIn('智慧助教')).toHaveTextContent('智慧');
+
+    // 命中藏在弹层里：整行标底，文字上没有 mark
+    const report = canvas.getByRole('button', { name: '数据报表' });
+    await expect(report.closest('.aix-menu-submenu')).toHaveClass('aix-menu-submenu--highlight');
+    await expect(report.querySelector('mark.aix-menu-highlight')).toBeNull();
+
+    await userEvent.clear(input);
+    await waitFor(() => expect(markIn('智慧教学')).toBeNull());
+  },
 };

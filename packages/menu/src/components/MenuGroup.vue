@@ -10,7 +10,7 @@
     >
       <MenuIcon v-if="collapsible" :src="chevronDown" :class="ns.e('arrow')" />
       <span :class="ns.e('title-text')">
-        <slot name="title">{{ title }}</slot>
+        <slot name="title"><MenuHighlight :text="title" /></slot>
       </span>
       <span :class="ns.e('divider')" aria-hidden="true" />
     </component>
@@ -30,6 +30,7 @@ import {
   useMenuLevel,
 } from '../composables/useMenuContext';
 import type { MenuGroupProps } from '../types';
+import MenuHighlight from './MenuHighlight.vue';
 import MenuIcon from './MenuIcon.vue';
 
 defineOptions({

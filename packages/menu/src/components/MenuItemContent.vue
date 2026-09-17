@@ -5,9 +5,15 @@
         <component :is="icon" />
       </slot>
     </span>
-    <Tooltip :content="label" :disabled="!overflowed || !label" placement="top" :show-delay="200">
+    <Tooltip
+      :content="label"
+      :disabled="!overflowed || !label"
+      placement="top"
+      :show-delay="200"
+      :popper-class="tooltipNs.b()"
+    >
       <span ref="labelRef" :class="ns.e('label')">
-        <slot>{{ label }}</slot>
+        <slot><MenuHighlight :text="label" /></slot>
       </span>
     </Tooltip>
     <span v-if="$slots.suffix" :class="ns.e('suffix')">
@@ -21,6 +27,7 @@ import { useNamespace } from '@aix/hooks';
 import { Tooltip } from '@aix/popper';
 import { ref, type Component } from 'vue';
 import { useTextOverflow } from '../composables/useTextOverflow';
+import MenuHighlight from './MenuHighlight.vue';
 
 defineOptions({
   name: 'AixMenuItemContent',
@@ -34,6 +41,7 @@ const props = defineProps<{
 }>();
 
 const ns = useNamespace('menu-item-content');
+const tooltipNs = useNamespace('menu-tooltip');
 const labelRef = ref<HTMLElement | null>(null);
 const { overflowed } = useTextOverflow(labelRef, () => props.label);
 </script>

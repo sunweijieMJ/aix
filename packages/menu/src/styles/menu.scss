@@ -11,11 +11,10 @@
   --aix-menu-icon-gap: 8px;
   --aix-menu-item-height: 38px;
   --aix-menu-item-padding: 0 16px 0 24px;
-  --aix-menu-subgroup-item-height: 40px;
-  --aix-menu-subgroup-item-padding: 0 12px;
   --aix-menu-popup-width: 158px;
   --aix-menu-popup-width-icon: 182px;
   --aix-menu-popup-padding: 4px;
+  --aix-menu-popup-offset: 4px;
   --aix-menu-popup-item-height: 36px;
   --aix-menu-popup-item-padding: 0 12px;
   --aix-menu-popup-item-font-weight-active: 500;
@@ -79,19 +78,17 @@
   @include structural-vars;
 
   --aix-menu-padding: 8px;
-  --aix-menu-section-gap: 16px;
+  --aix-menu-section-gap: 20px;
   --aix-menu-group-gap: 16px;
   --aix-menu-item-gap: 8px;
   --aix-menu-group-title-height: 38px;
   --aix-menu-group-title-padding: 0 8px;
-  --aix-menu-subgroup-title-height: 32px;
-  --aix-menu-subgroup-title-padding: 0 12px;
-  --aix-menu-subgroup-title-font-size: 12px;
   --aix-menu-resize-handle-width: 6px;
   --aix-menu-search-height: 38px;
   --aix-menu-search-padding: 8px;
   --aix-menu-search-gap: 10px;
   --aix-menu-search-icon-size: 22px;
+  --aix-menu-search-clear-size: 16px;
   --aix-menu-search-font-size: 14px;
   --aix-menu-search-line-height: 22px;
 
@@ -201,7 +198,9 @@
   align-items: center;
   height: var(--aix-menu-search-height);
   padding: var(--aix-menu-search-padding);
-  transition: background-color var(--aix-menu-transition-duration);
+  transition:
+    background-color var(--aix-menu-transition-duration),
+    box-shadow var(--aix-menu-transition-duration);
   border-radius: var(--aix-menu-radius);
   background: var(--aix-menu-search-bg);
   color: var(--aix-menu-search-color);
@@ -209,8 +208,19 @@
   gap: var(--aix-menu-search-gap);
 
   &:hover,
-  &--focused {
-    background: var(--aix-menu-search-bg-active);
+  &--filled {
+    background: var(--aix-menu-search-bg-hover);
+  }
+
+  // 描边走 inset 阴影不占布局：38px 高度里 8px 内边距加 22px 图标已经占满。
+  // 选择器多带一次 .aix-menu-search，才压得过上面的 :hover
+  &.aix-menu-search--focused {
+    background: var(--aix-menu-search-bg-focus, var(--aix-menu-search-bg));
+    box-shadow: inset 0 0 0 1px var(--aix-menu-search-border-color-focus, transparent);
+  }
+
+  &.aix-menu-search--focused.aix-menu-search--filled {
+    background: var(--aix-menu-search-bg-hover);
   }
 
   &__icon {
@@ -218,6 +228,32 @@
     width: var(--aix-menu-search-icon-size);
     height: var(--aix-menu-search-icon-size);
     color: var(--aix-menu-search-icon-color);
+  }
+
+  &__clear {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--aix-menu-search-clear-size);
+    height: var(--aix-menu-search-clear-size);
+    padding: 0;
+    transition: color var(--aix-menu-transition-duration);
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--aix-menu-search-placeholder-color);
+    font-size: var(--aix-menu-search-clear-size);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--aix-menu-search-icon-color);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--aix-menu-focus-ring-color);
+      outline-offset: 1px;
+    }
   }
 
   &__input {
@@ -247,6 +283,20 @@
   height: 1em;
   background-color: currentColor;
   mask: var(--aix-menu-icon-src) center / contain no-repeat;
+}
+
+// ---------- 搜索命中文字 ----------
+
+// <mark> 自带黄底，清掉后只留设计稿的命中色
+.aix-menu-highlight {
+  background: transparent;
+  color: var(--aix-menu-item-color-highlight);
+
+  // 禁用项整行褪色，命中色不能把文字拉回强调色
+  .aix-menu-item--disabled &,
+  .aix-menu-submenu--disabled & {
+    color: inherit;
+  }
 }
 
 // ---------- 项内容（图标 + 文字 + 后缀） ----------
@@ -301,11 +351,6 @@
 
   &__button {
     @include menu-button;
-  }
-
-  &--level-2 .aix-menu-item__button {
-    height: var(--aix-menu-subgroup-item-height);
-    padding: var(--aix-menu-subgroup-item-padding);
   }
 
   &--active .aix-menu-item__button {
@@ -386,12 +431,11 @@
     flex: none;
     width: var(--aix-menu-icon-size);
     height: var(--aix-menu-icon-size);
-    transform: rotate(-90deg);
     transition: transform var(--aix-menu-transition-duration);
   }
 
   &--open .aix-menu-group__arrow {
-    transform: none;
+    transform: rotate(180deg);
   }
 
   &__title-text {
@@ -425,20 +469,6 @@
       background: transparent;
     }
   }
-
-  &--level-2 {
-    .aix-menu-group__title {
-      height: var(--aix-menu-subgroup-title-height);
-      padding: var(--aix-menu-subgroup-title-padding);
-      color: var(--aix-menu-subgroup-title-color);
-      font-size: var(--aix-menu-subgroup-title-font-size);
-    }
-
-    .aix-menu-group__divider {
-      flex: 0 0 10px;
-      margin-left: auto;
-    }
-  }
 }
 
 // ---------- flyout 子菜单 ----------
@@ -453,12 +483,11 @@
   &__arrow {
     width: var(--aix-menu-icon-size);
     height: var(--aix-menu-icon-size);
-    transform: rotate(-90deg);
   }
 
-  &--level-2 .aix-menu-submenu__title {
-    height: var(--aix-menu-subgroup-item-height);
-    padding: var(--aix-menu-subgroup-item-padding);
+  // 命中项藏在弹层里时整行提示；排在 --open / --active 之前，让展开与选中态压过它
+  &--highlight .aix-menu-submenu__title {
+    background: var(--aix-menu-item-bg-highlight);
   }
 
   &--open .aix-menu-submenu__title {
@@ -541,4 +570,14 @@
     overflow: hidden auto;
     list-style: none;
   }
+}
+
+// ---------- 文字溢出提示 ----------
+
+// Tooltip 被 Teleport 到 body，取不到侧栏上的变量，宽度只能定义在自身
+.aix-menu-tooltip {
+  --aix-menu-tooltip-width: 136px;
+
+  width: var(--aix-menu-tooltip-width);
+  max-width: var(--aix-menu-tooltip-width);
 }

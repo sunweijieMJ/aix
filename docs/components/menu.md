@@ -181,10 +181,11 @@ const themeSelected = reactive({
   --aix-menu-item-color: #cbd5e1;
   --aix-menu-item-bg-hover: rgb(255 255 255 / 0.08);
   --aix-menu-item-bg-active: #2563eb;
+  --aix-menu-item-bg-highlight: rgb(96 165 250 / 0.16);
+  --aix-menu-item-color-highlight: #93c5fd;
   --aix-menu-item-color-active: #fff;
   --aix-menu-item-color-disabled: rgb(203 213 225 / 0.35);
   --aix-menu-group-title-color: #64748b;
-  --aix-menu-subgroup-title-color: #94a3b8;
   --aix-menu-divider-color: rgb(255 255 255 / 0.12);
   --aix-menu-focus-ring-color: #60a5fa;
   --aix-menu-popup-bg: #1e293b;
@@ -194,7 +195,9 @@ const themeSelected = reactive({
   --aix-menu-popup-item-color-active: #fff;
   --aix-menu-scrollbar-color: rgb(255 255 255 / 0.2);
   --aix-menu-search-bg: rgb(255 255 255 / 0.06);
-  --aix-menu-search-bg-active: rgb(255 255 255 / 0.12);
+  --aix-menu-search-bg-hover: rgb(255 255 255 / 0.12);
+  --aix-menu-search-bg-focus: rgb(255 255 255 / 0.06);
+  --aix-menu-search-border-color-focus: #60a5fa;
   --aix-menu-search-color: #f1f5f9;
   --aix-menu-search-icon-color: #94a3b8;
   --aix-menu-search-placeholder-color: #64748b;
@@ -617,33 +620,36 @@ const width = ref(200);
 
 ### 颜色变量
 
-| 变量                                  | 说明                         |
-| ------------------------------------- | ---------------------------- |
-| `--aix-menu-bg`                       | 侧栏背景                     |
-| `--aix-menu-item-color`               | 菜单项文字                   |
-| `--aix-menu-item-bg-hover`            | 菜单项 / 分组标题 hover 背景 |
-| `--aix-menu-item-bg-active`           | 选中项背景                   |
-| `--aix-menu-item-color-active`        | 选中项文字                   |
-| `--aix-menu-item-color-disabled`      | 禁用项文字（禁用项被选中时同样按此显示）                             |
-| `--aix-menu-group-title-color`        | 一级分组标题文字                                                     |
-| `--aix-menu-subgroup-title-color`     | 二级子分组标题文字                                                   |
-| `--aix-menu-divider-color`            | 分割线                                                               |
-| `--aix-menu-focus-ring-color`         | 侧栏键盘焦点环                                                       |
-| `--aix-menu-resize-indicator-color`   | 拖拽把手指示线                                                       |
-| `--aix-menu-scrollbar-color`          | 侧栏列表滚动条滑块                                                   |
-| `--aix-menu-search-bg`                | 搜索框背景                                                           |
-| `--aix-menu-search-bg-active`         | 搜索框 hover / 聚焦背景                                              |
-| `--aix-menu-search-color`             | 搜索框输入文字                                                       |
-| `--aix-menu-search-icon-color`        | 搜索框图标                                                           |
-| `--aix-menu-search-placeholder-color` | 搜索框占位文字                                                       |
-| `--aix-menu-popup-bg`                 | flyout 弹层背景                                                      |
-| `--aix-menu-popup-shadow`             | flyout 弹层阴影                                                      |
-| `--aix-menu-popup-item-color`         | 弹层内菜单项文字                                                     |
-| `--aix-menu-popup-item-bg-hover`      | 弹层内菜单项 hover 背景                                              |
-| `--aix-menu-popup-item-bg-active`     | 弹层内选中项背景                                                     |
-| `--aix-menu-popup-item-color-active`  | 弹层内选中项文字                                                     |
-| `--aix-menu-popup-scrollbar-color`    | 弹层滚动条                                                           |
-| `--aix-menu-popup-focus-ring-color`   | 弹层键盘焦点环，定义在 `.aix-menu-popup` 基础块，默认 `#00c261`      |
+| 变量                                   | 说明                                                            |
+|----------------------------------------|-----------------------------------------------------------------|
+| `--aix-menu-bg`                        | 侧栏背景                                                        |
+| `--aix-menu-item-color`                | 菜单项文字                                                      |
+| `--aix-menu-item-bg-hover`             | 菜单项 / 分组标题 hover 背景                                    |
+| `--aix-menu-item-bg-active`            | 选中项背景                                                      |
+| `--aix-menu-item-bg-highlight`         | 搜索命中藏在弹层里时的子菜单触发项背景                          |
+| `--aix-menu-item-color-highlight`      | 搜索命中的文字                                                  |
+| `--aix-menu-item-color-active`         | 选中项文字                                                      |
+| `--aix-menu-item-color-disabled`       | 禁用项文字（禁用项被选中时同样按此显示）                        |
+| `--aix-menu-group-title-color`         | 一级分组标题文字                                                |
+| `--aix-menu-divider-color`             | 分割线                                                          |
+| `--aix-menu-focus-ring-color`          | 侧栏键盘焦点环                                                  |
+| `--aix-menu-resize-indicator-color`    | 拖拽把手指示线                                                  |
+| `--aix-menu-scrollbar-color`           | 侧栏列表滚动条滑块                                              |
+| `--aix-menu-search-bg`                 | 搜索框背景                                                      |
+| `--aix-menu-search-bg-hover`           | 搜索框 hover / 有关键字时的背景                                 |
+| `--aix-menu-search-bg-focus`           | 搜索框聚焦背景                                                  |
+| `--aix-menu-search-border-color-focus` | 搜索框聚焦描边                                                  |
+| `--aix-menu-search-color`              | 搜索框输入文字                                                  |
+| `--aix-menu-search-icon-color`         | 搜索框图标                                                      |
+| `--aix-menu-search-placeholder-color`  | 搜索框占位文字                                                  |
+| `--aix-menu-popup-bg`                  | flyout 弹层背景                                                 |
+| `--aix-menu-popup-shadow`              | flyout 弹层阴影                                                 |
+| `--aix-menu-popup-item-color`          | 弹层内菜单项文字                                                |
+| `--aix-menu-popup-item-bg-hover`       | 弹层内菜单项 hover 背景                                         |
+| `--aix-menu-popup-item-bg-active`      | 弹层内选中项背景                                                |
+| `--aix-menu-popup-item-color-active`   | 弹层内选中项文字                                                |
+| `--aix-menu-popup-scrollbar-color`     | 弹层滚动条                                                      |
+| `--aix-menu-popup-focus-ring-color`    | 弹层键盘焦点环，定义在 `.aix-menu-popup` 基础块，默认 `#00c261` |
 
 ### 尺寸变量
 
@@ -659,32 +665,30 @@ const width = ref(200);
 | `--aix-menu-icon-gap`                      | `8px`           | 侧栏 + 弹层 | 图标与文字间距                                   |
 | `--aix-menu-item-height`                   | `38px`          | 侧栏 + 弹层 | 根级 / 一级分组内菜单项高度                      |
 | `--aix-menu-item-padding`                  | `0 16px 0 24px` | 侧栏 + 弹层 | 根级 / 一级分组内菜单项内边距                    |
-| `--aix-menu-subgroup-item-height`          | `40px`          | 侧栏 + 弹层 | 二级子分组内菜单项 / SubMenu 触发项高度          |
-| `--aix-menu-subgroup-item-padding`         | `0 12px`        | 侧栏 + 弹层 | 二级子分组内菜单项 / SubMenu 触发项内边距        |
 | `--aix-menu-popup-width`                   | `158px`         | 侧栏 + 弹层 | 弹层宽度（子项无图标）                           |
 | `--aix-menu-popup-width-icon`              | `182px`         | 侧栏 + 弹层 | 弹层宽度（子项带图标）                           |
 | `--aix-menu-popup-padding`                 | `4px`           | 侧栏 + 弹层 | 弹层内边距                                       |
+| `--aix-menu-popup-offset`                  | `4px`           | 侧栏 + 弹层 | 弹层与所在容器边缘的间距                         |
 | `--aix-menu-popup-item-height`             | `36px`          | 侧栏 + 弹层 | 弹层内菜单项高度                                 |
 | `--aix-menu-popup-item-padding`            | `0 12px`        | 侧栏 + 弹层 | 弹层内菜单项内边距                               |
 | `--aix-menu-popup-item-font-weight-active` | `500`           | 侧栏 + 弹层 | 弹层内选中项 / 侧栏激活 SubMenu 字重             |
 | `--aix-menu-popup-max-visible`             | `9`             | 侧栏 + 弹层 | 弹层最大可见项数，由 `popupMaxVisible` prop 写入 |
 | `--aix-menu-transition-duration`           | `0.2s`          | 侧栏 + 弹层 | 过渡时长                                         |
 | `--aix-menu-padding`                       | `8px`           | 侧栏        | 侧栏内边距                                       |
-| `--aix-menu-section-gap`                   | `16px`          | 侧栏        | header / 列表 / footer 之间的间距                |
+| `--aix-menu-section-gap`                   | `20px`          | 侧栏        | header / 列表 / footer 之间的间距                |
 | `--aix-menu-group-gap`                     | `16px`          | 侧栏        | 分组与相邻节点的间距                             |
 | `--aix-menu-item-gap`                      | `8px`           | 侧栏        | 菜单项之间的间距                                 |
 | `--aix-menu-group-title-height`            | `38px`          | 侧栏        | 一级分组标题高度                                 |
 | `--aix-menu-group-title-padding`           | `0 8px`         | 侧栏        | 一级分组标题内边距                               |
-| `--aix-menu-subgroup-title-height`         | `32px`          | 侧栏        | 二级子分组标题高度                               |
-| `--aix-menu-subgroup-title-padding`        | `0 12px`        | 侧栏        | 二级子分组标题内边距                             |
-| `--aix-menu-subgroup-title-font-size`      | `12px`          | 侧栏        | 二级子分组标题字号                               |
 | `--aix-menu-resize-handle-width`           | `6px`           | 侧栏        | 拖拽把手命中区宽度                               |
 | `--aix-menu-search-height`                 | `38px`          | 侧栏        | 搜索框高度                                       |
 | `--aix-menu-search-padding`                | `8px`           | 侧栏        | 搜索框内边距                                     |
 | `--aix-menu-search-gap`                    | `10px`          | 侧栏        | 搜索图标与输入框间距                             |
 | `--aix-menu-search-icon-size`              | `22px`          | 侧栏        | 搜索图标尺寸                                     |
+| `--aix-menu-search-clear-size`             | `16px`          | 侧栏        | 搜索框清除按钮尺寸                               |
 | `--aix-menu-search-font-size`              | `14px`          | 侧栏        | 搜索框字号                                       |
 | `--aix-menu-search-line-height`            | `22px`          | 侧栏        | 搜索框行高                                       |
+| `--aix-menu-tooltip-width`                 | `136px`         | 提示浮层    | 文字溢出提示的宽度                               |
 
 ## 多语言
 
@@ -804,8 +808,10 @@ export type MenuPopupPlacement =
 | `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（位于 header 插槽之下、列表之上） |
 | `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items 并展开全部分组；复合组件写法只透出事件不过滤 |
 | `searchPlaceholder` | `string` | - | - | 搜索框占位文案，默认取语言包 |
+| `searchClearable` | `boolean` | `true` | - | 搜索框有关键字时，右侧显示可点击的清除按钮 |
 | `filterMethod` | `any` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
-| `width` | `number` | - | - | 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定 |
+| `searchHighlight` | `boolean` | `true` | - | 搜索时，命中项藏在 flyout 弹层里的子菜单触发项整行高亮。只对 items 数据驱动写法生效 |
+| `width` | `number` | - | - | 宽度（px，v-model:width）。未传且非 resizable 时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
 | `resizable` | `boolean` | `false` | - | 是否允许拖拽右边缘调整宽度 |
 | `minWidth` | `number` | `150` | - | 可拖拽的最小宽度（px） |
 | `maxWidth` | `number` | `300` | - | 可拖拽的最大宽度（px） |
@@ -814,11 +820,11 @@ export type MenuPopupPlacement =
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `update:selectedKey` | `string` | - |
-| `update:openKeys` | `string[]` | - |
-| `update:width` | `number` | - |
-| `update:searchValue` | `string` | - |
-| `search` | `string` | 搜索关键字变化 |
+| `update:selectedKey` | `string` | 选中项变化（v-model:selectedKey） |
+| `update:openKeys` | `string[]` | 展开的分组列表变化（v-model:openKeys） |
+| `update:width` | `number` | 宽度变化（v-model:width），拖拽过程中持续触发 |
+| `update:searchValue` | `string` | 搜索框文本变化（v-model:searchValue） |
+| `search` | `string` | 搜索关键字变化，参数为去除首尾空格后的关键字 |
 | `select` | `MenuSelectPayload` | 用户点击叶子项 |
 | `open-change` | `string[]` | 分组展开状态变化 |
 
