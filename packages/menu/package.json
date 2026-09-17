@@ -12,8 +12,7 @@
     "*.css",
     "*.scss",
     "*.sass",
-    "./es/index.js",
-    "./lib/index.cjs"
+    "./es/index.js"
   ],
   "exports": {
     ".": {
