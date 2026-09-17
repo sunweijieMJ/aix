@@ -2,8 +2,11 @@ import { useEventListener } from '@aix/hooks';
 import { onScopeDispose, ref, toValue, type MaybeRefOrGetter, type Ref } from 'vue';
 
 export interface UseMenuResizeOptions {
+  /** 侧栏宽度（px），拖拽与键盘调整都直接写回这个 ref */
   width: Ref<number>;
+  /** 宽度下限（px） */
   minWidth: MaybeRefOrGetter<number>;
+  /** 宽度上限（px） */
   maxWidth: MaybeRefOrGetter<number>;
   /** 键盘左右方向键每次调整的步长（px） */
   keyboardStep?: number;
@@ -12,6 +15,8 @@ export interface UseMenuResizeOptions {
 /**
  * 右边缘拖拽改变宽度。拖拽期间把 col-resize 光标和禁选文本挂到 body 上，
  * 指针移出把手命中区时不会闪回默认光标；把手捕获指针，窗口外释放也能收到 pointerup。
+ *
+ * @returns dragging 是否拖拽中；onPointerDown 与 onKeyDown 挂在把手元素上
  */
 export function useMenuResize(options: UseMenuResizeOptions) {
   const { width, minWidth, maxWidth, keyboardStep = 10 } = options;

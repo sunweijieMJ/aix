@@ -60,9 +60,10 @@ provide(MENU_LEVEL_INJECTION_KEY, {
   inPopup: parent.inPopup,
 });
 
-const open = computed(
-  () => !props.collapsible || ctx.searching.value || ctx.isOpen(props.groupKey),
-);
+const open = computed(() => {
+  if (!props.collapsible) return true;
+  return ctx.searching.value ? ctx.isSearchOpen(props.groupKey) : ctx.isOpen(props.groupKey);
+});
 
 const classes = computed(() => [
   ns.b(),
@@ -85,7 +86,8 @@ watch(
 onBeforeUnmount(() => unregister?.());
 
 function onToggle() {
-  if (!props.collapsible || ctx.searching.value) return;
-  ctx.toggleOpen(props.groupKey);
+  if (!props.collapsible) return;
+  if (ctx.searching.value) ctx.toggleSearchOpen(props.groupKey);
+  else ctx.toggleOpen(props.groupKey);
 }
 </script>

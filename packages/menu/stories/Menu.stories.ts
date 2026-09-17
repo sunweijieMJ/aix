@@ -371,7 +371,8 @@ const meta: Meta<typeof Menu> = {
     },
     searchValue: {
       control: 'text',
-      description: '搜索关键字（v-model:searchValue），非空时按 label 过滤 items 并展开全部分组',
+      description:
+        '搜索关键字（v-model:searchValue），非空时按 label 过滤 items 并按命中位置展开分组',
       table: { type: { summary: 'string' } },
     },
     searchPlaceholder: {
@@ -473,7 +474,7 @@ export const Default: Story = {
 
 /**
  * 内置搜索：`searchable` 显示搜索框，关键字非空时按 label 过滤 `items`（自身匹配保留整棵子树，
- * 否则只保留有匹配后代的节点），所有分组强制展开，无结果显示「暂无匹配结果」。
+ * 否则只保留有匹配后代的节点），分组按命中位置展开：后代里有命中的展开，只有标题命中的收起（点标题仍可展开），无结果显示「暂无匹配结果」。
  * Esc 清空关键字并阻止冒泡，放在 Modal / Drawer 里不会连带关闭外层。
  * 这里用 `filterMethod` 额外匹配 `meta.keywords`，输入 `course` 也能命中「课程管理」。
  */
@@ -563,7 +564,7 @@ export const Search: Story = {
           <button type="button" @click="searchValue = 'live'">搜「live」（命中 meta.keywords）</button>
           <button type="button" @click="searchValue = ''">清空</button>
         </div>
-        <p style="margin: 0; color: #86909c;">搜索中所有分组强制展开；分割线不参与匹配；Esc 清空关键字且不冒泡到外层。</p>
+        <p style="margin: 0; color: #86909c;">分组按命中位置展开；分割线不参与匹配；Esc 清空关键字且不冒泡到外层。</p>
       </div>
     `,
   }),
@@ -1135,7 +1136,8 @@ export const SearchClear: Story = {
  *
  * | 节点 | 结果 |
  * |------|------|
- * | 分组「智慧教学」 | 标题自身命中 → 标题标色，整组子项全部保留 |
+ * | 分组「智慧教学」 | 标题命中且子项也命中 → 标题标色，分组展开 |
+ * | 分组「智慧督导」 | 只有标题命中 → 标题标色，分组收起（子项与关键字无关），点标题可展开 |
  * | 叶子「智慧中心」 | 自身命中 → 文字标色；同时是选中项，标色叠在选中底色上 |
  * | 分组「课堂教学」 | 标题没命中、子项「智慧助教」命中 → 标题不标色，只保留命中的子项 |
  * | 子菜单「数据报表」 | 命中的「智慧看板」在弹层里 → 触发项整行标底，文字上没有 mark |
@@ -1156,6 +1158,7 @@ export const SearchHighlight: Story = {
       <Menu v-bind="args" :items="items" :width="220" v-model:selectedKey="selected" />
       <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
         <p style="margin: 0;">输入「智慧」：分组标题、组内叶子、选中项里的「智慧」两字都标色。</p>
+        <p style="margin: 0;">「智慧督导」只有标题命中，分组收起；点标题仍能展开看全部。</p>
         <p style="margin: 0;">「课堂教学」标题没命中，只留下命中的「智慧助教」，标题不标色。</p>
         <p style="margin: 0;">「数据报表」命中的是弹层里的「智慧看板」，整行标底代替文字标色。</p>
       </div>
@@ -1176,7 +1179,18 @@ export const SearchHighlight: Story = {
       'page',
     );
 
+    // 只有标题命中的分组收起，点一下仍能展开
+    const supervise = canvas.getByRole('button', { name: '智慧督导' });
+    await expect(markIn('智慧督导')).toHaveTextContent('智慧');
+    await expect(supervise).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(supervise);
+    await waitFor(() => expect(supervise).toHaveAttribute('aria-expanded', 'true'));
+
     // 靠后代才留下的分组，标题本身不标色
+    await expect(canvas.getByRole('button', { name: '智慧教学' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
     await expect(markIn('课堂教学')).toBeNull();
     await expect(markIn('智慧助教')).toHaveTextContent('智慧');
 

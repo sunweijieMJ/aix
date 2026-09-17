@@ -11,6 +11,7 @@ export const FOCUSABLE_SELECTOR = [
   `.${groupNs.e('title')}:not(:disabled)`,
 ].join(',');
 
+/** 容器内当前可聚焦的控件，收起的分组内等不可见节点不计入 */
 export function getFocusables(container: HTMLElement | null): HTMLElement[] {
   if (!container) return [];
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
@@ -18,6 +19,7 @@ export function getFocusables(container: HTMLElement | null): HTMLElement[] {
   );
 }
 
+/** 把焦点交给容器内第一个可聚焦控件 */
 export function focusFirst(container: HTMLElement | null) {
   getFocusables(container)[0]?.focus();
 }

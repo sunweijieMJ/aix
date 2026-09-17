@@ -3,12 +3,17 @@ import { computed, onMounted, ref, shallowReactive, toRef, watch, type Slots } f
 import type { MenuEmits, MenuItemData, MenuProps, MenuSelectPayload } from '../types';
 import type { MenuContext } from './useMenuContext';
 
+/** 叶子项的登记信息 */
 interface ItemRecord {
+  /** 祖先 key 链，最近的祖先在末尾 */
   path: string[];
 }
 
+/** 子菜单的登记信息 */
 interface SubMenuRecord {
+  /** 祖先 key 链，最近的祖先在末尾 */
   path: string[];
+  /** 弹层内全部后代的 key，弹层未挂载时靠它定位选中项 */
   descendantKeys: Set<string>;
 }
 
@@ -27,39 +32,58 @@ function findPathInItems(
   return undefined;
 }
 
+/** 默认匹配规则：对 label 做不区分大小写的包含匹配 */
 function defaultFilterMethod(item: MenuItemData, keyword: string) {
   return (item.label ?? '').toLowerCase().includes(keyword.toLowerCase());
+}
+
+/** 一次过滤过程中攒下的命中信息 */
+interface SearchHits {
+  /** 靠后代才留下的 flyout 子菜单：命中项藏在弹层里，列表上看不见，触发项整行标底 */
+  subMenu: Set<string>;
+  /**
+   * 过滤时走到过的每个内联分组 → 后代里有没有命中。
+   * 搜索期间据此决定展开；不在表里的分组说明不是 items 渲染的（复合组件写法），展开状态不受搜索影响。
+   */
+  group: Map<string, boolean>;
 }
 
 /**
  * 按关键字过滤数据树：自身匹配的节点连同全部子节点保留，
  * 否则只在有匹配后代时保留并收窄 children；分割线不参与搜索。
- * 靠后代才留下的 flyout 子菜单记进 hitKeys——它们的命中项藏在弹层里，列表上看不见。
  */
 function filterItems(
   items: MenuItemData[],
   keyword: string,
   match: (item: MenuItemData, keyword: string) => boolean,
-  hitKeys: Set<string>,
+  hits: SearchHits,
 ): MenuItemData[] {
   const result: MenuItemData[] = [];
   for (const node of items) {
     if (node.type === 'divider') continue;
-    if (match(node, keyword)) {
+
+    const selfMatch = match(node, keyword);
+    const children = node.children?.length ? filterItems(node.children, keyword, match, hits) : [];
+
+    // 自身命中的节点整棵子树都会展示，其中没命中的子分组同样要登记，才收得起来
+    if (node.type === 'group') hits.group.set(node.key, children.length > 0);
+
+    if (selfMatch) {
       result.push(node);
       continue;
     }
-    if (node.children?.length) {
-      const children = filterItems(node.children, keyword, match, hitKeys);
-      if (children.length) {
-        if (node.type !== 'group') hitKeys.add(node.key);
-        result.push({ ...node, children });
-      }
+    if (children.length) {
+      if (node.type !== 'group') hits.subMenu.add(node.key);
+      result.push({ ...node, children });
     }
   }
   return result;
 }
 
+/**
+ * 组装根组件的全部运行时状态：选中、展开、搜索过滤与各类登记表，
+ * 结果通过 MenuContext 下发给后代。
+ */
 export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   const ns = useNamespace('menu');
 
@@ -202,16 +226,16 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   const keyword = computed(() => (props.searchable ? searchValue.value.trim() : ''));
   const searching = computed(() => keyword.value !== '');
 
-  const filtered = computed<{ items: MenuItemData[] | undefined; hitKeys: Set<string> }>(() => {
-    const hitKeys = new Set<string>();
-    if (!props.items || !searching.value) return { items: props.items, hitKeys };
+  const filtered = computed<{ items: MenuItemData[] | undefined; hits: SearchHits }>(() => {
+    const hits: SearchHits = { subMenu: new Set(), group: new Map() };
+    if (!props.items || !searching.value) return { items: props.items, hits };
     const items = filterItems(
       props.items,
       keyword.value,
       props.filterMethod ?? defaultFilterMethod,
-      hitKeys,
+      hits,
     );
-    return { items, hitKeys };
+    return { items, hits };
   });
 
   const displayItems = computed(() => filtered.value.items);
@@ -219,7 +243,29 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   const highlightKeyword = computed(() => ((props.searchHighlight ?? true) ? keyword.value : ''));
 
   function isSearchHighlighted(key: string) {
-    return (props.searchHighlight ?? true) && filtered.value.hitKeys.has(key);
+    return (props.searchHighlight ?? true) && filtered.value.hits.subMenu.has(key);
+  }
+
+  // 搜索期间的展开状态与 openKeys 无关：默认只展开有命中后代的分组，
+  // 标题自身命中的分组收起（子项与关键字无关，摊开只是噪音），用户仍可手动展开。
+  // 这份覆盖随关键字变化清空，也不写回 openKeys。
+  const searchOpenOverrides = ref<Record<string, boolean>>({});
+  watch(keyword, () => {
+    searchOpenOverrides.value = {};
+  });
+
+  function isSearchOpen(key: string) {
+    const byHit = filtered.value.hits.group.get(key);
+    if (byHit === undefined) return isOpen(key);
+    return searchOpenOverrides.value[key] ?? byHit;
+  }
+
+  function toggleSearchOpen(key: string) {
+    if (!filtered.value.hits.group.has(key)) {
+      toggleOpen(key);
+      return;
+    }
+    searchOpenOverrides.value = { ...searchOpenOverrides.value, [key]: !isSearchOpen(key) };
   }
 
   const context: MenuContext = {
@@ -233,6 +279,8 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
     searching,
     highlightKeyword,
     isSearchHighlighted,
+    isSearchOpen,
+    toggleSearchOpen,
     slots,
     select,
     toggleOpen,

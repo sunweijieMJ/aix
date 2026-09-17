@@ -91,7 +91,9 @@ defineSlots<{
   icon?: () => unknown;
 }>();
 
+/** 指针进入触发项到弹层展开的延时（ms） */
 const SHOW_DELAY = 100;
+/** 指针离开到弹层收起的延时（ms），留出指针斜穿到弹层的时间 */
 const HIDE_DELAY = 150;
 /** 读不到 --aix-menu-popup-offset 时的兜底值，与样式里的默认值一致 */
 const POPUP_OFFSET = 4;
@@ -325,6 +327,7 @@ function onTriggerClick(event: MouseEvent) {
   if (event.detail === 0) focusFirstItem();
 }
 
+/** → 打开弹层并把焦点交给第一项，Esc 关闭本级 */
 function onTriggerKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowRight') {
     event.preventDefault();
@@ -337,6 +340,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
   }
 }
 
+/** ← / Esc 关闭本级并把焦点还给触发项，其余交给列表内的上下移动 */
 function onPopupKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowLeft' || event.key === 'Escape') {
     event.preventDefault();
@@ -348,6 +352,7 @@ function onPopupKeydown(event: KeyboardEvent) {
   handleListNavigation(event, popupRef.value);
 }
 
+/** 焦点离开整条弹层链时立即关闭本级 */
 function onPopupFocusout(event: FocusEvent) {
   const next = event.relatedTarget as Node | null;
   if (next && !containsElement(next)) closeNow();

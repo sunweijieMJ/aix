@@ -18,6 +18,7 @@ export type MenuPopupPlacement =
  */
 export type MenuItemType = 'item' | 'group' | 'divider';
 
+/** 数据驱动写法的菜单节点 */
 export interface MenuItemData {
   /** 唯一标识，作为 selectedKey / openKeys 的取值 */
   key: string;
@@ -41,6 +42,7 @@ export interface MenuItemData {
   meta?: Record<string, unknown>;
 }
 
+/** select 事件的载荷 */
 export interface MenuSelectPayload {
   /** 被选中项的 key */
   key: string;
@@ -62,6 +64,7 @@ export interface MenuItemSlotProps {
   active: boolean;
 }
 
+/** Menu 根组件属性 */
 export interface MenuProps {
   /** 数据驱动的菜单结构；与默认插槽可同时使用 */
   items?: MenuItemData[];
@@ -98,7 +101,7 @@ export interface MenuProps {
    * @default false
    */
   searchable?: boolean;
-  /** 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items 并展开全部分组；复合组件写法只透出事件不过滤 */
+  /** 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items，并按命中位置决定分组展开；复合组件写法只透出事件不过滤 */
   searchValue?: string;
   /** 搜索框占位文案，默认取语言包 */
   searchPlaceholder?: string;
@@ -133,6 +136,7 @@ export interface MenuProps {
   maxWidth?: number;
 }
 
+/** Menu 根组件事件 */
 export interface MenuEmits {
   /** 选中项变化（v-model:selectedKey） */
   (e: 'update:selectedKey', key: string): void;
@@ -150,6 +154,7 @@ export interface MenuEmits {
   (e: 'open-change', keys: string[]): void;
 }
 
+/** 复合组件写法下 MenuItem 的属性 */
 export interface MenuItemProps {
   /** 唯一标识 */
   itemKey: string;
@@ -166,6 +171,7 @@ export interface MenuItemProps {
   data?: MenuItemData;
 }
 
+/** 复合组件写法下 MenuGroup 的属性 */
 export interface MenuGroupProps {
   /** 唯一标识，作为 openKeys 的取值 */
   groupKey: string;
@@ -178,6 +184,7 @@ export interface MenuGroupProps {
   collapsible?: boolean;
 }
 
+/** 复合组件写法下 SubMenu 的属性 */
 export interface SubMenuProps {
   /** 唯一标识 */
   itemKey: string;

@@ -299,7 +299,7 @@ function onSelect(payload: MenuSelectPayload) {
 
 ### 内置搜索
 
-`searchable` 开启后搜索框渲染在 `header` 之下、列表之上。关键字非空时按 label 过滤 `items`：自身匹配的节点连同整棵子树保留，否则只在有匹配后代时保留并收窄 `children`；分割线不参与；所有分组强制展开；无结果显示「暂无匹配结果」；Esc 清空关键字并阻止事件冒泡，放在 Modal / Drawer 里不会连带关闭外层。复合组件写法不过滤，只透出 `search` 事件。`filterMethod` 可自定义匹配规则，下例额外匹配 `meta.keywords`（试试输入 `home` 或 `live`）。
+`searchable` 开启后搜索框渲染在 `header` 之下、列表之上。关键字非空时按 label 过滤 `items`：自身匹配的节点连同整棵子树保留，否则只在有匹配后代时保留并收窄 `children`；分割线不参与；分组按命中位置展开：后代里有命中的展开，只有标题命中的收起（点标题仍可展开）；无结果显示「暂无匹配结果」；Esc 清空关键字并阻止事件冒泡，放在 Modal / Drawer 里不会连带关闭外层。复合组件写法不过滤，只透出 `search` 事件。`filterMethod` 可自定义匹配规则，下例额外匹配 `meta.keywords`（试试输入 `home` 或 `live`）。
 
 <ClientOnly>
 <div class="demo-block menu-demo">
@@ -806,7 +806,7 @@ export type MenuPopupPlacement =
 | `popupPlacement` | `MenuPopupPlacement` | `'right-start'` | - | flyout 弹层位置 |
 | `popupClass` | `string` | - | - | 追加到所有 flyout 弹层根节点的 class |
 | `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（位于 header 插槽之下、列表之上） |
-| `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items 并展开全部分组；复合组件写法只透出事件不过滤 |
+| `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items，并按命中位置决定分组展开；复合组件写法只透出事件不过滤 |
 | `searchPlaceholder` | `string` | - | - | 搜索框占位文案，默认取语言包 |
 | `searchClearable` | `boolean` | `true` | - | 搜索框有关键字时，右侧显示可点击的清除按钮 |
 | `filterMethod` | `any` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |

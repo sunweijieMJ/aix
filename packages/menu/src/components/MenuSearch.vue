@@ -38,7 +38,9 @@ defineOptions({
 });
 
 const props = defineProps<{
+  /** 搜索框文本 */
   modelValue: string;
+  /** 占位文案，同时作为输入框的 aria-label */
   placeholder?: string;
   /** 有关键字时在右侧显示清除按钮 */
   clearable?: boolean;

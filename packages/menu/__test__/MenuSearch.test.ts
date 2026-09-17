@@ -2,7 +2,7 @@ import { createLocale } from '@aix/hooks';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { h, nextTick } from 'vue';
-import { MenuItem, menuEnUS, menuZhCN, type MenuItemData } from '../src';
+import { MenuGroup, MenuItem, menuEnUS, menuZhCN, type MenuItemData } from '../src';
 import {
   ITEMS,
   cleanupBody,
@@ -496,6 +496,20 @@ describe('Menu 搜索命中文字高亮', () => {
     expect(marks(subMenuLi(wrapper.element, '子菜单'))).toEqual(['子菜单']);
   });
 
+  it('关键字在同一条 label 里出现多次时逐段标色', async () => {
+    const items: MenuItemData[] = [{ key: 'x', label: '教学-教学中心' }];
+    wrapper = mountMenu({ props: { items, searchable: true } });
+    await type('教学');
+    expect(marks()).toEqual(['教学', '教学']);
+  });
+
+  it('关键字含正则特殊字符时按字面匹配', async () => {
+    const items: MenuItemData[] = [{ key: 'x', label: 'a.b 报表' }];
+    wrapper = mountMenu({ props: { items, searchable: true } });
+    await type('a.b');
+    expect(marks()).toEqual(['a.b']);
+  });
+
   it('searchHighlight 为 false 时不产生 mark', async () => {
     wrapper = mountMenu({
       props: { items: ITEMS, searchable: true, searchHighlight: false },
@@ -525,5 +539,86 @@ describe('Menu 搜索命中文字高亮', () => {
 
     await searchInput().trigger('focus');
     expect(search.classes()).toContain('aix-menu-search--focused');
+  });
+});
+
+describe('Menu 搜索时的分组展开', () => {
+  it('分组靠标题命中、子项都没命中时收起', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('分组 B');
+
+    expect(groupTitle(wrapper.element, '分组 B').getAttribute('aria-expanded')).toBe('false');
+    expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(false);
+  });
+
+  it('后代有命中的分组展开', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('B1');
+
+    expect(groupTitle(wrapper.element, '分组 B').getAttribute('aria-expanded')).toBe('true');
+    expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(true);
+  });
+
+  it('搜索期间仍可手动展开收起，且不写回 openKeys', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('分组 B');
+    const emittedBefore = wrapper.emitted('update:openKeys')?.length ?? 0;
+
+    groupTitle(wrapper.element, '分组 B').click();
+    await nextTick();
+
+    expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(true);
+    expect(wrapper.emitted('update:openKeys')?.length ?? 0).toBe(emittedBefore);
+    expect(wrapper.emitted('open-change')?.length ?? 0).toBe(emittedBefore);
+  });
+
+  it('关键字变化后手动展开被重置', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('分组 B');
+    groupTitle(wrapper.element, '分组 B').click();
+    await nextTick();
+    expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(true);
+
+    await type('分组');
+    expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(false);
+  });
+
+  it('自身命中的分组里，没命中的子分组同样收起', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('嵌套分组');
+
+    expect(isShown(groupList(wrapper.element, '分组 A'))).toBe(true);
+    expect(isShown(groupList(wrapper.element, '嵌套分组'))).toBe(false);
+  });
+
+  it('复合组件写法不过滤，搜索不改变分组展开状态', async () => {
+    wrapper = mountMenu({
+      props: { searchable: true },
+      slots: {
+        default: () =>
+          h(MenuGroup, { groupKey: 'hand', title: '手写分组' }, () => [
+            h(MenuItem, { itemKey: 'c1', label: 'C1' }),
+          ]),
+      },
+    });
+    expect(isShown(groupList(wrapper.element, '手写分组'))).toBe(true);
+
+    await type('zzz');
+    expect(isShown(groupList(wrapper.element, '手写分组'))).toBe(true);
+
+    // 这类分组的展开仍走 openKeys 那条路
+    groupTitle(wrapper.element, '手写分组').click();
+    await nextTick();
+    expect(isShown(groupList(wrapper.element, '手写分组'))).toBe(false);
+    expect(wrapper.emitted('open-change')?.at(-1)).toEqual([[]]);
+  });
+
+  it('清空关键字后回到 openKeys 的展开状态', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('分组 B');
+    expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(false);
+
+    await type('');
+    expect(isShown(groupList(wrapper.element, '分组 B'))).toBe(true);
   });
 });

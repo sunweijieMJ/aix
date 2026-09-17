@@ -12,6 +12,7 @@ import SubMenu from './SubMenu.vue';
 const MenuItems = defineComponent({
   name: 'AixMenuItems',
   props: {
+    /** 本层要渲染的数据节点 */
     items: {
       type: Array as PropType<MenuItemData[]>,
       required: true,
