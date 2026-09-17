@@ -1,6 +1,6 @@
 import { useControllable, useNamespace } from '@aix/hooks';
 import { computed, onMounted, ref, shallowReactive, toRef, watch, type Slots } from 'vue';
-import type { MenuEmits, MenuItemData, MenuProps, MenuSelectPayload } from '../types';
+import type { MenuEmits, MenuItemData, MenuItemMeta, MenuProps, MenuSelectPayload } from '../types';
 import type { MenuContext } from './useMenuContext';
 
 /** 叶子项的登记信息 */
@@ -32,8 +32,14 @@ function findPathInItems(
   return undefined;
 }
 
+/** 两份 key 列表内容是否相同 */
+function sameKeys(a: string[] | undefined, b: string[] | undefined) {
+  if (a === undefined || b === undefined) return a === b;
+  return a.length === b.length && a.every((key, index) => key === b[index]);
+}
+
 /** 默认匹配规则：对 label 做不区分大小写的包含匹配 */
-function defaultFilterMethod(item: MenuItemData, keyword: string) {
+function defaultFilterMethod<M extends MenuItemMeta>(item: MenuItemData<M>, keyword: string) {
   return (item.label ?? '').toLowerCase().includes(keyword.toLowerCase());
 }
 
@@ -52,13 +58,13 @@ interface SearchHits {
  * 按关键字过滤数据树：自身匹配的节点连同全部子节点保留，
  * 否则只在有匹配后代时保留并收窄 children；分割线不参与搜索。
  */
-function filterItems(
-  items: MenuItemData[],
+function filterItems<M extends MenuItemMeta>(
+  items: MenuItemData<M>[],
   keyword: string,
-  match: (item: MenuItemData, keyword: string) => boolean,
+  match: (item: MenuItemData<M>, keyword: string) => boolean,
   hits: SearchHits,
-): MenuItemData[] {
-  const result: MenuItemData[] = [];
+): MenuItemData<M>[] {
+  const result: MenuItemData<M>[] = [];
   for (const node of items) {
     if (node.type === 'divider') continue;
 
@@ -84,7 +90,11 @@ function filterItems(
  * 组装根组件的全部运行时状态：选中、展开、搜索过滤与各类登记表，
  * 结果通过 MenuContext 下发给后代。
  */
-export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
+export function useMenu<M extends MenuItemMeta>(
+  props: MenuProps<M>,
+  emit: MenuEmits<M>,
+  slots: Slots,
+) {
   const ns = useNamespace('menu');
 
   const { state: selectedKey } = useControllable<string | undefined>({
@@ -95,18 +105,37 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
     },
   });
 
-  // 挂载时若既未受控也未给初始值，后续注册进来的分组一律默认展开
-  const autoExpand = props.openKeys === undefined && props.defaultOpenKeys === undefined;
+  // 既未受控也未给 defaultOpenKeys 时，注册进来的分组一律默认展开
+  const autoExpand = computed(
+    () => props.openKeys === undefined && props.defaultOpenKeys === undefined,
+  );
   /** 已经默认展开过的分组 key，重新登记时不再重复展开 */
   const autoExpanded = new Set<string>();
   const internalOpenKeys = ref<string[]>(props.defaultOpenKeys ?? []);
   const openKeys = computed(() => props.openKeys ?? internalOpenKeys.value);
+  /** 用户是否手动折叠或展开过分组；之后 defaultOpenKeys 的变化不再覆盖用户的选择 */
+  let openKeysTouched = false;
+  /** 已应用过的 defaultOpenKeys 内容；内联字面量随父组件重渲染换身份，按内容判断才不会重复应用 */
+  let appliedDefaultOpenKeys = props.defaultOpenKeys ? [...props.defaultOpenKeys] : undefined;
 
   function setOpenKeys(keys: string[]) {
     if (props.openKeys === undefined) internalOpenKeys.value = keys;
     emit('update:openKeys', keys);
     emit('open-change', keys);
   }
+
+  // 菜单数据常在挂载后异步到达，defaultOpenKeys 随之才有值；用户动手之前按新值重新应用
+  watch(
+    () => props.defaultOpenKeys,
+    (keys) => {
+      if (keys === undefined || props.openKeys !== undefined || openKeysTouched) return;
+      if (sameKeys(keys, appliedDefaultOpenKeys)) return;
+      appliedDefaultOpenKeys = [...keys];
+      // 走 setOpenKeys 而非直接赋值：新默认值收起分组时也要通知外部，镜像 open-change 的父组件才不会脱节
+      setOpenKeys([...keys]);
+      reveal();
+    },
+  );
 
   // shallowReactive：get() 返回存入的原对象，注销时才能按记录身份比较
   const items = shallowReactive(new Map<string, ItemRecord>());
@@ -160,6 +189,7 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   }
 
   function toggleOpen(key: string) {
+    openKeysTouched = true;
     if (isOpen(key)) {
       setOpenKeys(openKeys.value.filter((k) => k !== key));
     } else {
@@ -177,7 +207,8 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   function select(payload: MenuSelectPayload) {
     lastSelected.value = payload;
     selectedKey.value = payload.key;
-    emit('select', payload);
+    // 子组件登记的 data 按默认 meta 类型声明，回传给根组件时收窄到其泛型参数
+    emit('select', payload as MenuSelectPayload<M>);
     openGroups(payload.keyPath.filter((k) => groups.has(k)));
   }
 
@@ -194,7 +225,7 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
     const record = [...path];
     groups.set(key, record);
     // 只在首次登记时默认展开；改 key / 改祖先路径引起的重新登记不能推翻用户已折叠的状态
-    if (autoExpand && !props.accordion && !autoExpanded.has(key)) {
+    if (autoExpand.value && !props.accordion && !autoExpanded.has(key)) {
       autoExpanded.add(key);
       if (!internalOpenKeys.value.includes(key)) {
         internalOpenKeys.value = [...internalOpenKeys.value, key];
@@ -234,7 +265,7 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
   const keyword = computed(() => (props.searchable ? searchValue.value.trim() : ''));
   const searching = computed(() => keyword.value !== '');
 
-  const filtered = computed<{ items: MenuItemData[] | undefined; hits: SearchHits }>(() => {
+  const filtered = computed<{ items: MenuItemData<M>[] | undefined; hits: SearchHits }>(() => {
     const hits: SearchHits = { subMenu: new Set(), group: new Map() };
     if (!props.items || !searching.value) return { items: props.items, hits };
     const items = filterItems(
@@ -284,6 +315,7 @@ export function useMenu(props: MenuProps, emit: MenuEmits, slots: Slots) {
     popupMaxVisible: computed(() => props.popupMaxVisible ?? 9),
     popupPlacement: computed(() => props.popupPlacement ?? 'right-start'),
     popupClass: toRef(props, 'popupClass'),
+    popupTeleportTo: computed(() => props.popupTeleportTo ?? 'body'),
     searching,
     highlightKeyword,
     isSearchHighlighted,

@@ -22,9 +22,10 @@ const MenuItems = defineComponent({
     const ctx = useMenuContext();
     const level = useMenuLevel();
 
+    /** 根组件的 icon 插槽只接管带 icon 的节点，没有图标的节点不渲染图标容器 */
     function iconSlot(node: MenuItemData) {
       const icon = ctx.slots.icon;
-      return icon ? { icon: () => icon({ item: node }) } : {};
+      return icon && node.icon ? { icon: () => icon({ item: node }) } : {};
     }
 
     function renderNode(node: MenuItemData): VNodeChild {
@@ -36,9 +37,10 @@ const MenuItems = defineComponent({
         const groupTitle = ctx.slots['group-title'];
         return h(
           MenuGroup,
-          { key: node.key, groupKey: node.key, title: node.label },
+          { key: node.key, groupKey: node.key, title: node.label, icon: node.icon },
           {
             default: () => h(MenuItems, { items: node.children ?? [] }),
+            ...iconSlot(node),
             ...(groupTitle ? { title: () => groupTitle({ item: node }) } : {}),
           },
         );

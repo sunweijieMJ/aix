@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { reactive, ref, watchEffect } from 'vue';
-import { Menu, MenuGroup, MenuItem, SubMenu } from '../src';
+import { computed, reactive, ref, watchEffect } from 'vue';
+import { Menu, MenuGroup, MenuItem, SubMenu, resolveSelectedKey } from '../src';
 import type { MenuItemData, MenuProps, MenuSelectPayload } from '../src';
 import {
   BellIcon,
@@ -360,6 +360,19 @@ const meta: Meta<typeof Menu> = {
       description: '追加到所有 flyout 弹层根节点的 class',
       table: { type: { summary: 'string' } },
     },
+    popupTeleportTo: {
+      control: false,
+      description: 'flyout 弹层的挂载目标；false 时就地渲染并按 fixed 定位',
+      table: {
+        type: { summary: 'string | HTMLElement | false' },
+        defaultValue: { summary: 'body' },
+      },
+    },
+    widthStorageKey: {
+      control: 'text',
+      description: '宽度持久化的 localStorage 键',
+      table: { type: { summary: 'string' } },
+    },
     searchable: {
       control: 'boolean',
       description: '是否显示内置搜索框（位于 header 插槽之下、列表之上）',
@@ -413,7 +426,7 @@ const meta: Meta<typeof Menu> = {
     },
     defaultOpenKeys: {
       control: 'object',
-      description: '非受控模式下的初始展开分组',
+      description: '非受控模式下的展开分组；用户手动操作分组之前，它的变化会重新应用',
       table: { type: { summary: 'string[]' } },
     },
     items: {
@@ -1387,5 +1400,153 @@ export const RealData: Story = {
     await userEvent.click(canvas.getByRole('button', { name: '还原示例' }));
     await waitFor(() => expect(canvas.getByText(/已渲染/)).toBeInTheDocument());
     await expect(canvas.queryByText(/JSON 解析失败/)).not.toBeInTheDocument();
+  },
+};
+
+/**
+ * 业务接入：`icon` 直接写字体图标类名或图片地址，分组标题也带图标；`widthStorageKey` 让拖出来的宽度在刷新后保留。
+ */
+export const BusinessIcons: Story = {
+  // width 进 args 会被 v-bind 传成受控值，宽度锁死后拖不动、也就存不下来
+  args: {
+    resizable: true,
+    searchable: true,
+    widthStorageKey: 'aix-menu-story-width',
+  },
+  render: (args) => ({
+    components: { Menu },
+    setup() {
+      const items: MenuItemData[] = [
+        { key: 'home', label: '首页', icon: 'iconfont icon-home' },
+        {
+          key: 'teaching',
+          type: 'group',
+          label: '智慧教学',
+          icon: 'iconfont icon-teaching',
+          children: [
+            { key: 'course', label: '我的课程', icon: 'iconfont icon-course' },
+            {
+              key: 'lab',
+              label: '实验室',
+              icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="%2300c261"/></svg>',
+            },
+            { key: 'plain', label: '无图标项' },
+          ],
+        },
+      ];
+      const selected = ref('course');
+      const width = ref(220);
+      return { args, items, selected, width };
+    },
+    template: `
+      <style>
+        .iconfont::before { content: ''; display: block; width: 100%; height: 100%; border-radius: 3px; background: currentColor; opacity: .6; }
+      </style>
+      <Menu v-bind="args" :items="items" v-model:selectedKey="selected" v-model:width="width" />
+    `,
+  }),
+  play: async ({ canvas }) => {
+    const course = canvas.getByRole('button', { name: '我的课程' });
+    await expect(course.querySelector('i.icon-course')).not.toBeNull();
+    await expect(
+      canvas.getByRole('button', { name: '实验室' }).querySelector('img'),
+    ).not.toBeNull();
+    await expect(
+      canvas
+        .getByRole('button', { name: '无图标项' })
+        .querySelector('.aix-menu-item-content__icon'),
+    ).toBeNull();
+    await expect(
+      canvas
+        .getByRole('button', { name: '智慧教学' })
+        .querySelector('.aix-menu-group__icon i.icon-teaching'),
+    ).not.toBeNull();
+  },
+};
+
+/**
+ * 路由联动：`resolveSelectedKey` 按 `meta.path` 与当前路径匹配，精确匹配优先，其次子路径前缀匹配，多个前缀命中时路径最长者胜出。
+ * 点右侧的"当前路径"按钮模拟路由跳转，选中项跟着变。
+ */
+export const RouteSync: Story = {
+  args: {
+    width: 200,
+  },
+  render: (args) => ({
+    components: { Menu },
+    setup() {
+      const items: MenuItemData[] = [
+        { key: 'home', label: '首页', icon: HomeIcon, meta: { path: '/' } },
+        {
+          key: 'course',
+          type: 'group',
+          label: '课程',
+          children: [
+            { key: 'course-list', label: '课程列表', icon: BookIcon, meta: { path: '/course' } },
+            {
+              key: 'course-detail',
+              label: '课程详情',
+              icon: FileIcon,
+              meta: { path: '/course/detail' },
+            },
+          ],
+        },
+        {
+          key: 'settings',
+          label: '设置',
+          icon: SettingsIcon,
+          children: [{ key: 'profile', label: '个人资料', meta: { path: '/settings/profile' } }],
+        },
+      ];
+      const routePath = ref('/course/detail/42');
+      const selectedKey = computed(() =>
+        resolveSelectedKey(items, (item) => {
+          const path = item.meta?.path as string | undefined;
+          if (!path) return false;
+          if (routePath.value === path) return path.length + 1;
+          return routePath.value.startsWith(`${path}/`) ? path.length : false;
+        }),
+      );
+      const routes = [
+        '/',
+        '/course',
+        '/course/other',
+        '/course/detail/42',
+        '/settings/profile',
+        '/nowhere',
+      ];
+      return { args, items, routePath, selectedKey, routes };
+    },
+    template: `
+      <Menu v-bind="args" :items="items" :selected-key="selectedKey" @select="(p) => (routePath = p.data?.meta?.path ?? routePath)" />
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px 24px; color: #4e5969; font-size: 13px;">
+        <strong>当前路径：<code>{{ routePath }}</code></strong>
+        <span>解析出的 selectedKey：<code>{{ selectedKey ?? 'undefined' }}</code></span>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <button v-for="r in routes" :key="r" type="button" :aria-label="'跳到 ' + r" @click="routePath = r" style="padding: 2px 10px; border: 1px solid #e5e6eb; border-radius: 4px; background: #fff; color: #4e5969; font-size: 12px; cursor: pointer;">{{ r }}</button>
+        </div>
+      </div>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: '课程详情' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    await userEvent.click(canvas.getByRole('button', { name: '跳到 /course/other' }));
+    await expect(canvas.getByRole('button', { name: '课程列表' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    await userEvent.click(canvas.getByRole('button', { name: '跳到 /nowhere' }));
+    await expect(canvas.queryByRole('button', { current: 'page' })).toBeNull();
+
+    await userEvent.click(canvas.getByRole('button', { name: '跳到 /course/detail/42' }));
+    await expect(canvas.getByRole('button', { name: '课程详情' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   },
 };

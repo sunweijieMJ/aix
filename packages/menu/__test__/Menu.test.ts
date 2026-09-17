@@ -654,12 +654,19 @@ describe('Menu 插槽', () => {
     expect(home.active).toBe(false);
   });
 
-  it('icon 作用域插槽替换数据驱动节点的图标', () => {
+  it('icon 作用域插槽替换带 icon 节点的图标，无 icon 的节点不渲染图标容器', () => {
     wrapper = mountMenu({
       props: {
         items: [
           { key: 'a', label: 'A', icon: IconStub },
           { key: 'b', label: 'B' },
+          {
+            key: 'g',
+            type: 'group',
+            label: 'G',
+            icon: 'icon-g',
+            children: [{ key: 'g1', label: 'G1' }],
+          },
         ],
       },
       slots: {
@@ -667,7 +674,9 @@ describe('Menu 插槽', () => {
       },
     });
     expect(wrapper.find('.aix-menu-item-content__icon .slot-icon-a').exists()).toBe(true);
-    expect(wrapper.find('.aix-menu-item-content__icon .slot-icon-b').exists()).toBe(true);
+    expect(wrapper.find('.slot-icon-b').exists()).toBe(false);
+    expect(itemLi(wrapper.element, 'B').querySelector('.aix-menu-item-content__icon')).toBeNull();
+    expect(wrapper.find('.aix-menu-group__icon .slot-icon-g').exists()).toBe(true);
     expect(wrapper.find('.icon-stub').exists()).toBe(false);
   });
 

@@ -23,7 +23,7 @@
         </template>
       </MenuItemContent>
     </button>
-    <Teleport to="body">
+    <Teleport :to="teleportTo || 'body'" :disabled="!teleportTo">
       <Transition name="aix-popper-fade">
         <div
           v-if="open"
@@ -276,8 +276,12 @@ function readPopupOffset() {
   return gap + Math.max(0, inset);
 }
 
+const teleportTo = computed(() => ctx.popupTeleportTo.value);
+
+// 就地渲染时弹层留在触发项所在的 li 内，fixed 定位让它不受列表滚动容器裁切
 const { referenceRef, floatingRef, floatingStyles } = usePopper({
   placement: () => ctx.popupPlacement.value,
+  strategy: () => (teleportTo.value ? 'absolute' : 'fixed'),
   offset: () => popupOffset.value,
   arrow: false,
 });
@@ -368,7 +372,8 @@ function onPopupKeydown(event: KeyboardEvent) {
     triggerRef.value?.focus();
     return;
   }
-  handleListNavigation(event, popupRef.value);
+  // popupTeleportTo 为 false 时弹层就在根 ul 内，冒泡上去会被侧栏列表按整份列表再移动一次焦点
+  if (handleListNavigation(event, popupRef.value)) event.stopPropagation();
 }
 
 /** 焦点离开整条弹层链时立即关闭本级 */

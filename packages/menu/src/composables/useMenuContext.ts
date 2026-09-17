@@ -1,6 +1,11 @@
 import type { Namespace } from '@aix/hooks';
 import { inject, type InjectionKey, type Ref, type Slots } from 'vue';
-import type { MenuPopupPlacement, MenuSelectPayload, MenuTheme } from '../types';
+import type {
+  MenuPopupPlacement,
+  MenuPopupTeleportTo,
+  MenuSelectPayload,
+  MenuTheme,
+} from '../types';
 
 /** 根组件下发给全部后代的运行时状态 */
 export interface MenuContext {
@@ -18,6 +23,8 @@ export interface MenuContext {
   popupPlacement: Ref<MenuPopupPlacement>;
   /** 追加到所有 flyout 弹层根节点的 class */
   popupClass: Ref<string | undefined>;
+  /** flyout 弹层的 Teleport 目标，false 表示就地渲染 */
+  popupTeleportTo: Ref<MenuPopupTeleportTo>;
   /** 搜索关键字非空，分组展开状态改由 isSearchOpen 决定 */
   searching: Ref<boolean>;
   /** 命中文字标色用的关键字；searchHighlight 关闭时恒为空串 */

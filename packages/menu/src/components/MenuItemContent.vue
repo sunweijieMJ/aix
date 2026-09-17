@@ -2,7 +2,7 @@
   <span :class="ns.b()">
     <span v-if="icon || $slots.icon" :class="ns.e('icon')" aria-hidden="true">
       <slot name="icon">
-        <component :is="icon" />
+        <MenuItemIcon v-if="icon" :icon="icon" />
       </slot>
     </span>
     <Tooltip
@@ -25,9 +25,11 @@
 <script setup lang="ts">
 import { useNamespace } from '@aix/hooks';
 import { Tooltip } from '@aix/popper';
-import { ref, type Component } from 'vue';
+import { ref } from 'vue';
 import { useTextOverflow } from '../composables/useTextOverflow';
+import type { MenuIconSource } from '../types';
 import MenuHighlight from './MenuHighlight.vue';
+import MenuItemIcon from './MenuItemIcon.vue';
 
 defineOptions({
   name: 'AixMenuItemContent',
@@ -36,8 +38,8 @@ defineOptions({
 const props = defineProps<{
   /** 文案；单行省略被截断时作为 Tooltip 内容 */
   label?: string;
-  /** 图标组件，16×16 */
-  icon?: Component;
+  /** 图标：组件、图片地址或字体图标类名，16×16 */
+  icon?: MenuIconSource;
 }>();
 
 const ns = useNamespace('menu-item-content');

@@ -9,6 +9,11 @@
       @click="onToggle"
     >
       <MenuIcon v-if="collapsible" :src="chevronDown" :class="ns.e('arrow')" />
+      <span v-if="icon || $slots.icon" :class="ns.e('icon')" aria-hidden="true">
+        <slot name="icon">
+          <MenuItemIcon v-if="icon" :icon="icon" />
+        </slot>
+      </span>
       <span :class="ns.e('title-text')">
         <slot name="title"><MenuHighlight :text="title" /></slot>
       </span>
@@ -32,6 +37,7 @@ import {
 import type { MenuGroupProps } from '../types';
 import MenuHighlight from './MenuHighlight.vue';
 import MenuIcon from './MenuIcon.vue';
+import MenuItemIcon from './MenuItemIcon.vue';
 
 defineOptions({
   name: 'AixMenuGroup',
@@ -46,6 +52,8 @@ defineSlots<{
   default?: () => unknown;
   /** 自定义标题内容，替代 title prop */
   title?: () => unknown;
+  /** 自定义标题前的图标，替代 icon prop */
+  icon?: () => unknown;
 }>();
 
 const ns = useNamespace('menu-group');

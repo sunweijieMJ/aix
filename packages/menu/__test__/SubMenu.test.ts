@@ -315,6 +315,16 @@ describe('SubMenu 键盘', () => {
     expect(document.activeElement).toBe(nested);
   });
 
+  it('弹层就地渲染时 ArrowDown 只在弹层内移动一格', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, popupTeleportTo: false } });
+    await dom(subMenuTitle(wrapper.element, '子菜单')).trigger('keydown', { key: 'ArrowRight' });
+    await nextTick();
+    const el = popup()!;
+
+    await dom(itemButton(el, 'S1')).trigger('keydown', { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(itemButton(el, 'S2'));
+  });
+
   it('触发器已展开时按 Escape 关闭弹层', async () => {
     wrapper = mountMenu({ props: { items: ITEMS } });
     const title = subMenuTitle(wrapper.element, '子菜单');

@@ -11,10 +11,14 @@ import './styles/index.scss';
 export type {
   MenuTheme,
   MenuPopupPlacement,
+  MenuPopupTeleportTo,
+  MenuIconSource,
   MenuItemType,
+  MenuItemMeta,
   MenuItemData,
   MenuSelectPayload,
   MenuItemSlotProps,
+  MenuKeyMatcher,
   MenuProps,
   MenuEmits,
   MenuItemProps,
@@ -23,6 +27,8 @@ export type {
 } from './types';
 
 export { Menu, MenuItem, MenuGroup, SubMenu };
+
+export { resolveSelectedKey } from './utils/resolve-selected-key';
 
 export { locale as menuLocale, zhCN as menuZhCN, enUS as menuEnUS } from './locale';
 export type { MenuLocale } from './locale';

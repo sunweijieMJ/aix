@@ -11,7 +11,9 @@
   "sideEffects": [
     "*.css",
     "*.scss",
-    "*.sass"
+    "*.sass",
+    "./es/index.js",
+    "./lib/index.cjs"
   ],
   "exports": {
     ".": {

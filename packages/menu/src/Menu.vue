@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import { useControllable, useLocale } from '@aix/hooks';
-import { computed, provide, ref, useSlots, watchEffect } from 'vue';
+import { computed, provide, ref, useSlots, watch, watchEffect } from 'vue';
 import MenuItems from './components/MenuItems';
 import MenuSearch from './components/MenuSearch.vue';
 import { handleListNavigation } from './composables/useListKeyboard';
@@ -55,6 +55,7 @@ const props = withDefaults(defineProps<MenuProps>(), {
   accordion: false,
   popupMaxVisible: 9,
   popupPlacement: 'right-start',
+  popupTeleportTo: 'body',
   searchable: false,
   searchClearable: true,
   searchHighlight: true,
@@ -74,7 +75,7 @@ defineSlots<{
   footer?: () => unknown;
   /** 自定义数据驱动叶子项的内容 */
   item?: (props: MenuItemSlotProps) => unknown;
-  /** 自定义数据驱动节点的图标 */
+  /** 自定义数据驱动节点的图标，只对带 icon 的节点生效 */
   icon?: (props: { item: MenuItemData }) => unknown;
   /** 自定义数据驱动分组的标题 */
   'group-title'?: (props: { item: MenuItemData }) => unknown;
@@ -105,6 +106,49 @@ const {
   width,
   minWidth: () => props.minWidth,
   maxWidth: () => props.maxWidth,
+});
+
+// ---------- 宽度持久化 ----------
+
+function readStoredWidth(key: string): number | undefined {
+  try {
+    const raw = globalThis.localStorage?.getItem(key);
+    // 空串与纯空格被 Number 读成 0，会把侧栏压成 0px，按「没存过」处理
+    if (raw === null || raw === undefined || raw.trim() === '') return undefined;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStoredWidth(key: string, value: number) {
+  try {
+    globalThis.localStorage?.setItem(key, String(value));
+  } catch {
+    // 隐私模式或配额受限时放弃持久化，宽度仍在内存里生效
+  }
+}
+
+function applyStoredWidth(key: string) {
+  const stored = readStoredWidth(key);
+  if (stored !== undefined) width.value = stored;
+}
+
+if (props.widthStorageKey) applyStoredWidth(props.widthStorageKey);
+
+// key 常由异步数据拼出，换 key 是换一份记录：按新 key 读回，不能把当前宽度写进去覆盖已存值
+watch(
+  () => props.widthStorageKey,
+  (key) => {
+    if (key) applyStoredWidth(key);
+  },
+);
+
+// 拖拽中每个 pointermove 都会改 width，松手后再落盘，避免逐帧同步写 localStorage
+watch([width, dragging], ([value, isDragging]) => {
+  const key = props.widthStorageKey;
+  if (key && !isDragging) writeStoredWidth(key, value);
 });
 
 const classes = computed(() => [
