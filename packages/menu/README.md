@@ -403,6 +403,8 @@ flyout 弹层四套主题共用一套白底配色。
 | `--aix-menu-item-font-weight-active`       | `600`           | 侧栏 + 弹层 | 侧栏选中项字重                                   |
 | `--aix-menu-icon-size`                     | `16px`          | 侧栏 + 弹层 | 图标尺寸                                         |
 | `--aix-menu-icon-gap`                      | `8px`           | 侧栏 + 弹层 | 图标与文字间距                                   |
+| `--aix-menu-highlight-dot-size`            | `6px`           | 侧栏 + 弹层 | 搜索命中藏在弹层里时子菜单触发项的提示圆点直径   |
+| `--aix-menu-highlight-dot-gap`             | `2px`           | 侧栏 + 弹层 | 提示圆点与箭头的间距                             |
 | `--aix-menu-item-height`                   | `38px`          | 侧栏 + 弹层 | 根级 / 一级分组内菜单项高度                      |
 | `--aix-menu-item-padding`                  | `0 16px 0 24px` | 侧栏 + 弹层 | 根级 / 一级分组内菜单项内边距                    |
 | `--aix-menu-popup-width`                   | `158px`         | 侧栏 + 弹层 | 弹层宽度（子项无图标）                           |

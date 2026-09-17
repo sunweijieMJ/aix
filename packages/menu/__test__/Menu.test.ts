@@ -725,3 +725,58 @@ describe('Menu 国际化与安装', () => {
     expect(app.component('AixSubMenu')).toBe(SubMenu);
   });
 });
+
+describe('Menu 分组标题溢出提示', () => {
+  const restores: (() => void)[] = [];
+
+  /** jsdom 不做布局，按选择器把目标元素模拟成 scrollWidth 大于 clientWidth 的截断状态 */
+  function stubOverflow(selector: string) {
+    const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollWidth')!;
+    const client = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth')!;
+    Object.defineProperty(Element.prototype, 'scrollWidth', {
+      configurable: true,
+      get(this: Element) {
+        return this.matches(selector) ? 200 : 0;
+      },
+    });
+    Object.defineProperty(Element.prototype, 'clientWidth', {
+      configurable: true,
+      get(this: Element) {
+        return this.matches(selector) ? 100 : 0;
+      },
+    });
+    restores.push(() => {
+      Object.defineProperty(Element.prototype, 'scrollWidth', scroll);
+      Object.defineProperty(Element.prototype, 'clientWidth', client);
+    });
+  }
+
+  afterEach(() => {
+    restores.splice(0).forEach((restore) => restore());
+  });
+
+  /** 溢出测量在挂载后落到 Tooltip 的 disabled 上要等一次渲染，先等它再悬停 */
+  async function hover(el: Element) {
+    await nextTick();
+    el.dispatchEvent(new MouseEvent('mouseenter'));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await nextTick();
+  }
+
+  function titleTrigger(title: string) {
+    return groupTitle(wrapper!.element, title).querySelector('.aix-tooltip__trigger')!;
+  }
+
+  it('标题被截断时悬停显示完整标题', async () => {
+    stubOverflow('.aix-menu-group__title-text');
+    wrapper = mountMenu({ props: { items: ITEMS } });
+    await hover(titleTrigger('分组 A'));
+    expect(document.body.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe('分组 A');
+  });
+
+  it('标题未截断时悬停不显示提示', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS } });
+    await hover(titleTrigger('分组 A'));
+    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+  });
+});

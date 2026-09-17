@@ -509,48 +509,42 @@ describe('Menu 搜索框清除按钮', () => {
   });
 });
 
-describe('Menu 搜索时子菜单整行高亮', () => {
-  it('命中项藏在弹层里时，子菜单触发项整行高亮', async () => {
+describe('Menu 搜索时子菜单提示圆点', () => {
+  it('命中项藏在弹层里时，子菜单触发项显示圆点', async () => {
     wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
+    expect(subMenuLi(wrapper.element, '子菜单').querySelector('.aix-menu-submenu__dot')).toBeNull();
 
     await type('S1');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).toContain('aix-menu-submenu--highlight');
+    expect(
+      subMenuLi(wrapper.element, '子菜单').querySelector('.aix-menu-submenu__dot'),
+    ).not.toBeNull();
   });
 
-  it('子菜单自身命中、后代没命中时不高亮', async () => {
+  it('子菜单自身命中、后代没命中时不显示圆点', async () => {
     wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
     await type('子菜单');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
+    expect(subMenuLi(wrapper.element, '子菜单').querySelector('.aix-menu-submenu__dot')).toBeNull();
   });
 
-  it('内联分组不参与高亮', async () => {
+  it('内联分组不显示圆点', async () => {
     wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
     await type('A3');
-    expect(wrapper.findAll('.aix-menu-group--highlight')).toHaveLength(0);
+    expect(wrapper.findAll('.aix-menu-submenu__dot')).toHaveLength(0);
   });
 
-  it('searchHighlight 为 false 时不高亮', async () => {
+  it('searchHighlight 为 false 时不显示圆点', async () => {
     wrapper = mountMenu({
       props: { items: ITEMS, searchable: true, searchHighlight: false },
     });
     await type('S1');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
+    expect(subMenuLi(wrapper.element, '子菜单').querySelector('.aix-menu-submenu__dot')).toBeNull();
   });
 
-  it('清空关键字后高亮撤销', async () => {
+  it('清空关键字后圆点消失', async () => {
     wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
     await type('S1');
     await type('');
-    expect(subMenuLi(wrapper.element, '子菜单').classList).not.toContain(
-      'aix-menu-submenu--highlight',
-    );
+    expect(subMenuLi(wrapper.element, '子菜单').querySelector('.aix-menu-submenu__dot')).toBeNull();
   });
 });
 

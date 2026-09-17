@@ -45,7 +45,7 @@ function defaultFilterMethod<M extends MenuItemMeta>(item: MenuItemData<M>, keyw
 
 /** 一次过滤过程中攒下的命中信息 */
 interface SearchHits {
-  /** 靠后代才留下的 flyout 子菜单：命中项藏在弹层里，列表上看不见，触发项整行标底 */
+  /** 靠后代才留下的 flyout 子菜单：命中项藏在弹层里，列表上看不见，触发项显示提示圆点 */
   subMenu: Set<string>;
   /**
    * 过滤时走到过的每个内联分组 → 后代里有没有命中。

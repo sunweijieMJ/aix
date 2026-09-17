@@ -14,9 +14,17 @@
           <MenuItemIcon v-if="icon" :icon="icon" />
         </slot>
       </span>
-      <span :class="ns.e('title-text')">
-        <slot name="title"><MenuHighlight :text="title" /></slot>
-      </span>
+      <Tooltip
+        :content="title"
+        :disabled="!overflowed || !title"
+        placement="top"
+        :show-delay="200"
+        :popper-class="tooltipNs.b()"
+      >
+        <span ref="titleRef" :class="ns.e('title-text')">
+          <slot name="title"><MenuHighlight :text="title" /></slot>
+        </span>
+      </Tooltip>
       <span :class="ns.e('divider')" aria-hidden="true" />
     </component>
     <ul v-show="open" :id="listId" :class="ns.e('list')">
@@ -27,13 +35,15 @@
 
 <script setup lang="ts">
 import { useId, useNamespace } from '@aix/hooks';
-import { computed, onBeforeUnmount, provide, watch } from 'vue';
+import { Tooltip } from '@aix/popper';
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue';
 import chevronDown from '../assets/chevron-down.svg';
 import {
   MENU_LEVEL_INJECTION_KEY,
   useMenuContext,
   useMenuLevel,
 } from '../composables/useMenuContext';
+import { useTextOverflow } from '../composables/useTextOverflow';
 import type { MenuGroupProps } from '../types';
 import MenuHighlight from './MenuHighlight.vue';
 import MenuIcon from './MenuIcon.vue';
@@ -57,7 +67,10 @@ defineSlots<{
 }>();
 
 const ns = useNamespace('menu-group');
+const tooltipNs = useNamespace('menu-tooltip');
 const ctx = useMenuContext();
+const titleRef = ref<HTMLElement | null>(null);
+const { overflowed } = useTextOverflow(titleRef, () => props.title);
 const parent = useMenuLevel();
 const groupLevel = parent.groupLevel + 1;
 const listId = `aix-menu-group-${useId()}`;

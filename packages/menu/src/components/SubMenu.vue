@@ -16,6 +16,7 @@
           <slot name="icon" />
         </template>
         <template #suffix>
+          <span v-if="highlighted" :class="ns.e('dot')" aria-hidden="true" />
           <MenuIcon :src="chevronRight" :class="ns.e('arrow')" />
         </template>
         <template v-if="$slots.title" #default>
@@ -319,7 +320,6 @@ const classes = computed(() => [
   ns.m(`level-${parentLevel.groupLevel}`),
   {
     [ns.m('popup')]: parentLevel.inPopup,
-    [ns.m('highlight')]: highlighted.value,
     [ns.m('open')]: open.value,
     [ns.m('active')]: active.value,
     [ns.m('disabled')]: props.disabled,

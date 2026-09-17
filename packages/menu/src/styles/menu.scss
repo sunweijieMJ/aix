@@ -9,6 +9,8 @@
   --aix-menu-item-font-weight-active: 600;
   --aix-menu-icon-size: 16px;
   --aix-menu-icon-gap: 8px;
+  --aix-menu-highlight-dot-size: 6px;
+  --aix-menu-highlight-dot-gap: 2px;
   --aix-menu-item-height: 38px;
   --aix-menu-item-padding: 0 16px 0 24px;
   --aix-menu-popup-width: 158px;
@@ -471,9 +473,15 @@
     }
   }
 
-  &__title-text {
+  // 只限标题里的触发器，组内叶子项的 Tooltip 触发器走 .aix-menu-item-content 的规则
+  &__title > .aix-tooltip__trigger {
+    display: block;
     flex: 0 1 auto;
     min-width: 0;
+  }
+
+  &__title-text {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -518,9 +526,14 @@
     height: var(--aix-menu-icon-size);
   }
 
-  // 命中项藏在弹层里时整行提示；排在 --open / --active 之前，让展开与选中态压过它
-  &--highlight .aix-menu-submenu__title {
-    background: var(--aix-menu-item-bg-highlight);
+  // 命中项藏在弹层里时，箭头前的圆点提示「命中在这条里面」
+  &__dot {
+    flex: none;
+    width: var(--aix-menu-highlight-dot-size);
+    height: var(--aix-menu-highlight-dot-size);
+    margin-right: var(--aix-menu-highlight-dot-gap);
+    border-radius: 50%;
+    background: var(--aix-menu-item-color-highlight);
   }
 
   &--open .aix-menu-submenu__title {

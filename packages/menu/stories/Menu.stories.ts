@@ -403,7 +403,7 @@ const meta: Meta<typeof Menu> = {
     searchHighlight: {
       control: 'boolean',
       description:
-        '搜索时命中文字标色，且命中项藏在 flyout 弹层里的子菜单触发项整行高亮。只对 items 数据驱动写法生效',
+        '搜索时命中文字标色，且命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效',
       table: {
         type: { summary: 'boolean' },
         defaultValue: { summary: 'true' },
@@ -918,7 +918,7 @@ export const Accordion: Story = {
 };
 
 /**
- * 长文案单行省略，被截断时悬停显示完整 Tooltip；分组标题同样省略。
+ * 长文案单行省略，被截断时悬停显示完整 Tooltip；分组标题同样省略并提示。
  */
 
 export const LongLabel: Story = {
@@ -1044,7 +1044,6 @@ export const CustomTheme: Story = {
           --aix-menu-item-color: #cbd5e1;
           --aix-menu-item-bg-hover: rgb(255 255 255 / 0.08);
           --aix-menu-item-bg-active: #2563eb;
-          --aix-menu-item-bg-highlight: rgb(96 165 250 / 0.16);
           --aix-menu-item-color-highlight: #93c5fd;
           --aix-menu-item-color-active: #fff;
           --aix-menu-item-color-disabled: rgb(203 213 225 / 0.35);
@@ -1206,10 +1205,11 @@ export const SearchClear: Story = {
  *
  * 1. **命中文字标色**——label 里匹配到的片段包进 `<mark>`，取 `--aix-menu-item-color-highlight`（设计稿 `#1546F2`）。
  *    分组标题、内联分组里的叶子项、选中项、flyout 触发项一视同仁；文案被插槽接管时不插手。
- * 2. **整行标底**——命中项落在 flyout 弹层里时列表上看不见，只剩触发项孤零零留着，
- *    此时给触发项铺 `--aix-menu-item-bg-highlight`，提示「命中在这条里面」。自身命中则不铺，它本来就看得见。
+ * 2. **提示圆点**——命中项落在 flyout 弹层里时列表上看不见，只剩触发项孤零零留着，
+ *    此时在触发项箭头前显示一颗圆点（同样取 `--aix-menu-item-color-highlight`），提示「命中在这条里面」。
+ *    自身命中则不显示，它本来就看得见。
  *
- * 两个颜色都是每套主题各一份。搜「智慧」可一次看全四种情形：
+ * 命中色每套主题各一份。搜「智慧」可一次看全四种情形：
  *
  * | 节点 | 结果 |
  * |------|------|
@@ -1217,7 +1217,7 @@ export const SearchClear: Story = {
  * | 分组「智慧督导」 | 只有标题命中 → 标题标色，分组收起（子项与关键字无关），点标题可展开 |
  * | 叶子「智慧中心」 | 自身命中 → 文字标色；同时是选中项，标色叠在选中底色上 |
  * | 分组「课堂教学」 | 标题没命中、子项「智慧助教」命中 → 标题不标色，只保留命中的子项 |
- * | 子菜单「数据报表」 | 命中的「智慧看板」在弹层里 → 触发项整行标底，文字上没有 mark |
+ * | 子菜单「数据报表」 | 命中的「智慧看板」在弹层里 → 触发项箭头前显示圆点，文字上没有 mark |
  */
 
 export const SearchHighlight: Story = {
@@ -1239,7 +1239,7 @@ export const SearchHighlight: Story = {
         <p style="margin: 0;">输入「智慧」：分组标题、组内叶子、选中项里的「智慧」两字都标色。</p>
         <p style="margin: 0;">「智慧督导」只有标题命中，分组收起；点标题仍能展开看全部。</p>
         <p style="margin: 0;">「课堂教学」标题没命中，只留下命中的「智慧助教」，标题不标色。</p>
-        <p style="margin: 0;">「数据报表」命中的是弹层里的「智慧看板」，整行标底代替文字标色。</p>
+        <p style="margin: 0;">「数据报表」命中的是弹层里的「智慧看板」，箭头前的圆点代替文字标色。</p>
       </div>
     `,
   }),
@@ -1273,9 +1273,9 @@ export const SearchHighlight: Story = {
     await expect(markIn('课堂教学')).toBeNull();
     await expect(markIn('智慧助教')).toHaveTextContent('智慧');
 
-    // 命中藏在弹层里：整行标底，文字上没有 mark
+    // 命中藏在弹层里：箭头前显示圆点，文字上没有 mark
     const report = canvas.getByRole('button', { name: '数据报表' });
-    await expect(report.closest('.aix-menu-submenu')).toHaveClass('aix-menu-submenu--highlight');
+    await expect(report.querySelector('.aix-menu-submenu__dot')).not.toBeNull();
     await expect(report.querySelector('mark.aix-menu-highlight')).toBeNull();
 
     await userEvent.clear(input);

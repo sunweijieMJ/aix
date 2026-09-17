@@ -150,7 +150,7 @@ export interface MenuProps<M extends MenuItemMeta = MenuItemMeta> {
   /** 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 */
   filterMethod?: (item: MenuItemData<M>, keyword: string) => boolean;
   /**
-   * 搜索时，命中项藏在 flyout 弹层里的子菜单触发项整行高亮。只对 items 数据驱动写法生效
+   * 搜索时，命中项藏在 flyout 弹层里的子菜单触发项在箭头前显示提示圆点。只对 items 数据驱动写法生效
    * @default true
    */
   searchHighlight?: boolean;

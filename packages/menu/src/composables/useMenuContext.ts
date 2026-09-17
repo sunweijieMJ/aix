@@ -29,7 +29,7 @@ export interface MenuContext {
   searching: Ref<boolean>;
   /** 命中文字标色用的关键字；searchHighlight 关闭时恒为空串 */
   highlightKeyword: Ref<string>;
-  /** 搜索命中项是否藏在该 key 的 flyout 弹层里，用于触发项整行高亮 */
+  /** 搜索命中项是否藏在该 key 的 flyout 弹层里，用于触发项显示提示圆点 */
   isSearchHighlighted: (key: string) => boolean;
   /** 搜索期间该分组是否展开；与 openKeys 无关，关键字变化后回到默认 */
   isSearchOpen: (key: string) => boolean;
