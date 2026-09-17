@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { reactive, ref } from 'vue';
+import { reactive, ref, watchEffect } from 'vue';
 import { Menu, MenuGroup, MenuItem, SubMenu } from '../src';
 import type { MenuItemData, MenuProps, MenuSelectPayload } from '../src';
 import {
@@ -18,6 +18,7 @@ import {
   UsersIcon,
   VideoIcon,
 } from './icons';
+import { apiMenuResponseText, parseApiMenuText } from './mock-api-menu';
 
 // ---------- 演示数据 ----------
 
@@ -1201,5 +1202,119 @@ export const SearchHighlight: Story = {
 
     await userEvent.clear(input);
     await waitFor(() => expect(markIn('智慧教学')).toBeNull());
+  },
+};
+
+/**
+ * 真实业务接口的数据接进来长什么样，**右侧文本框可以直接换成你自己的接口响应**，边贴边看渲染结果。
+ * 接口响应整体（含 `data` 字段）和 `data` 数组本身都认，解析失败会提示原因并保留上一份能渲染的数据。
+ *
+ * 响应里每个节点靠 `resourceType` 区分：`directory` 是分类，`menu` 是可点击的页面；另外带
+ * `sort`（同级排序）、`select`（有无权限）和一组路由字段（`menuType` / `menuUrl` / `redirectUrl` / `microApp*`）。
+ *
+ * 适配器在 `stories/mock-api-menu.ts`，规则四条：
+ *
+ * 1. 丢掉 `select === false` 的节点（字段缺省按有权限处理）
+ * 2. 同级按 `sort` 升序（缺省按 0）
+ * 3. **顶层 `directory` 铺成内联分组，更深层的 `directory` 收进 flyout 子菜单**——
+ *    内联分组只有一层样式，套起来两层标题一模一样、读不出层级，弹层才表达得出来
+ * 4. 路由字段原样塞进 `meta`，随 `select` 事件回传，业务拿它去跳转
+ *
+ * 图标用的是占位图标（按 `menuIcon` 的值散列），业务侧换成自己的图标字体组件即可。
+ */
+export const RealData: Story = {
+  args: {
+    searchable: true,
+    searchPlaceholder: '搜索菜单',
+  },
+  render: (args) => ({
+    components: { Menu },
+    setup() {
+      const raw = ref(apiMenuResponseText);
+      const items = ref<MenuItemData[]>([]);
+      const error = ref('');
+
+      watchEffect(() => {
+        const result = parseApiMenuText(raw.value);
+        if ('error' in result) {
+          error.value = result.error;
+          return;
+        }
+        error.value = '';
+        items.value = result.items;
+      });
+
+      const selected = ref('WO_DE_GONG_ZUO_TAI');
+      const picked = ref<MenuSelectPayload | null>(null);
+      return {
+        args,
+        raw,
+        items,
+        error,
+        selected,
+        picked,
+        reset: () => (raw.value = apiMenuResponseText),
+      };
+    },
+    template: `
+      <Menu
+        v-bind="args"
+        :items="items"
+        :width="240"
+        v-model:selectedKey="selected"
+        @select="picked = $event"
+      />
+      <div style="display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 12px; padding: 16px 24px; color: #4e5969; font-size: 13px; line-height: 1.8;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <strong>接口响应（可直接替换成你自己的）</strong>
+          <button type="button" @click="reset" style="padding: 2px 10px; border: 1px solid #e5e6eb; border-radius: 4px; background: #fff; color: #4e5969; font-size: 12px; cursor: pointer;">还原示例</button>
+          <span v-if="error" style="color: #f53f3f; font-size: 12px;">{{ error }}</span>
+          <span v-else style="color: #00b42a; font-size: 12px;">已渲染 {{ items.length }} 个顶层节点</span>
+        </div>
+        <textarea
+          v-model="raw"
+          aria-label="接口响应 JSON"
+          spellcheck="false"
+          style="flex: 1; min-height: 220px; padding: 8px 12px; border: 1px solid #e5e6eb; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; resize: vertical;"
+        ></textarea>
+        <div>
+          <strong>点击后拿到的 payload</strong>
+          <pre v-if="picked" style="margin: 4px 0 0; padding: 8px 12px; border-radius: 6px; background: #f7f8fa; color: #1d2129; font-size: 12px; line-height: 1.6; white-space: pre-wrap;">{{ JSON.stringify({ key: picked.key, keyPath: picked.keyPath, meta: picked.data?.meta }, null, 2) }}</pre>
+          <p v-else style="margin: 4px 0 0; color: #86909c;">点一个菜单项，路由字段从 <code>meta</code> 里原样取回。</p>
+        </div>
+      </div>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    // 顶层 directory 是内联分组，子项直接铺在侧栏里
+    const top = canvas.getByRole('button', { name: '教学工作台' });
+    await expect(top).toHaveAttribute('aria-expanded', 'true');
+    await expect(canvas.getByRole('button', { name: '我的工作台' })).toBeInTheDocument();
+
+    // 二级 directory 收进 flyout
+    await expect(canvas.getByRole('button', { name: '教学评价' })).toHaveAttribute(
+      'aria-haspopup',
+      'true',
+    );
+
+    // select 为 false 的丢掉，同级按 sort 升序
+    const groups = canvas
+      .getAllByRole('button', { expanded: true })
+      .map((el) => el.textContent?.trim());
+    await expect(groups).toEqual([
+      '教学工作台',
+      '智慧教学',
+      '教学创新',
+      '评价发展',
+      '资源智库',
+      '教学管理',
+    ]);
+
+    // 贴进非法 JSON 时给出提示，菜单保留上一份数据
+    const textarea = canvas.getByRole('textbox', { name: '接口响应 JSON' });
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, '{{');
+    await waitFor(() => expect(canvas.getByText(/JSON 解析失败/)).toBeInTheDocument());
+    await expect(canvas.getByRole('button', { name: '我的工作台' })).toBeInTheDocument();
   },
 };

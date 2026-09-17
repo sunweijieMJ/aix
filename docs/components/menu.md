@@ -218,7 +218,7 @@ const themeSelected = reactive({
 
 ### 基础用法
 
-`items` 数据驱动。`type: 'group'` 是内联可折叠分组（可嵌套一层子分组），`type: 'divider'` 是分割线，普通节点带 `children` 时自动成为 flyout 子菜单。`header`（放 logo）/ `footer`（放用户行）插槽固定在列表上下方，`searchable` 在 header 之下显示内置搜索框。
+`items` 数据驱动。`type: 'group'` 是内联可折叠分组，`type: 'divider'` 是分割线，普通节点带 `children` 时自动成为 flyout 子菜单。分组建议只用一层——分组套分组时两层标题样式一致、读不出层级，更深的层级请用子菜单表达。`header`（放 logo）/ `footer`（放用户行）插槽固定在列表上下方，`searchable` 在 header 之下显示内置搜索框。
 
 <ClientOnly>
 <div class="demo-block menu-demo">

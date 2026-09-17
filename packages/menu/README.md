@@ -38,6 +38,8 @@ import '@aix/theme/vars';
 
 `type: 'group'` 是内联可折叠分组，`type: 'divider'` 是分割线，普通节点带 `children` 时自动成为 flyout 子菜单。
 
+> 分组建议只用一层。分组套分组时两层标题样式一致，视觉上读不出层级；更深的层级请用子菜单（带 `children` 的普通节点），弹层能体现出层级关系。
+
 ```vue
 <template>
   <Menu :items="items" v-model:selectedKey="selectedKey" @select="onSelect" />

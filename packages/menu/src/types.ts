@@ -15,6 +15,8 @@ export type MenuPopupPlacement =
  * - `item`：叶子项（默认）；有 `children` 时自动升级为 flyout 子菜单
  * - `group`：内联可折叠分组，`children` 直接展示在侧栏里
  * - `divider`：分割线
+ *
+ * 分组建议只用一层：分组套分组时两层标题样式一致，层级读不出来，更深的层级用子菜单表达。
  */
 export type MenuItemType = 'item' | 'group' | 'divider';
 
