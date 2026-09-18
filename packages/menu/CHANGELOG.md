@@ -1,5 +1,11 @@
 # @aix/menu
 
+## 0.3.1
+
+### Patch Changes
+
+- 弹层项悬停选中配色按设计稿校准，拖拽热区改为内侧 2px、外侧 4px
+
 ## 0.3.0
 
 ### Minor Changes
