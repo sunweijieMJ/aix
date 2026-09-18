@@ -52,9 +52,15 @@ describe('ReadmeExtractor', () => {
     expect(result?.examples).toBeTruthy();
     expect(result?.examples.length).toBeGreaterThan(0);
 
-    const firstExample = result?.examples[0];
-    expect(firstExample?.code).toContain('Button');
-    expect(firstExample?.language).toBe('vue');
+    const examples = result?.examples ?? [];
+    for (const example of examples) {
+      expect(example.code).toBeTruthy();
+      expect(['vue', 'tsx', 'jsx', 'ts', 'js']).toContain(example.language);
+    }
+
+    // 组件用法示例按 vue 收录，样式引入等片段按各自的脚本语言收录
+    const usage = examples.find((example) => example.language === 'vue');
+    expect(usage?.code).toContain('Button');
   });
 
   it('应该正确提取特性列表', async () => {
