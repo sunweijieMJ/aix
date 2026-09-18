@@ -37,6 +37,10 @@
 <script setup lang="ts" generic="M extends MenuItemMeta">
 import { useControllable, useLocale } from '@aix/hooks';
 import { computed, provide, ref, useSlots, watch, watchEffect } from 'vue';
+// 样式入口挂在组件模块上，桶文件里的副作用 import 会被 Rollup 摇掉
+// flyout 与溢出 Tooltip 依赖 @aix/popper 的定位 / 过渡 / 气泡样式
+import '@aix/popper/style';
+import './styles/index.scss';
 import MenuItems from './components/MenuItems';
 import MenuSearch from './components/MenuSearch.vue';
 import { handleListNavigation } from './composables/useListKeyboard';

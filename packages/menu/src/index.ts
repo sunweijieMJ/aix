@@ -4,10 +4,6 @@ import MenuItem from './components/MenuItem.vue';
 import SubMenu from './components/SubMenu.vue';
 import Menu from './Menu.vue';
 
-// flyout 与溢出 Tooltip 依赖 @aix/popper 的定位 / 过渡 / 气泡样式
-import '@aix/popper/style';
-import './styles/index.scss';
-
 export type {
   MenuTheme,
   MenuPopupPlacement,
