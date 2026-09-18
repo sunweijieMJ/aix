@@ -93,7 +93,8 @@
   --aix-menu-item-gap: 8px;
   --aix-menu-group-title-height: 38px;
   --aix-menu-group-title-padding: 0 8px;
-  --aix-menu-resize-handle-width: 4px;
+  --aix-menu-resize-handle-inset: 2px;
+  --aix-menu-resize-handle-outset: 4px;
   --aix-menu-search-height: 38px;
   --aix-menu-search-padding: 8px;
   --aix-menu-search-gap: 10px;
@@ -166,14 +167,14 @@
     text-align: center;
   }
 
-  // 以侧栏右边缘居中，内侧半幅只吃滚动条外沿到边缘那段留白，不与滚动条抢指针
+  // 跨侧栏右边缘：内侧一段只吃滚动条外沿到边缘那段留白，不与滚动条抢指针；外侧一段落在侧栏之外
   &__resize-handle {
     position: absolute;
     z-index: 1;
     top: 0;
-    right: calc(var(--aix-menu-resize-handle-width) / -2);
+    right: calc(var(--aix-menu-resize-handle-outset) * -1);
     bottom: 0;
-    width: var(--aix-menu-resize-handle-width);
+    width: calc(var(--aix-menu-resize-handle-inset) + var(--aix-menu-resize-handle-outset));
     cursor: col-resize;
     touch-action: none;
 
@@ -182,7 +183,7 @@
       position: absolute;
       top: 0;
       bottom: 0;
-      left: calc(50% - 0.5px);
+      left: calc(var(--aix-menu-resize-handle-inset) - 0.5px);
       width: 1px;
       transition: opacity var(--aix-menu-transition-duration);
       opacity: 0;
