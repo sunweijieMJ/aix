@@ -233,7 +233,7 @@ export interface WaveformCanvasProps {
 export interface AudioPlayerProps {
   /** 音频 URL 或 Blob */
   src: string | Blob;
-  /** 波形数据 */
+  /** 波形数据点（0-1 归一化），为空则不画波形 */
   waveform?: number[];
   /** 是否显示波形，默认 true */
   showWaveform?: boolean;

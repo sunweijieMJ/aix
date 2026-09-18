@@ -58,6 +58,10 @@ const onError = (error: Error) => {
 
 ## API
 
+**PdfViewer** — PDF 预览组件
+
+使用 pdfjs-dist 提供 PDF 预览功能，支持文本和图片选择
+
 ### PdfViewer Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -117,6 +121,8 @@ const onError = (error: Error) => {
 
 ---
 
+**PdfToolbar** — PDF 工具栏：翻页、跳页、缩放与适应页面，三个区域都可用插槽替换。
+
 ### PdfToolbar Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -147,6 +153,8 @@ const onError = (error: Error) => {
 | `right` | - | 右侧区域，默认渲染适应页面按钮 |
 
 ---
+
+**PdfSearchBar** — PDF 搜索栏：关键字输入与命中项的上一个 / 下一个跳转。
 
 ### PdfSearchBar Props
 

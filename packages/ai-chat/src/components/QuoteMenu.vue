@@ -37,6 +37,7 @@ export interface QuoteMenuEmits {
 </script>
 
 <script setup lang="ts">
+/** 划词引用菜单的外壳：按 mode 选用悬浮工具条或列表面板皮肤，并统一转发操作。 */
 import { computed } from 'vue';
 import type { Component } from 'vue';
 import type { ResolvedQuoteAction } from '../types';

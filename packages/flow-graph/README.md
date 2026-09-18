@@ -57,6 +57,16 @@ function onConnect(connection: FlowConnection) {
 
 ## API
 
+**FlowGraph** — AixFlowGraph：基于 `@vue-flow/core` 的流程图容器组件。
+
+特性：
+- 支持 v-model 双向绑定节点与边；
+- 内置圆形 / 六边形节点与彩色折线边，可通过 `nodeTypes`/`edgeTypes` 扩展；
+- 支持网格吸附（`snapGrid` + `gridSize`）与画布控制条；
+- 双击空白处新增节点；底部面板按钮按螺旋算法在视口中心寻找不重叠位置新增节点；
+- 提供 `#bottom-bar` 具名插槽（默认渲染 `添加节点 / Controls / 搜索` 三件套），
+  插槽 props 暴露 `addNode / openSearch / closeSearch / fitView / zoomIn / zoomOut`。
+
 ### FlowGraph Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -90,7 +100,7 @@ function onConnect(connection: FlowConnection) {
 | `node-add` | `node: FlowNode` | 通过内部交互（按钮新建 / 双击空白 / 复制）新增节点时触发 |
 | `node-remove` | `nodeIds: string[]` | 通过内部交互（右键删除 / Delete 键）删除节点时触发，载荷为节点 id 列表 |
 | `edge-remove` | `edgeIds: string[]` | 通过内部交互（右键删除 / Delete 键）删除边时触发，载荷为边 id 列表 |
-| `node-delete-blocked` | `nodeIds: string[]` | 删除 `data.deletable === false` 的节点被拦截时触发，载荷为被拦截的节点 id 列表，业务层可据此提示用户为何无法删除。两条路径都会上报： - 键盘 Delete/Backspace 命中（由 FlowGraph.onKeyDelete 统一拦截）； - 点击右键菜单中已视觉置灰的"删除"项（由 useNodeInteraction.onCommand 经 {@link FlowNodeDeleteBlockedKey} 注入回调转发到此 emit）。 |
+| `node-delete-blocked` | `nodeIds: string[]` | 删除 `data.deletable === false` 的节点被拦截时触发，载荷为被拦截的节点 id 列表，业务层可据此提示用户为何无法删除。两条路径都会上报：<br>- 键盘 Delete/Backspace 命中（由 FlowGraph.onKeyDelete 统一拦截）；<br>- 点击右键菜单中已视觉置灰的"删除"项（由 useNodeInteraction.onCommand 经 {@link FlowNodeDeleteBlockedKey} 注入回调转发到此 emit）。 |
 
 ### FlowGraph Slots
 
@@ -109,6 +119,12 @@ function onConnect(connection: FlowConnection) {
 | `resetNodeStates` | `() => void` | 重置所有节点的交互状态（active/context/selecting） |
 
 ---
+
+**BaseNode** — 节点公共骨架：
+- 统一安装 ContextMenu（复制/删除）、节点上方常驻 label、NodeActiveCross、Handle；
+- 统一挂载 useNodeInteraction（点击/右键/复制/删除的状态同步）；
+- 视觉通过默认 slot 暴露 `{ size, nodeState, onClick }`，由子类渲染形状；
+- Handle 的 pointer-events 由 `connectable` 控制。
 
 ### BaseNode Props
 
@@ -129,6 +145,28 @@ function onConnect(connection: FlowConnection) {
 
 ---
 
+**CircleNode** — 圆形节点：默认节点类型。
+所有交互（点击 active / 右键菜单 / 上方 label / Handle）均由 {@link BaseNode} 承载。
+
+### CircleNode Props
+
+Props 为 `@vue-flow/core` 的 `NodeProps<NodeData>`，由 VueFlow 在渲染节点时注入，业务侧不直接传。
+
+---
+
+**HexagonNode** — 六边形节点：与 CircleNode 行为一致，仅视觉不同；`context` 状态下内外填充对调。
+交互壳由 {@link BaseNode} 承载。
+
+### HexagonNode Props
+
+Props 为 `@vue-flow/core` 的 `NodeProps<NodeData>`，由 VueFlow 在渲染节点时注入，业务侧不直接传。
+
+---
+
+**NodeActiveCross** — 节点 active 状态的四向渐变十字装饰。
+- 单色：每条臂从 0.7 不透明度 → 0（淡出）。
+- 多色：每条臂沿自身方向均匀分布多色，末色 alpha 为 0（淡出）。
+
 ### NodeActiveCross Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -138,6 +176,28 @@ function onConnect(connection: FlowConnection) {
 | `colors` | `string[]` | `[]` | - | 多路径颜色列表，优先级高于 color |
 
 ---
+
+**ColorEdge** — 彩色折线边：
+- 自动根据起止节点实际尺寸修正箭头贴边；
+- 支持 waypoints（圆角折线），路径上按住左键插入新拐点并拖动，右键删除拐点；
+- 选中时暴露拐点 handle；右键边本身弹出“删除”菜单（由 @aix/popper ContextMenu 承载）。
+
+### ColorEdge Props
+
+Props 为 `@vue-flow/core` 的 `EdgeProps<EdgeData>`，由 VueFlow 在渲染边时注入，业务侧不直接传。
+
+---
+
+**FlowControls** — 画布控制条：左下角 Panel，提供缩小 / 缩放百分比显示 / 放大 / 适应视图四个操作。
+直接消费 VueFlow 的 `useVueFlow` 暴露的控制方法。
+
+### FlowControls
+
+暂无对外 API。
+
+---
+
+**FlowSearch** — 画布搜索面板：按关键字检索节点，选中后定位到画布上的该节点。
 
 ### FlowSearch Props
 

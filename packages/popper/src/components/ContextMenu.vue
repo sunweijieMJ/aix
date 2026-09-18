@@ -30,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+/** 右键菜单：默认监听右键在鼠标位置弹出，也可由 show(target) 手动唤起。 */
 import { useLocale, useZIndex } from '@aix/hooks';
 import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';

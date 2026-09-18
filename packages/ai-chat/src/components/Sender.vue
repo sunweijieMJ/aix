@@ -409,6 +409,7 @@ let triggerMenuUid = 0;
 </script>
 
 <script setup lang="ts">
+/** 输入框：多行文本 + 工具栏 + 发送 / 停止，可选接入附件、语音与触发菜单。 */
 import { useNamespace } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
 import { ref, computed, watch, nextTick, reactive, onUnmounted } from 'vue';

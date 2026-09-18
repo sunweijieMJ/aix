@@ -206,6 +206,7 @@ export interface BubbleActionsEmits {
 </script>
 
 <script setup lang="ts">
+/** 气泡操作条：复制 / 重新生成 / 赞踩 / 朗读 / 引用等内置项与自定义项混排。 */
 import { useNamespace, copyText } from '@aix/hooks';
 import {
   Copy,

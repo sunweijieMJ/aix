@@ -98,6 +98,7 @@ export interface ThoughtChainProps {
 </script>
 
 <script setup lang="ts">
+/** 思维链：多个步骤按时序纵向排列，每步带状态与可选结果。 */
 import { useNamespace } from '@aix/hooks';
 import { reactive, ref, useSlots, watch } from 'vue';
 import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';

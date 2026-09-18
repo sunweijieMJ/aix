@@ -56,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+/** PDF 搜索栏：关键字输入与命中项的上一个 / 下一个跳转。 */
 import { useLocale } from '@aix/hooks';
 import { ArrowDropDown, ArrowDropUp, Close, IconSearch as Search } from '@aix/icons';
 import { ref, watch, nextTick } from 'vue';

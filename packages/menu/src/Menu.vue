@@ -35,6 +35,7 @@
 </template>
 
 <script setup lang="ts" generic="M extends MenuItemMeta">
+/** 侧边导航菜单：数据驱动与复合组件两种写法，支持分组、flyout 子菜单、搜索与拖拽宽度。 */
 import { useControllable, useLocale } from '@aix/hooks';
 import { computed, provide, ref, useSlots, watch, watchEffect } from 'vue';
 // 样式入口挂在组件模块上，桶文件里的副作用 import 会被 Rollup 摇掉

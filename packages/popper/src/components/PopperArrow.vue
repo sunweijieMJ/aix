@@ -3,6 +3,7 @@
 </template>
 
 <script setup lang="ts">
+/** 浮层箭头：位置由 Popper 按定位结果算好传入，不单独使用。 */
 import type { CSSProperties } from 'vue';
 
 defineOptions({

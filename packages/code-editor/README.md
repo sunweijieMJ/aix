@@ -110,13 +110,15 @@ const insertText = () => {
 
 ## API
 
+**CodeEditor** — 代码编辑器：基于 CodeMirror 6，支持多语言高亮、行号、折叠与 lint。
+
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `modelValue` | `string` | - | - | 编辑器内容（v-model 双向绑定） |
 | `language` | `'javascript' \| 'typescript' \| 'json' \| 'html' \| 'css' \| 'python' \| 'java' \| 'go' \| 'rust' \| 'cpp' \| 'php' \| 'sql' \| 'yaml' \| 'xml' \| 'markdown' \| 'sass' \| 'vue' \| 'angular' \| 'liquid' \| 'wast'` | `'javascript'` | - | 编程语言 |
-| `theme` | `'light' \| 'dark'` | `'light'` | - | 主题 |
+| `theme` | `'light' \| 'dark'` | `'light'` | - | 编辑器配色主题，与 @aix/theme 的亮暗模式各自独立，需自行联动 |
 | `readonly` | `boolean` | `false` | - | 是否只读（保留光标，不可编辑） |
 | `disabled` | `boolean` | `false` | - | 是否禁用（完全不可交互） |
 | `placeholder` | `string` | - | - | 占位文本 |

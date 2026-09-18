@@ -210,6 +210,10 @@ const videoSrc = '/videos/sample.mp4';
 需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
 :::
 
+**VideoPlayer** — 视频播放器组件
+
+基于 video.js 的 Vue 3 视频播放器，支持 HLS/RTMP/FLV 等多种视频格式
+
 ### VideoPlayer Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -222,12 +226,12 @@ const videoSrc = '/videos/sample.mp4';
 | `controls` | `boolean` | `true` | - | 是否显示控制栏 |
 | `responsive` | `boolean` | `true` | - | 是否响应式 |
 | `fluid` | `boolean` | `true` | - | 是否流式布局 |
-| `width` | `number \| string` | - | - | 宽度 |
-| `height` | `number \| string` | - | - | 高度 |
+| `width` | `number \| string` | - | - | 宽度，数字按 px 处理；未设时由 fluid / responsive 决定 |
+| `height` | `number \| string` | - | - | 高度，数字按 px 处理；未设时由 fluid / responsive 决定 |
 | `aspectRatio` | `string` | - | - | 宽高比（如 '16:9'） |
 | `preload` | `'auto' \| 'metadata' \| 'none'` | `'auto'` | - | 预加载策略 |
 | `transparent` | `boolean` | `false` | - | 是否透明背景 |
-| `crossOrigin` | `boolean` | `true` | - | 是否跨域 |
+| `crossOrigin` | `boolean` | `true` | - | 是否给 video 元素加 `crossorigin="anonymous"`；跨域截帧 / 取像素需要它，但源站未回 CORS 头时会导致加载失败，此时关掉 |
 | `enableDebugLog` | `boolean` | `false` | - | 是否启用调试日志 |
 | `options` | `Partial<VideoJsOptions>` | - | - | video.js 额外配置 |
 | `streamOptions` | `Omit<StreamAdapterOptions, 'onReady' \| 'onError' \| 'onFirstFrame'>` | - | - | 流适配器配置 |
@@ -294,6 +298,8 @@ const videoSrc = '/videos/sample.mp4';
 
 ---
 
+**DefaultControls** — 默认控制栏：播放 / 暂停、音量与全屏，点播与直播都能用。
+
 ### DefaultControls Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -302,6 +308,8 @@ const videoSrc = '/videos/sample.mp4';
 | `controls` | `ControlMethods` | - | ✅ | 控制方法 |
 
 ---
+
+**LiveControls** — 直播控制栏：LIVE 标识、刷新、音量与全屏，没有进度条与倍速。
 
 ### LiveControls Props
 
@@ -315,6 +323,8 @@ const videoSrc = '/videos/sample.mp4';
 
 ---
 
+**PlaybackControls** — 点播控制栏：进度条、时间、倍速与全屏，闲置一段时间后自动隐藏。
+
 ### PlaybackControls Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -322,7 +332,7 @@ const videoSrc = '/videos/sample.mp4';
 | `playerState` | `PlayerState` | - | ✅ | 播放器状态 |
 | `controls` | `ControlMethods` | - | ✅ | 控制方法 |
 | `autoHideDelay` | `number` | `3000` | - | 自动隐藏延迟(ms)，0 表示禁用 |
-| `playbackRates` | `number[]` | - | - | 可用的倍速选项 |
+| `playbackRates` | `number[]` | `[0.5, 0.75, 1, 1.25, 1.5, 2]` | - | 可用的倍速选项 |
 | `showPlaybackRate` | `boolean` | `true` | - | 是否显示倍速按钮 |
 | `showTime` | `boolean` | `true` | - | 是否显示时间 |
 

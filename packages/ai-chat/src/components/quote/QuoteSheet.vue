@@ -41,6 +41,7 @@ export interface QuoteSheetEmits {
 </script>
 
 <script setup lang="ts">
+/** 划词引用的面板皮肤：贴选区浮动，操作纵向成列表，适合项数较多时。 */
 import { useClickOutside, useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { computed, ref, watch, watchEffect } from 'vue';

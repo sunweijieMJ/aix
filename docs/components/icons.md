@@ -332,13 +332,13 @@ import {
 
 所有图标组件都支持以下属性，并通过 `v-bind="$attrs"` 透传所有其他 HTML/SVG 属性：
 
-| 属性 | 类型 | 默认值 | 必填 | 描述 |
-| --- | --- | --- | --- | --- |
-| width | string \| number | '1em' | ❌ | 图标宽度 |
-| height | string \| number | '1em' | ❌ | 图标高度 |
-| color | string | 'currentColor' | ❌ | 图标颜色 |
-| style | CSSProperties | - | ❌ | 自定义样式对象（支持所有 CSS 属性） |
-| class | string | - | ❌ | CSS 类名 |
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `width` | `string \| number` | `'1em'` | - | 图标宽度 |
+| `height` | `string \| number` | `'1em'` | - | 图标高度 |
+| `color` | `string` | `'currentColor'` | - | 图标颜色 |
+| `style` | `CSSProperties` | - | - | 自定义样式对象（支持所有 CSS 属性） |
+| `class` | `string` | - | - | CSS 类名 |
 
 > 没有 `title` 属性。透传上去只会变成 `<svg title="…">`，SVG 不认这个属性、不会有提示气泡；
 > 需要无障碍名称请用 `aria-label`，需要悬浮提示请在外层包一个带 `title` 的元素。

@@ -19,6 +19,7 @@
 </template>
 
 <script setup lang="ts">
+/** 浮层定位底层组件：基于 Floating UI 做定位、翻转与平移，本包其余组件都由它构建。 */
 import { computed, ref, watch, type CSSProperties } from 'vue';
 import { usePopper } from '../composables/usePopper';
 import type { PopperProps, PopperEmits, PopperExpose } from '../types';

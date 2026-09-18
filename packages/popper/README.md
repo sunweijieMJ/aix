@@ -154,11 +154,13 @@ import { Popper } from '@aix/popper';
 
 ## API
 
+**Popper** — 浮层定位底层组件：基于 Floating UI 做定位、翻转与平移，本包其余组件都由它构建。
+
 ### Popper Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `placement` | `Placement` | `'bottom'` | - | 浮动元素相对于参考元素的位置 |
+| `placement` | `Placement` | `'bottom'` | - | 浮动元素相对于参考元素的位置，取 `'top' \| 'right' \| 'bottom' \| 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement） |
 | `strategy` | `Strategy` | `'absolute'` | - | CSS 定位策略 |
 | `offset` | `number` | `8` | - | 参考元素与浮动元素之间的距离 (px) |
 | `arrow` | `boolean` | `false` | - | 是否显示箭头 |
@@ -203,6 +205,8 @@ import { Popper } from '@aix/popper';
 
 ---
 
+**PopperArrow** — 浮层箭头：位置由 Popper 按定位结果算好传入，不单独使用。
+
 ### PopperArrow Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -211,12 +215,14 @@ import { Popper } from '@aix/popper';
 
 ---
 
+**Tooltip** — 文字提示：悬停触发的轻量提示气泡。
+
 ### Tooltip Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `content` | `string` | - | - | 提示内容 |
-| `placement` | `Placement` | `'top'` | - | 弹出位置 |
+| `placement` | `Placement` | `'top'` | - | 弹出位置，取 `'top' \| 'right' \| 'bottom' \| 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement） |
 | `showDelay` | `number` | `100` | - | 显示延迟 (ms) |
 | `hideDelay` | `number` | `100` | - | 隐藏延迟 (ms) |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
@@ -251,13 +257,15 @@ import { Popper } from '@aix/popper';
 
 ---
 
+**Popover** — 气泡卡片：点击或悬停触发，相比 Tooltip 可承载标题与富内容。
+
 ### Popover Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `title` | `string` | - | - | 标题 |
 | `trigger` | `Extract<TriggerType, 'click' \| 'hover' \| 'focus' \| 'manual'>` | `'click'` | - | 触发方式 |
-| `placement` | `Placement` | `'top'` | - | 弹出位置 |
+| `placement` | `Placement` | `'top'` | - | 弹出位置，取 `'top' \| 'right' \| 'bottom' \| 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement） |
 | `width` | `number \| string` | - | - | 弹出层宽度 |
 | `arrow` | `boolean` | `true` | - | 是否显示箭头 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
@@ -295,12 +303,14 @@ import { Popper } from '@aix/popper';
 
 ---
 
+**Dropdown** — 下拉菜单：options 数据驱动与 DropdownItem 插槽自定义二选一。
+
 ### Dropdown Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `trigger` | `Extract<TriggerType, 'click' \| 'hover'>` | `'click'` | - | 触发方式 |
-| `placement` | `Placement` | `'bottom-start'` | - | 弹出位置 |
+| `placement` | `Placement` | `'bottom-start'` | - | 弹出位置，取 `'top' \| 'right' \| 'bottom' \| 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement） |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
 | `open` | `boolean` | - | - | 受控的显示状态 (v-model:open) |
 | `hideOnClick` | `boolean` | `true` | - | 选择后是否自动关闭 |
@@ -335,6 +345,8 @@ import { Popper } from '@aix/popper';
 
 ---
 
+**DropdownItem** — 下拉菜单项：点击抛出 command，可禁用，可在自身上方加一条分割线。
+
 ### DropdownItem Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -358,11 +370,13 @@ import { Popper } from '@aix/popper';
 
 ---
 
+**ContextMenu** — 右键菜单：默认监听右键在鼠标位置弹出，也可由 show(target) 手动唤起。
+
 ### ContextMenu Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `trigger` | `Extract<TriggerType, 'contextmenu' \| 'manual'>` | `'contextmenu'` | - | 触发方式 - `'contextmenu'`（默认）：右键弹出，由组件自动监听 - `'manual'`：不绑定任何事件，仅通过 expose 的 `show(eventOrEl)` 弹出。 - 传 `MouseEvent` 时按鼠标坐标定位（虚拟元素，位置固定，常用于右键菜单）； - 传 `HTMLElement` 时以元素为锚，floating-ui 的 autoUpdate 会持续跟随元素位移 （适合「点击节点弹菜单」且后续节点可能被滚动/平移到其他位置的场景）。 |
+| `trigger` | `Extract<TriggerType, 'contextmenu' \| 'manual'>` | `'contextmenu'` | - | 触发方式<br>- `'contextmenu'`（默认）：右键弹出，由组件自动监听<br>- `'manual'`：不绑定任何事件，仅通过 expose 的 `show(eventOrEl)` 弹出。<br>- 传 `MouseEvent` 时按鼠标坐标定位（虚拟元素，位置固定，常用于右键菜单）；<br>- 传 `HTMLElement` 时以元素为锚，floating-ui 的 autoUpdate 会持续跟随元素位移 （适合「点击节点弹菜单」且后续节点可能被滚动/平移到其他位置的场景）。 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
 | `teleportTo` | `string \| HTMLElement` | `'body'` | - | Teleport 目标 |
 | `teleportDisabled` | `boolean` | `false` | - | 是否禁用 Teleport |
@@ -386,7 +400,7 @@ import { Popper } from '@aix/popper';
 
 | 名称 | 类型 | 说明 |
 |------|------|------|
-| `show` | `(target: MouseEvent \| HTMLElement) => void` | 弹出菜单： - 传 `MouseEvent`：按 `clientX/clientY` 定位（虚拟元素，位置固定）。 - 传 `HTMLElement`：以该元素为锚定参考，菜单会跟随其位移（autoUpdate）。 |
+| `show` | `(target: MouseEvent \| HTMLElement) => void` | 弹出菜单：<br>- 传 `MouseEvent`：按 `clientX/clientY` 定位（虚拟元素，位置固定）。<br>- 传 `HTMLElement`：以该元素为锚定参考，菜单会跟随其位移（autoUpdate）。 |
 | `hide` | `() => void` | 隐藏菜单 |
 
 ## 类型定义

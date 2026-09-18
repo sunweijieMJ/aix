@@ -113,6 +113,7 @@
 </template>
 
 <script setup lang="ts">
+/** 点播控制栏：进度条、时间、倍速与全屏，闲置一段时间后自动隐藏。 */
 import { formatDuration, useClickOutside } from '@aix/hooks';
 import { Play, Pause, VolumeUp, VolumeMute, Fullscreen, FullscreenExit } from '@aix/icons';
 import { ref, computed, onBeforeUnmount } from 'vue';

@@ -44,35 +44,61 @@ interface AstProp {
   defaultTag?: string;
 }
 
-/** 组件脚本里四个宏的类型实参 / 实参 */
+/** 一次 `defineModel` 调用：它同时声明一个 prop 和配套的 `update:<name>` 事件 */
+interface ModelMacro {
+  name: string;
+  typeNode?: ts.TypeNode;
+  options?: ts.ObjectLiteralExpression;
+  /** 声明语句上的 JSDoc */
+  description: string;
+}
+
+/** 组件脚本里各个宏的类型实参 / 实参 */
 interface Macros {
   props?: ts.TypeNode;
   emits?: ts.TypeNode;
   slots?: ts.TypeNode;
   exposeType?: ts.TypeNode;
   exposeObject?: ts.ObjectLiteralExpression;
+  models: ModelMacro[];
+}
+
+export interface PackageApiResult {
+  api: ApiPackage;
+  /**
+   * `defineProps` 给了类型参数、却一个成员都解析不出来的组件文件（相对包根）。
+   * 典型是类型来自外部包（`NodeProps<NodeData>`），包内类型索引查不到声明。
+   * 这种组件的 API 表会整张为空，必须由调用方显式处置，不能当成「该组件没有 API」。
+   */
+  unresolvedProps: string[];
 }
 
 export async function extractPackageApi(
   packageDir: string,
   packageName: string,
   discovered: DiscoveredComponent[],
-): Promise<ApiPackage> {
+): Promise<PackageApiResult> {
   const packageIndex = await buildPackageTypeIndex(packageDir);
   const components: ApiComponent[] = [];
+  const unresolvedProps: string[] = [];
 
   for (const component of discovered) {
-    components.push(await extractComponent(packageDir, component, packageIndex));
+    const { api, propsUnresolved } = await extractComponent(packageDir, component, packageIndex);
+    components.push(api);
+    if (propsUnresolved) unresolvedProps.push(api.file);
   }
 
-  return { package: packageName, generatedBy: 'pnpm docs:gen', components };
+  return {
+    api: { package: packageName, generatedBy: 'pnpm docs:gen', components },
+    unresolvedProps,
+  };
 }
 
 async function extractComponent(
   packageDir: string,
   { name, file }: DiscoveredComponent,
   packageIndex: TypeIndex,
-): Promise<ApiComponent> {
+): Promise<{ api: ApiComponent; propsUnresolved: boolean }> {
   const absolutePath = path.join(packageDir, file);
   const doc: any = await parse(absolutePath);
   const source = await fs.readFile(absolutePath, 'utf-8');
@@ -94,16 +120,33 @@ async function extractComponent(
   const astProps = macros.props ? propsFromType(macros.props, index) : new Map<string, AstProp>();
   const astEvents = macros.emits ? emitsFromType(macros.emits, index) : new Map<string, ApiEvent>();
   const astSlots = macros.slots ? slotsFromType(macros.slots, index) : new Map<string, ApiSlot>();
+  addModelProps(astProps, macros.models, index);
+  addModelEvents(astEvents, macros.models);
+
+  const props = mergeProps(doc.props ?? [], astProps);
 
   return {
-    name,
-    file,
-    description: doc.description || undefined,
-    props: mergeProps(doc.props ?? [], astProps),
-    events: mergeEvents(doc.events ?? [], astEvents),
-    slots: mergeSlots(dropDynamicSlots(doc.slots ?? [], source), astSlots),
-    expose: exposeMembers(macros, name, index),
+    api: {
+      name,
+      file,
+      description: doc.description || scriptDescription(sourceFile) || undefined,
+      props,
+      events: mergeEvents(doc.events ?? [], astEvents),
+      slots: mergeSlots(dropDynamicSlots(doc.slots ?? [], source), astSlots),
+      expose: exposeMembers(macros, name, index),
+    },
+    propsUnresolved: Boolean(macros.props) && props.length === 0,
   };
+}
+
+/**
+ * 组件说明取 setup 脚本块顶部的块注释。
+ * vue-docgen 的 `description` 只认 `<docs>` 块与 `export default` 上的注释，
+ * `<script setup>` 写法下恒为空字符串。
+ */
+function scriptDescription(sourceFile: ts.SourceFile): string {
+  const first = sourceFile.statements[0];
+  return first ? readJsDocComment(first).trim() : '';
 }
 
 // ---------- 类型索引 ----------
@@ -173,7 +216,7 @@ function extractAllScriptBlocks(source: string): string[] {
 }
 
 function findMacros(sourceFile: ts.SourceFile): Macros {
-  const macros: Macros = {};
+  const macros: Macros = { models: [] };
 
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
@@ -188,6 +231,17 @@ function findMacros(sourceFile: ts.SourceFile): Macros {
         case 'defineSlots':
           macros.slots ??= typeArg;
           break;
+        case 'defineModel': {
+          // 首个字符串实参是 model 名，省略时为 modelValue；选项对象带 default / required
+          const first = node.arguments[0];
+          macros.models.push({
+            name: first && ts.isStringLiteral(first) ? first.text : 'modelValue',
+            typeNode: typeArg,
+            options: node.arguments.find((arg) => ts.isObjectLiteralExpression(arg)),
+            description: readJsDocComment(outermostStatement(node)),
+          });
+          break;
+        }
         case 'defineExpose': {
           // 三种写法：defineExpose<T>({...}) / defineExpose({...} satisfies T) / defineExpose({...})
           let arg = node.arguments[0];
@@ -211,12 +265,32 @@ function findMacros(sourceFile: ts.SourceFile): Macros {
 
 // ---------- 成员读取 ----------
 
+/**
+ * JSDoc 正文。按原文逐行取，而不是读 `doc.comment`：TypeScript 把行中间的 `@aix/popper`
+ * 这类写法也当成标签起点，正文会在那里被悄悄截断。标签一律写在行首，故只在行首的
+ * `@tag` 处收尾（`{@link X}` 不在行首，原样保留）。
+ */
 function readJsDocComment(node: ts.Node): string {
   const doc = (node as any).jsDoc?.at(-1) as ts.JSDoc | undefined;
-  if (!doc?.comment) return '';
-  return typeof doc.comment === 'string'
-    ? doc.comment
-    : (ts.getTextOfJSDocComment(doc.comment) ?? '');
+  if (!doc) return '';
+
+  const lines: string[] = [];
+  for (const raw of doc.getText().split('\n')) {
+    const line = raw
+      .replace(/^\s*\/\*\*+/, '')
+      .replace(/\*\/\s*$/, '')
+      .replace(/^\s*\*+ ?/, '');
+    if (/^\s*@\w/.test(line)) break;
+    lines.push(line);
+  }
+  return lines.join('\n').trim();
+}
+
+/** 节点所在的顶层语句，宏的 JSDoc 挂在它上面 */
+function outermostStatement(node: ts.Node): ts.Node {
+  let current = node;
+  while (current.parent && !ts.isSourceFile(current.parent)) current = current.parent;
+  return current;
 }
 
 function readJsDocTag(node: ts.Node, tagName: string): string | undefined {
@@ -351,6 +425,56 @@ function propsFromType(typeNode: ts.TypeNode, index: TypeIndex): Map<string, Ast
 }
 
 /**
+ * 把 `defineModel` 声明的 prop 并进 props 表。
+ * props 类型里已声明的同名项优先——那里的 JSDoc 更完整，defineModel 只补它没覆盖到的。
+ */
+function addModelProps(props: Map<string, AstProp>, models: ModelMacro[], index: TypeIndex): void {
+  for (const model of models) {
+    if (props.has(model.name)) continue;
+    const described = model.typeNode
+      ? describeType(model.typeNode, index)
+      : { type: 'any', resolvedType: undefined, values: undefined };
+    const defaultText = optionText(model.options, 'default');
+
+    props.set(model.name, {
+      name: model.name,
+      type: described.type,
+      resolvedType: described.resolvedType,
+      values: described.values,
+      optional: optionText(model.options, 'required') !== 'true',
+      description: model.description,
+      defaultTag: defaultText ? formatDefaultExpression(defaultText) : undefined,
+    });
+  }
+}
+
+/** `defineModel` 配套的 `update:<name>` 事件；emits 类型里已声明的优先 */
+function addModelEvents(events: Map<string, ApiEvent>, models: ModelMacro[]): void {
+  for (const model of models) {
+    const name = `update:${model.name}`;
+    if (events.has(name)) continue;
+    events.set(name, {
+      name,
+      params: model.typeNode ? `value: ${normalizeTypeText(model.typeNode.getText())}` : undefined,
+      description: model.description,
+    });
+  }
+}
+
+/** 选项对象里某个键的初始化表达式文本 */
+function optionText(
+  options: ts.ObjectLiteralExpression | undefined,
+  key: string,
+): string | undefined {
+  const property = options?.properties.find(
+    (p) => ts.isPropertyAssignment(p) && memberName(p.name) === key,
+  );
+  return property && ts.isPropertyAssignment(property)
+    ? property.initializer.getText().trim()
+    : undefined;
+}
+
+/**
  * 类型文本、别名一层展开、字符串字面量可选值
  */
 function describeType(
@@ -449,32 +573,92 @@ export function formatDocgenType(prop: any): string {
   return String(type.name);
 }
 
-/**
- * docgen 默认值转文本；函数形式的默认值只认 `() => ({})` / `() => []`
- */
-/**
- * docgen 默认值转文本。只认能直接当文档展示的字面量：
- * 字符串 / 数字 / 布尔 / null / 对象与数组字面量，以及 `() => ({})` / `() => []` 两种工厂；
- * 模板字符串、标识符、成员访问等表达式无法静态求值，返回 undefined 交给 `@default` 标签。
- */
+/** docgen 默认值转文本 */
 export function formatDocgenDefault(defaultValue: any): string | undefined {
   if (!defaultValue || defaultValue.value === undefined) return undefined;
+  return formatDefaultExpression(String(defaultValue.value));
+}
 
-  const raw = String(defaultValue.value).trim();
+/**
+ * 默认值表达式文本 -> 文档展示文本。只认能静态求值的字面量：
+ * 字符串 / 数字 / 布尔 / null / 对象与数组字面量，以及返回这些字面量的工厂函数；
+ * 模板字符串、标识符、成员访问、带语句的函数体返回 undefined，交给 `@default` 标签。
+ */
+export function formatDefaultExpression(expression: string): string | undefined {
+  const parsed = parseExpression(expression);
+  if (!parsed) return undefined;
 
-  if (raw.startsWith('()') || raw.startsWith('function')) {
-    if (raw.includes('=> ({})') || raw.includes('return {}')) return '{}';
-    if (raw.includes('=> ([])') || raw.includes('=> []') || raw.includes('return []')) return '[]';
-    return undefined;
+  const value = unwrapExpression(parsed);
+  if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) {
+    // 对象 / 数组默认值在 Vue 里必须包一层工厂，工厂本身不是要展示的值
+    const returned = returnedExpression(value);
+    return returned ? literalText(unwrapExpression(returned)) : undefined;
   }
-  if (/^(['"]).*\1$/s.test(raw)) {
-    const value = raw.slice(1, -1);
-    return value === '' ? "''" : `'${value}'`;
+  return literalText(value);
+}
+
+/** 文本解析成表达式；外层括号必不可少，否则 `{}` 会被当成语句块 */
+function parseExpression(text: string): ts.Expression | undefined {
+  const trimmed = text.trim();
+  if (trimmed === '') return undefined;
+  const sourceFile = ts.createSourceFile(
+    'default-value.ts',
+    `const value = (${trimmed});`,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const statement = sourceFile.statements[0];
+  if (!statement || !ts.isVariableStatement(statement)) return undefined;
+  return statement.declarationList.declarations[0]?.initializer;
+}
+
+/** 剥掉括号与 `as` / `satisfies` 断言，留下值本身 */
+function unwrapExpression(node: ts.Expression): ts.Expression {
+  let current = node;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
   }
-  if (['true', 'false', 'null'].includes(raw)) return raw;
-  if (raw === 'undefined') return undefined;
-  if (/^-?\d+(\.\d+)?$/.test(raw)) return raw;
-  if (raw.startsWith('{') || raw.startsWith('[')) return raw;
+  return current;
+}
+
+/** 工厂函数返回的表达式；函数体带语句（不止一条 return）时拿不到 */
+function returnedExpression(
+  fn: ts.ArrowFunction | ts.FunctionExpression,
+): ts.Expression | undefined {
+  if (!ts.isBlock(fn.body)) return fn.body;
+  const [statement, ...rest] = fn.body.statements;
+  return rest.length === 0 && statement && ts.isReturnStatement(statement)
+    ? statement.expression
+    : undefined;
+}
+
+/** 字面量的展示文本；非字面量返回 undefined */
+function literalText(node: ts.Expression): string | undefined {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text === '' ? "''" : `'${node.text}'`;
+  }
+  if (ts.isNumericLiteral(node)) return node.getText();
+  if (
+    ts.isPrefixUnaryExpression(node) &&
+    node.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(node.operand)
+  ) {
+    return node.getText();
+  }
+  if (
+    node.kind === ts.SyntaxKind.TrueKeyword ||
+    node.kind === ts.SyntaxKind.FalseKeyword ||
+    node.kind === ts.SyntaxKind.NullKeyword
+  ) {
+    return node.getText();
+  }
+  if (ts.isObjectLiteralExpression(node) || ts.isArrayLiteralExpression(node)) {
+    return node.getText().replace(/\s+/g, ' ');
+  }
   return undefined;
 }
 

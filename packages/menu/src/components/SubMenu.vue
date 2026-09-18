@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+/** 带 flyout 子菜单的触发项：悬停在弹层里展开子项，子项仍可继续嵌套。 */
 import { useClickOutside, useId, useNamespace, useTimeout, useZIndex } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import {

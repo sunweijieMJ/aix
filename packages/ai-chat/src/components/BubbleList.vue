@@ -170,6 +170,7 @@ export interface BubbleListEmits {
 </script>
 
 <script setup lang="ts">
+/** 消息列表：虚拟滚动承载气泡，并处理流式期间的自动跟随与回到底部。 */
 import { useNamespace } from '@aix/hooks';
 import { ArrowDownward } from '@aix/icons';
 import { Virtualizer } from 'virtua/vue';

@@ -570,16 +570,8 @@ const width = ref(200);
 </template>
 ```
 
-| 插槽          | 作用域                                  | 说明                                                    |
-| ------------- | --------------------------------------- | ------------------------------------------------------- |
-| `header`      | -                                       | 列表上方固定区域，设计稿放 logo；内置搜索框渲染在它之下 |
-| `footer`      | -                                       | 列表下方固定区域，设计稿放用户行与设置入口              |
-| `default`     | -                                       | 复合组件写法的菜单内容，渲染在 `items` 之后             |
-| `item`        | `{ item, groupLevel, inPopup, active }` | 自定义数据驱动叶子项的内容                              |
-| `icon`        | `{ item }`                              | 自定义数据驱动节点的图标                                |
-| `group-title` | `{ item }`                              | 自定义数据驱动分组的标题                                |
-
-复合组件写法下，`MenuItem` / `SubMenu` 各自提供 `icon` 插槽，`MenuGroup` 提供 `title` 插槽。
+完整清单见 [Menu Slots](#menu-slots)。复合组件写法下，`MenuItem` / `SubMenu` 各自提供 `icon` 插槽，
+`MenuGroup` 提供 `title` 插槽。
 
 ### 长文案与键盘
 
@@ -828,6 +820,8 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
 :::
 
+**Menu** — 侧边导航菜单：数据驱动与复合组件两种写法，支持分组、flyout 子菜单、搜索与拖拽宽度。
+
 ### Menu Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -880,6 +874,8 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 
 ---
 
+**MenuItem** — 菜单叶子项：复合组件写法下的可选中条目。
+
 ### MenuItem Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -899,6 +895,8 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 
 ---
 
+**MenuGroup** — 菜单分组：可折叠的标题 + 子项容器。
+
 ### MenuGroup Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -917,6 +915,8 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 | `default` | - | 分组内的菜单项 |
 
 ---
+
+**SubMenu** — 带 flyout 子菜单的触发项：悬停在弹层里展开子项，子项仍可继续嵌套。
 
 ### SubMenu Props
 

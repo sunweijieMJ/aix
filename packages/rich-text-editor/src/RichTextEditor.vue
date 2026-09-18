@@ -28,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+/** 富文本编辑器：基于 Tiptap，内置工具栏，表格 / 视频 / 高亮等能力按 prop 开关。 */
 import { useLocale } from '@aix/hooks';
 import { Editor, EditorContent } from '@tiptap/vue-3';
 import { computed, ref } from 'vue';

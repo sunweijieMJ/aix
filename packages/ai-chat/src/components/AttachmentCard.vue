@@ -108,6 +108,7 @@ export interface AttachmentCardEmits {
 </script>
 
 <script setup lang="ts">
+/** 待发送附件的单张卡片：缩略图 / 文件名 / 上传进度，失败可重试，可移除。 */
 import { useNamespace } from '@aix/hooks';
 import { Refresh, Close } from '@aix/icons';
 import { computed, ref, watch } from 'vue';

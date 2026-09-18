@@ -20,6 +20,7 @@
 </template>
 
 <script setup lang="ts">
+/** 菜单叶子项：复合组件写法下的可选中条目。 */
 import { useNamespace } from '@aix/hooks';
 import { computed, inject, onBeforeUnmount, watch } from 'vue';
 import { SUBMENU_INJECTION_KEY, useMenuContext, useMenuLevel } from '../composables/useMenuContext';

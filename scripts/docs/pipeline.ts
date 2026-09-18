@@ -29,6 +29,28 @@ export interface CollectResult {
 const PACKAGES_WITHOUT_COMPONENTS = new Set(['hooks', 'theme', 'icons']);
 
 /**
+ * props 类型来自外部包、包内类型索引查不到声明的组件，按 `<包目录>/<相对包根的文件路径>` 登记，
+ * 值是替代 Props 表展示的说明。
+ *
+ * 同样必须显式声明：不在此列的组件一旦解析不出 props 就是失败，不能任由 API 表整张空着，
+ * 读者会把「解析不到」错读成「没有 props」。
+ */
+const COMPONENTS_WITH_EXTERNAL_PROPS = new Map([
+  [
+    'flow-graph/src/components/nodes/CircleNode.vue',
+    'Props 为 `@vue-flow/core` 的 `NodeProps<NodeData>`，由 VueFlow 在渲染节点时注入，业务侧不直接传。',
+  ],
+  [
+    'flow-graph/src/components/nodes/HexagonNode.vue',
+    'Props 为 `@vue-flow/core` 的 `NodeProps<NodeData>`，由 VueFlow 在渲染节点时注入，业务侧不直接传。',
+  ],
+  [
+    'flow-graph/src/components/edges/ColorEdge.vue',
+    'Props 为 `@vue-flow/core` 的 `EdgeProps<EdgeData>`，由 VueFlow 在渲染边时注入，业务侧不直接传。',
+  ],
+]);
+
+/**
  * 解析 packages/ 下所有包的组件 API。结果只存在内存里，由调用方决定渲染到哪里。
  */
 export async function collectPackageApis(): Promise<CollectResult> {
@@ -57,11 +79,31 @@ export async function collectPackageApis(): Promise<CollectResult> {
         }
         continue;
       }
-      const api = await extractPackageApi(
+      const { api, unresolvedProps } = await extractPackageApi(
         packageDir,
         await readPackageName(packageDir),
         components,
       );
+      let usable = true;
+      for (const file of unresolvedProps) {
+        const note = COMPONENTS_WITH_EXTERNAL_PROPS.get(`${dirName}/${file}`);
+        if (!note) {
+          result.failures.push({
+            dirName,
+            message:
+              `${file}：defineProps 的类型参数一个成员都解析不出来，API 表会整张为空。` +
+              '请把 props 类型改为本包内的声明，或把该文件加进 pipeline.ts 的 COMPONENTS_WITH_EXTERNAL_PROPS',
+          });
+          usable = false;
+          continue;
+        }
+        const component = api.components.find((c) => c.file === file);
+        if (component) component.propsNote = note;
+      }
+      // 解析残缺的包一律不外发：调用方拿到它就会把空表写进 README，报错只是在日志里滚过去。
+      // `packages` 与 `failures` 也因此保持互斥，print-api 的消费方靠这条区分「有源码 API」
+      // 与「退回 README 解析」
+      if (!usable) continue;
       result.packages.push({ dirName, packageDir, api });
     } catch (error: any) {
       result.failures.push({ dirName, message: error.message });

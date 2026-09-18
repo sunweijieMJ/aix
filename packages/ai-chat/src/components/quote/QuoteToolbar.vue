@@ -46,6 +46,7 @@ export interface QuoteToolbarEmits {
 </script>
 
 <script setup lang="ts">
+/** 划词引用的工具条皮肤：贴选区浮动，操作横排成一条。 */
 import { useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { ref, watch, watchEffect } from 'vue';

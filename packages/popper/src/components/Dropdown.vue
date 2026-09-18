@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+/** 下拉菜单：options 数据驱动与 DropdownItem 插槽自定义二选一。 */
 import { useId, useZIndex } from '@aix/hooks';
 import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';

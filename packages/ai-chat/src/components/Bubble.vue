@@ -145,6 +145,7 @@ export interface BubbleEmits {
 </script>
 
 <script setup lang="ts">
+/** 单条消息气泡：按 role / status 决定朝向与配色，内容区由块渲染器装配。 */
 import { useNamespace } from '@aix/hooks';
 import {
   computed,

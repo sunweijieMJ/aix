@@ -45,6 +45,8 @@ export interface ApiComponent {
   file: string;
   description?: string;
   props: ApiProp[];
+  /** props 不在本包内声明时（类型来自外部包）的说明，代替 Props 表展示 */
+  propsNote?: string;
   events: ApiEvent[];
   slots: ApiSlot[];
   expose: ApiExposeMember[];

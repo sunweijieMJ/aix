@@ -687,6 +687,10 @@ interface SpeechConfig {
 
 ## API
 
+**WaveformCanvas** — WaveformCanvas - 波形可视化组件
+接收归一化波形数据点（0-1），用 Canvas 绘制条形波形
+样式通过 CSS Variables 完全暴露，消费方可覆盖
+
 ### WaveformCanvas Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -702,12 +706,15 @@ interface SpeechConfig {
 
 ---
 
+**AudioPlayer** — AudioPlayer - 轻量音频播放器组件
+支持波形可视化和进度控制，样式通过 CSS Variables 完全暴露
+
 ### AudioPlayer Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `src` | `string \| Blob` | - | ✅ | 音频 URL 或 Blob |
-| `waveform` | `number[]` | `[]` | - | 波形数据 |
+| `waveform` | `number[]` | `[]` | - | 波形数据点（0-1 归一化），为空则不画波形 |
 | `showWaveform` | `boolean` | `true` | - | 是否显示波形，默认 true |
 | `autoplay` | `boolean` | `false` | - | 是否自动播放，默认 false |
 

@@ -30,6 +30,7 @@ export interface QuoteChipEmits {
 </script>
 
 <script setup lang="ts">
+/** 输入框上方的引用 chip：点正文定位回原文，点关闭移除该条引用。 */
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
 import { useAiChatLocale } from '../composables/useAiChatLocale';

@@ -615,6 +615,7 @@ export interface AiChatEmits {
 </script>
 
 <script setup lang="ts">
+/** 开箱即用的对话组件：把 Welcome / BubbleList / Sender 与流式请求接线在一起。 */
 import { useNamespace, useControllable, copyText } from '@aix/hooks';
 import { computed, ref, toRaw, watch, watchEffect, useSlots, getCurrentInstance } from 'vue';
 import { ROOT_ID } from '../composables/messageTree';
@@ -766,10 +767,10 @@ const hasHeader = computed(
     ),
 );
 
-// 受控模式：父组件可用 v-model:messages 接管消息列表（持久化 / 外部清空 / 跨组件共享）。
 // 此处刻意保留 defineModel：messagesModel 仅作对外镜像，UI 实际渲染 useChat 的 parsedMessages（SSOT），
 // 且与 useChat 内部数组共享引用（见下方 SSOT 桥接）。Vue 3.3 下非受控时镜像写入虽被 emit-only 丢弃，
 // 但 UI 不依赖它、受控/单向场景 emit 照常触发，故对该 SSOT 场景是优雅降级，无需 useControllable。
+/** 消息列表（v-model:messages）：受控模式下由父组件接管，用于持久化 / 外部清空 / 跨组件共享 */
 const messagesModel = defineModel<ChatMessage[]>('messages', { default: () => [] });
 // 输入框文本（v-model:input）：组件内部（Sender 回填、发送清空、草稿保留）会写入本 model，
 // 属于「内部写入 + 支持非受控」场景。Vue 3.3 的 useModel 为 emit-only，非受控下本地写入会丢失，

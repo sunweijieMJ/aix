@@ -16,6 +16,7 @@
 </template>
 
 <script setup lang="ts">
+/** 下拉菜单项：点击抛出 command，可禁用，可在自身上方加一条分割线。 */
 import { inject } from 'vue';
 import { DROPDOWN_INJECTION_KEY } from '../types';
 import type { DropdownItemProps, DropdownItemEmits } from '../types';

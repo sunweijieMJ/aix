@@ -78,6 +78,7 @@ export interface ContextWindowEmits {
 </script>
 
 <script setup lang="ts">
+/** 上下文用量指示器：展示已用 / 总量，超过阈值转警告态，可触发压缩。 */
 import { useNamespace, useClickOutside } from '@aix/hooks';
 import { DataUsage } from '@aix/icons';
 import { usePopper } from '@aix/popper';

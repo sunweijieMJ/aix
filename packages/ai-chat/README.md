@@ -1397,10 +1397,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 尺寸旋钮解决「大小」，形态解决「长什么样」。把居中对话页的组件搬到侧栏 / 移动端 / 全屏页时，
 需要改的往往不是尺寸而是**容器视觉**——过去只能整段覆写 `.aix-sender` / `.aix-thinking`。
 
-| Prop | 取值 | 说明 |
-|------|------|------|
-| `senderVariant` | `'card'`（默认）/ `'plain'` | 输入框：卡片（圆角描边 + 阴影 + 悬停聚焦描边）/ 贴边通栏（无容器视觉） |
-| `reasoningVariant` | `'card'`（默认）/ `'capsule'` / `'plain'` | 深度思考折叠面板：整体卡片 / hug 宽度胶囊头 + 独立正文块 / 无容器视觉 |
+两个旋钮：`senderVariant` 管输入框，`reasoningVariant` 管深度思考折叠面板，
+取值与含义见 [AiChat Props](#aichat-props)。
 
 ```vue
 <!-- 侧栏形态：通栏输入框 + 胶囊思考区，不需要写任何 :deep -->
@@ -1430,6 +1428,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ## API
 
+**AttachmentCard** — 待发送附件的单张卡片：缩略图 / 文件名 / 上传进度，失败可重试，可移除。
+
 ### AttachmentCard Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1445,6 +1445,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `retry` | - | 上传失败态点击重试 |
 
 ---
+
+**AttachmentsPanel** — 待发送附件面板：承载附件卡片列表，支持点选、拖拽投放与整体收起。
 
 ### AttachmentsPanel Props
 
@@ -1471,6 +1473,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**Bubble** — 单条消息气泡：按 role / status 决定朝向与配色，内容区由块渲染器装配。
+
 ### Bubble Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1491,7 +1495,7 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `tailBreathing` | `boolean \| { idleMs?: number }` | - | - | 末尾静默呼吸：流式输出停顿时让末块文字做明暗呼吸，提示「仍在生成」而非已说完。`true` 用默认 3000ms 阈值；传 `{ idleMs }` 自定义。默认 `false`（不改变视觉）。 |
 | `editing` | `boolean` | - | - | 是否处于内联编辑态（受控，由外部驱动进入/退出——见 BubbleList.startEdit） |
 | `saveDisabled` | `boolean` | - | - | 编辑态下是否禁止保存（如全局请求进行中），true 时点击保存无效果、保留草稿与编辑态 |
-| `errorText` | `string` | - | - | 出错态（status==='error'）内置错误条展示的文案；缺省回退 `locale.errorMessage`。由上层（BubbleList 的 `errorText` 解析函数）按整条消息算好后传入——气泡本身只持有 role/status/content，拿不到 `extra.error` 里的原始错误。**默认仍是 i18n 兜底文案**：`extra.error` 存的是原始 Error，直出会把 `Failed to fetch` 之类的内部信息暴露给终端用户，要不要透出、透出到什么程度由业务显式决定（见 AiChatProps.errorText）。 |
+| `errorText` | `string` | - | - | 出错态（status==='error'）内置错误条展示的文案；缺省回退 `locale.errorMessage`。<br>由上层（BubbleList 的 `errorText` 解析函数）按整条消息算好后传入——气泡本身只持有 role/status/content，拿不到 `extra.error` 里的原始错误。**默认仍是 i18n 兜底文案**：`extra.error` 存的是原始 Error，直出会把 `Failed to fetch` 之类的内部信息暴露给终端用户，要不要透出、透出到什么程度由业务显式决定（见 AiChatProps.errorText）。 |
 
 ### Bubble Events
 
@@ -1515,6 +1519,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `error` | - | 出错态的自定义 UI，作用域含 retry 重试句柄；未提供时显示内置「出错了 + 重试」条 |
 
 ---
+
+**BubbleList** — 消息列表：虚拟滚动承载气泡，并处理流式期间的自动跟随与回到底部。
 
 ### BubbleList Props
 
@@ -1555,11 +1561,13 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**BubbleActions** — 气泡操作条：复制 / 重新生成 / 赞踩 / 朗读 / 引用等内置项与自定义项混排。
+
 ### BubbleActions Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `items` | `(ActionKey \| ActionItem)[]` | - | - | 操作项列表：字符串=内置预设（copy/regenerate/feedback/speak），对象=自定义项；默认 ['copy','regenerate'] |
+| `items` | `(ActionKey \| ActionItem)[]` | `['copy', 'regenerate']` | - | 操作项列表：字符串=内置预设（copy/regenerate/feedback/speak），对象=自定义项；默认 ['copy','regenerate'] |
 | `content` | `string` | - | - | 'copy' 内置项的复制文本；提供后点击复制自动写入剪贴板并给出「已复制」反馈。未提供但传了 `message` 时，点击的那一刻按 `stripMarkdownForCopy(messageText(message))` 现算 （复制是低频动作，不值得为它逐帧预先剥离全文 markdown）。 |
 | `sourceContent` | `string` | - | - | 'copySource' 内置项的复制文本（原始 markdown 源码，未剥离语法符号）；未传时依次退化为 `messageText(message)` → content。该内置项默认不在 items 里，需消费方显式加入才会渲染（如 `actions: ['copy', 'copySource', 'regenerate']`）。 |
 | `feedback` | `MessageFeedback \| null` | - | - | 'feedback' 内置项的受控激活态，null 表示未反馈 |
@@ -1591,6 +1599,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**Sender** — 输入框：多行文本 + 工具栏 + 发送 / 停止，可选接入附件、语音与触发菜单。
+
 ### Sender Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1600,14 +1610,14 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `loading` | `boolean` | `false` | - | 加载态：发送按钮切换为停止按钮，点击触发 cancel，默认 false |
 | `disabled` | `boolean` | `false` | - | 是否禁用整个输入框，默认 false |
 | `submitType` | `'enter' \| 'shiftEnter'` | `'enter'` | - | 提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter' |
-| `attachments` | `UseAttachmentsOptions \| UseAttachmentsReturn` | - | - | 附件能力（opt-in）：不传则完全不渲染附件 UI。传入后启用回形针按钮 / 拖拽 / 粘贴上传。视为静态配置（setup 快照建状态机），运行时切换不生效——与 voice / triggers 约定一致。两种传法： - **配置对象**（`UseAttachmentsOptions`）：Sender 内部自行 `useAttachments`，最省事。 - **已创建的实例**（`UseAttachmentsReturn`）：宿主自己持有状态，把附件 UI 放到 Sender 之外（页面顶部工具条等）也能复用同一份 items —— 发送时的 `drain()`、上传中禁发守卫仍由 Sender 走这份实例，不会各持一份而分叉。二者靠 `'drain' in v` 判别（`UseAttachmentsOptions` 无同名字段，不会误判）。 |
+| `attachments` | `UseAttachmentsOptions \| UseAttachmentsReturn` | - | - | 附件能力（opt-in）：不传则完全不渲染附件 UI。传入后启用回形针按钮 / 拖拽 / 粘贴上传。视为静态配置（setup 快照建状态机），运行时切换不生效——与 voice / triggers 约定一致。<br>两种传法：<br>- **配置对象**（`UseAttachmentsOptions`）：Sender 内部自行 `useAttachments`，最省事。<br>- **已创建的实例**（`UseAttachmentsReturn`）：宿主自己持有状态，把附件 UI 放到 Sender 之外（页面顶部工具条等）也能复用同一份 items —— 发送时的 `drain()`、上传中禁发守卫仍由 Sender 走这份实例，不会各持一份而分叉。<br>二者靠 `'drain' in v` 判别（`UseAttachmentsOptions` 无同名字段，不会误判）。 |
 | `voice` | `boolean \| VoiceConfig` | - | - | 语音输入（opt-in）：true=全默认（Web Speech API + navigator.language）；对象=自定义识别器/语言。不传则不渲染麦克风按钮；浏览器不支持且未注入识别器时按钮自动隐藏。视为静态配置（setup 快照），运行时切换不生效。 |
 | `allowEmptySubmit` | `boolean` | `false` | - | 有外部附加内容（如引用 chip）时允许空文本提交，默认 false |
 | `triggers` | `TriggerConfig[]` | - | - | 触发菜单（opt-in）：@提及 / 斜杠命令等按字符触发的候选菜单。视为静态配置（setup 快照），运行时切换不生效——与 attachments/voice 约定一致。 |
-| `toolbarItems` | `(ToolbarBuiltinKey \| ToolbarItem)[]` | - | - | 工具栏项：内置 'attach'/'voice' 与自定义对象混排，渲染顺序 = 数组顺序。 'attach'/'voice' 是位置占位符，实际是否出内容仍分别由 attachments/voice prop 决定。 |
-| `autoSpacer` | `boolean` | `true` | - | 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，默认 true。业务完全接管 `#toolbar`（`toolbarItems: []`，不使用任何内置 attach/voice 项）自绘全部布局时，隐式 spacer 会插在 slot 内容与发送键之间，把业务自己的左右分组打乱；设为 `false` 即不再补，无需 `toolbarItems: ['spacer']` 占位 + `:deep(.aix-sender__toolbar-spacer) { display: none }` 那道 hack。不影响显式放置的 'spacer'（那始终按数组顺序渲染）。回归用例：\_\_test\_\_/Sender.test.ts |
-| `icons` | `SenderIcons` | - | - | 覆盖内置按钮图标（仅换图标，按钮行为与 a11y 文案不变）。未提供的键回退内置图标，故可只换其中一两个。想连**交互行为**一起接管（换按钮而非换图标）时，改用 `toolbarItems` 里的自定义对象项，或 `#toolbar` 插槽——两者都能从 `SenderSlotScope` 拿到 `toggleAttachments` / `toggleVoice` 等动作，完整复刻内置按钮。传入组件建议用 `markRaw()` 包裹，避免组件对象进入响应式系统触发 Vue 告警 （与 ActionItem.icon 同约定）；图形建议用 `fill="currentColor"`，才能随按钮状态 （可发送 / 禁用 / 输出中）与主题一起变色——内置图标与 @aix/icons 全系都是这个约定。使用侧会统一补 `aria-hidden="true"`（图标纯装饰，可及名来自按钮的 aria-label）。 |
-| `variant` | `'card' \| 'plain'` | `'card'` | - | 外观形态，默认 `'card'`（行为完全不变）： - `'card'`：圆角描边卡片 + 阴影 + 悬停/聚焦主色描边，适合居中对话页里「浮在内容之上」的输入框； - `'plain'`：去掉边框 / 圆角 / 阴影 / 悬停与聚焦描边，只保留内边距与布局，适合侧边栏、移动端、全屏页这类**贴边通栏**形态（分隔线交由宿主自己画，位置与颜色各家不同）。配合 `--aix-sender-padding` / `--aix-sender-gap` / `--aix-sender-input-padding` / `--aix-sender-toolbar-padding` 四个尺寸旋钮，通栏形态基本不必再写 `:deep`。 |
+| `toolbarItems` | `(ToolbarBuiltinKey \| ToolbarItem)[]` | `['attach', 'voice']` | - | 工具栏项：内置 'attach'/'voice' 与自定义对象混排，渲染顺序 = 数组顺序。 'attach'/'voice' 是位置占位符，实际是否出内容仍分别由 attachments/voice prop 决定。 |
+| `autoSpacer` | `boolean` | `true` | - | 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，默认 true。<br>业务完全接管 `#toolbar`（`toolbarItems: []`，不使用任何内置 attach/voice 项）自绘全部布局时，隐式 spacer 会插在 slot 内容与发送键之间，把业务自己的左右分组打乱；设为 `false` 即不再补，无需 `toolbarItems: ['spacer']` 占位 + `:deep(.aix-sender__toolbar-spacer) { display: none }` 那道 hack。不影响显式放置的 'spacer'（那始终按数组顺序渲染）。回归用例：\_\_test\_\_/Sender.test.ts |
+| `icons` | `SenderIcons` | - | - | 覆盖内置按钮图标（仅换图标，按钮行为与 a11y 文案不变）。未提供的键回退内置图标，故可只换其中一两个。<br>想连**交互行为**一起接管（换按钮而非换图标）时，改用 `toolbarItems` 里的自定义对象项，或 `#toolbar` 插槽——两者都能从 `SenderSlotScope` 拿到 `toggleAttachments` / `toggleVoice` 等动作，完整复刻内置按钮。<br>传入组件建议用 `markRaw()` 包裹，避免组件对象进入响应式系统触发 Vue 告警 （与 ActionItem.icon 同约定）；图形建议用 `fill="currentColor"`，才能随按钮状态 （可发送 / 禁用 / 输出中）与主题一起变色——内置图标与 @aix/icons 全系都是这个约定。使用侧会统一补 `aria-hidden="true"`（图标纯装饰，可及名来自按钮的 aria-label）。 |
+| `variant` | `'card' \| 'plain'` | `'card'` | - | 外观形态，默认 `'card'`（行为完全不变）：<br>- `'card'`：圆角描边卡片 + 阴影 + 悬停/聚焦主色描边，适合居中对话页里「浮在内容之上」的输入框；<br>- `'plain'`：去掉边框 / 圆角 / 阴影 / 悬停与聚焦描边，只保留内边距与布局，适合侧边栏、移动端、全屏页这类**贴边通栏**形态（分隔线交由宿主自己画，位置与颜色各家不同）。<br>配合 `--aix-sender-padding` / `--aix-sender-gap` / `--aix-sender-input-padding` / `--aix-sender-toolbar-padding` 四个尺寸旋钮，通栏形态基本不必再写 `:deep`。 |
 
 ### Sender Events
 
@@ -1630,6 +1640,16 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**SenderSkeleton** — 输入框骨架屏：与 Sender 同结构的纯装饰占位（输入行 + 工具栏）。
+
+### SenderSkeleton
+
+暂无对外 API。
+
+---
+
+**Welcome** — 对话开场页：图标 / 标题 / 描述三段，各段都可用插槽替换。
+
 ### Welcome Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1638,7 +1658,7 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `title` | `string` | - | - | 标题文案（可用 title 具名 slot 覆盖） |
 | `description` | `string` | - | - | 描述文案（可用 description 具名 slot 覆盖） |
 | `align` | `'center' \| 'start'` | `'center'` | - | 对齐方式：center 居中空态（默认）/ start 左对齐（用于带在顶部的引导语） |
-| `fillHeight` | `boolean` | - | - | 是否用 flex 上下 auto margin 在纵向撑满的容器（如 AiChat body）中垂直居中，默认跟随 `align`（`center` → `true`，`start` → `false`）。与 `align` **正交**：显式传入本 prop 即可覆盖上述默认，两个维度任意组合—— 如「左对齐 + 垂直居中」（面板顶部左对齐、但仍在空白区居中的引导语）传 `align="start"` + `:fill-height="true"`。 |
+| `fillHeight` | `boolean` | - | - | 是否用 flex 上下 auto margin 在纵向撑满的容器（如 AiChat body）中垂直居中，默认跟随 `align`（`center` → `true`，`start` → `false`）。<br>与 `align` **正交**：显式传入本 prop 即可覆盖上述默认，两个维度任意组合—— 如「左对齐 + 垂直居中」（面板顶部左对齐、但仍在空白区居中的引导语）传 `align="start"` + `:fill-height="true"`。 |
 
 ### Welcome Slots
 
@@ -1650,6 +1670,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `extra` | - | 描述下方的附加区（如快捷问题） |
 
 ---
+
+**Prompts** — 推荐问题列表：点击某条抛出 select，AiChat 用它做开场引导。
 
 ### Prompts Props
 
@@ -1665,6 +1687,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**Thinking** — 深度思考折叠面板：承载模型的推理过程文本，标题 / 图标 / 箭头 / 正文均可替换。
+
 ### Thinking Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1672,7 +1696,7 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `content` | `string` | `''` | - | 思维链内容（可用默认 slot 覆盖） |
 | `title` | `string` | - | - | 折叠面板标题，未传时回退 i18n 文案 |
 | `expanded` | `boolean` | `false` | - | 初始是否展开，默认 false |
-| `variant` | `'card' \| 'capsule' \| 'plain'` | `'card'` | - | 外观形态，默认 `'card'`（行为完全不变）： - `'card'`：整体一个描边卡片，头部撑满、与正文之间一条分隔线； - `'capsule'`：头部收成 hug 宽度的胶囊（不再撑满一行），正文独立成一个圆角浅底块—— 当下多数 AI 产品的思考区就长这样； - `'plain'`：不带任何容器视觉，只保留折叠行为与间距，交给宿主完全自绘。 |
+| `variant` | `'card' \| 'capsule' \| 'plain'` | `'card'` | - | 外观形态，默认 `'card'`（行为完全不变）：<br>- `'card'`：整体一个描边卡片，头部撑满、与正文之间一条分隔线；<br>- `'capsule'`：头部收成 hug 宽度的胶囊（不再撑满一行），正文独立成一个圆角浅底块—— 当下多数 AI 产品的思考区就长这样；<br>- `'plain'`：不带任何容器视觉，只保留折叠行为与间距，交给宿主完全自绘。 |
 
 ### Thinking Slots
 
@@ -1684,6 +1708,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `default` | `props: { open: boolean }` | 折叠面板正文（覆盖 content 文本渲染） |
 
 ---
+
+**ThoughtChain** — 思维链：多个步骤按时序纵向排列，每步带状态与可选结果。
 
 ### ThoughtChain Props
 
@@ -1703,6 +1729,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**ModelSelector** — 模型选择下拉框：受控的 modelValue + options 列表。
+
 ### ModelSelector Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1721,6 +1749,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**MarkdownRenderer** — Markdown 渲染器：流式安全的增量渲染，可注入自定义块渲染器与 markdown-it 插件。
+
 ### MarkdownRenderer Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1729,17 +1759,19 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `streaming` | `boolean` | `false` | - | 流式渲染态：开启后对可能半截的内容做防闪烁整修（隐去未闭合 $$/\[、补围栏、隐末行残链），默认 false。完整文本（非流式）保持 false 以原样渲染。 |
 | `markdownRenderers` | `Record<string, MarkdownRenderer>` | `{}` | - | markdown token 渲染器注册表（扩展/覆盖内置块渲染，如 fence/math/自定义），优先级高于内置 |
 | `allowHtml` | `boolean` | `false` | - | 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），默认 false |
-| `mdPlugins` | `MarkdownItPlugin[]` | - | - | 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）。引擎按「本数组引用 + allowHtml」缓存：同一引用跨气泡共享同一引擎，换引用即重载。因此**务必传稳定引用**——每次渲染新建数组字面量会让每帧都装配一个新引擎。 |
+| `mdPlugins` | `MarkdownItPlugin[]` | - | - | 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）。<br>引擎按「本数组引用 + allowHtml」缓存：同一引用跨气泡共享同一引擎，换引用即重载。因此**务必传稳定引用**——每次渲染新建数组字面量会让每帧都装配一个新引擎。 |
 
 ---
+
+**AiChat** — 开箱即用的对话组件：把 Welcome / BubbleList / Sender 与流式请求接线在一起。
 
 ### AiChat Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `request` | `UseChatOptions['request']` | - | ✅ | 发起请求，返回字节流或 Response（必填）。 **每次发请求那一刻才读取本 prop，运行时替换即刻生效**——内部并非把它快照进 useChat，而是转发一层闭包 `(ctx) => props.request(...)`（见下方 useChat 接线处）。因此「对话中途换模型 / 换后端」不需要 `:key` 强制重建 AiChat，在自己的 request 实现里读一个响应式变量即可，用法见 README「自定义协议 / 换模型」。仅当新旧后端的**流格式也不同**时才需要连同 parseChunk 一起换，那种场景才必须重建实例。 |
+| `request` | `UseChatOptions['request']` | - | ✅ | 发起请求，返回字节流或 Response（必填）。<br>**每次发请求那一刻才读取本 prop，运行时替换即刻生效**——内部并非把它快照进 useChat，而是转发一层闭包 `(ctx) => props.request(...)`（见下方 useChat 接线处）。因此「对话中途换模型 / 换后端」不需要 `:key` 强制重建 AiChat，在自己的 request 实现里读一个响应式变量即可，用法见 README「自定义协议 / 换模型」。<br>仅当新旧后端的**流格式也不同**时才需要连同 parseChunk 一起换，那种场景才必须重建实例。 |
 | `streamMode` | `'sse' \| 'line'` | - | - | 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat。每次请求才读取，运行时可改 |
-| `parseChunk` | `UseChatOptions['parseChunk']` | - | - | 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传 openaiParseChunk/anthropicParseChunk。透传给 useChat。与 `request` 同口径：内部转发一层闭包，**每个流单元才读取本 prop**，故「换后端顺带换流格式」 直接改这两个 prop 即可，无需 `:key` 重建实例。 |
+| `parseChunk` | `UseChatOptions['parseChunk']` | - | - | 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传 openaiParseChunk/anthropicParseChunk。透传给 useChat。<br>与 `request` 同口径：内部转发一层闭包，**每个流单元才读取本 prop**，故「换后端顺带换流格式」 直接改这两个 prop 即可，无需 `:key` 重建实例。 |
 | `parser` | `UseChatOptions['parser']` | - | - | 渲染消息转换器（解耦后端格式与展示形状，1→1，须保留消息 id）；透传给 useChat。静态配置 |
 | `defaultMessages` | `UseChatOptions['defaultMessages']` | - | - | 初始历史消息 |
 | `historyLoading` | `boolean` | - | - | 历史消息加载中：true 时消息区渲染骨架屏（占位假气泡），而不是空消息态的 Welcome 或真实 BubbleList；用于业务从远端异步恢复会话历史时的过渡态（如接入 useConversations 异步 storage.load，配合其 isLoading 传入本 prop）。默认 false（不生效时行为不变： messages 为空显示 Welcome，否则显示 BubbleList）。透传给 BubbleList 的 loading prop。 |
@@ -1756,32 +1788,33 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `headerIcon` | `string` | - | - | 顶部标题栏图标图片地址（可用 header-icon 具名插槽覆盖） |
 | `welcomeTitle` | `string` | - | - | 欢迎页标题（空消息态展示）。等价于 `welcome.title`，两者同时存在时以 `welcome` 为准 |
 | `welcomeDescription` | `string` | - | - | 欢迎页描述文案（空消息态展示）。等价于 `welcome.description`，两者同时存在时以 `welcome` 为准 |
-| `welcome` | `{ icon?: string; title?: string; description?: string; align?: 'center' \| 'start'; fillHeight?: boolean; }` | - | - | 欢迎页配置。`title` / `description` 与扁平的 `welcomeTitle` / `welcomeDescription` 等价 （本对象优先），另外开放三项只能从这里配置的能力： - `icon`：Welcome 的图标图片地址（也可用 `#welcome-icon` 插槽）； - `align`：`'center'`（默认）/ `'start'` 左对齐引导语； - `fillHeight`：是否用 `margin: auto 0` 在 body 内垂直居中，默认跟随 `align`。后两项 Welcome 组件本就支持且互相正交，只是一直没接线到这一层，于是「左对齐欢迎语」 这种常见形态只能靠覆写 `.aix-welcome--center` / `.aix-welcome.is-fill-height` 反向实现。 |
+| `welcome` | `{ icon?: string; title?: string; description?: string; align?: 'center' \| 'start'; fillHeight?: boolean; }` | - | - | 欢迎页配置。`title` / `description` 与扁平的 `welcomeTitle` / `welcomeDescription` 等价 （本对象优先），另外开放三项只能从这里配置的能力：<br>- `icon`：Welcome 的图标图片地址（也可用 `#welcome-icon` 插槽）；<br>- `align`：`'center'`（默认）/ `'start'` 左对齐引导语；<br>- `fillHeight`：是否用 `margin: auto 0` 在 body 内垂直居中，默认跟随 `align`。<br>后两项 Welcome 组件本就支持且互相正交，只是一直没接线到这一层，于是「左对齐欢迎语」 这种常见形态只能靠覆写 `.aix-welcome--center` / `.aix-welcome.is-fill-height` 反向实现。 |
 | `placeholder` | `string` | - | - | 输入框占位提示，缺省取 locale.senderPlaceholder |
 | `submitType` | `'enter' \| 'shiftEnter'` | - | - | 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter'；透传给 Sender |
 | `actions` | `ActionsItems \| ((message: ChatMessage) => ActionsItems \| null)` | - | - | 消息操作条配置，默认 ['copy','regenerate']。数组形态：仅对 role==='ai' && status==='success' 的消息渲染；函数形态：对每条消息调用，返回 items 则渲染、null/[] 不渲染（可按状态/角色细控）。设为 [] 关闭默认操作条；#footer slot 提供时优先（覆盖机制不变）。函数形态应为纯函数（同输入同输出）；返回值随消息 status 响应式更新。 |
-| `actionsTrigger` | `'always' \| 'hover'` | `'always'` | - | 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示）。 'hover' 作用于气泡内带 `data-aix-hover-reveal` 标记的元素——内置操作条自带该标记；用 `#footer` 自绘操作条时，给自己的根节点加上同一属性即可同样生效。 footer 内的常驻内容（图表卡 / 参考资料等）不加标记即不参与显隐。 |
-| `errorText` | `(message: ChatMessage) => string` | - | - | 出错态内置错误条的文案解析，默认回退 `locale.errorMessage`。`request` / `parseChunk` 抛出的原始错误存在 `message.extra.error` 里，但**默认不直出**：那里可能是 `TypeError: Failed to fetch` 之类的内部信息，直接展示给终端用户是负收益。想透出后端返回的具体原因（限流、鉴权、内容审核等业务错误）时显式声明本函数即可，无需为此接管整个 `#error` 插槽（示例见 README「消息级插槽」）。返回空串等同未提供（回退 i18n 文案）。仅对 `status === 'error'` 的消息调用。 |
+| `actionsTrigger` | `'always' \| 'hover'` | `'always'` | - | 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示）。<br>'hover' 作用于气泡内带 `data-aix-hover-reveal` 标记的元素——内置操作条自带该标记；用 `#footer` 自绘操作条时，给自己的根节点加上同一属性即可同样生效。 footer 内的常驻内容（图表卡 / 参考资料等）不加标记即不参与显隐。 |
+| `errorText` | `(message: ChatMessage) => string` | - | - | 出错态内置错误条的文案解析，默认回退 `locale.errorMessage`。<br>`request` / `parseChunk` 抛出的原始错误存在 `message.extra.error` 里，但**默认不直出**：那里可能是 `TypeError: Failed to fetch` 之类的内部信息，直接展示给终端用户是负收益。想透出后端返回的具体原因（限流、鉴权、内容审核等业务错误）时显式声明本函数即可，无需为此接管整个 `#error` 插槽（示例见 README「消息级插槽」）。<br>返回空串等同未提供（回退 i18n 文案）。仅对 `status === 'error'` 的消息调用。 |
 | `retryTimes` | `number` | - | - | 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。运行时可改 |
 | `retryInterval` | `number` | - | - | 两次重试间隔（ms），默认 1000；透传给 useChat。运行时可改 |
 | `continuePrompt` | `string` | - | - | 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。默认见 useChat 的 continuePrompt 说明。运行时可改 |
 | `streamTimeout` | `number` | - | - | 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。每次 attempt 起表时取值，运行时可改 |
 | `markdownRenderers` | `Record<string, MarkdownRenderer>` | - | - | markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局同名配置。运行时可改（经下方 provide 的响应式配置对象下发） |
 | `allowHtml` | `boolean` | - | - | 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），默认 false；注入到气泡内 MarkdownRenderer。运行时可改（切换时引擎按新模式重载） |
-| `mdPlugins` | `MarkdownItPlugin[]` | - | - | 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）；注入到气泡内 MarkdownRenderer。与 markdownRenderers 互补：插件加新 tokenization，markdownRenderers 改 token 渲染。运行时可改，但**务必传稳定引用**：markdown 引擎按「插件数组引用 + allowHtml」缓存，每次渲染新建数组字面量会让每帧都装配一个新引擎。 |
-| `attachments` | `UseAttachmentsOptions \| UseAttachmentsReturn` | - | - | 附件能力（opt-in），原样透传 Sender；不传则无任何附件 UI。静态配置两种传法与 `SenderProps.attachments` 完全一致（本层只是直通，不做任何加工）： - **配置对象**（`UseAttachmentsOptions`）：由 Sender 内部 `useAttachments`，最省事； - **已创建的实例**（`UseAttachmentsReturn`）：宿主自己持有 items / `clear()` 等状态与句柄。传实例的典型需求：面板以 v-if 卸载时把已上传未发送的附件回收掉（`useAttachments` 的 scope 销毁会逐条走 onRemove，但宿主也可能想更早地手动 `clear()`）。 |
+| `mdPlugins` | `MarkdownItPlugin[]` | - | - | 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）；注入到气泡内 MarkdownRenderer。与 markdownRenderers 互补：插件加新 tokenization，markdownRenderers 改 token 渲染。<br>运行时可改，但**务必传稳定引用**：markdown 引擎按「插件数组引用 + allowHtml」缓存，每次渲染新建数组字面量会让每帧都装配一个新引擎。 |
+| `attachments` | `UseAttachmentsOptions \| UseAttachmentsReturn` | - | - | 附件能力（opt-in），原样透传 Sender；不传则无任何附件 UI。静态配置<br>两种传法与 `SenderProps.attachments` 完全一致（本层只是直通，不做任何加工）：<br>- **配置对象**（`UseAttachmentsOptions`）：由 Sender 内部 `useAttachments`，最省事；<br>- **已创建的实例**（`UseAttachmentsReturn`）：宿主自己持有 items / `clear()` 等状态与句柄。<br>传实例的典型需求：面板以 v-if 卸载时把已上传未发送的附件回收掉（`useAttachments` 的 scope 销毁会逐条走 onRemove，但宿主也可能想更早地手动 `clear()`）。 |
 | `voice` | `boolean \| VoiceConfig` | - | - | 语音输入（opt-in），透传 Sender；不传则无麦克风按钮。静态配置 |
 | `speech` | `boolean \| SpeechConfig` | - | - | 语音播报（opt-in），透传内置 useSpeech；不传则无朗读按钮、不自动播报。 true=全默认（speechSynthesis）；对象=自定义合成器 / autoPlay / getText 等。静态配置注意：actions 为函数形态时不会自动追加内置 speak 项，需业务在返回数组中自行包含 'speak'；数组/默认形态会自动为 ai+success 且有可朗读文本的消息追加。 |
-| `tree` | `ExportedTree` | - | - | 对话树（v-model:tree）：分支感知的持久化通道，绑 useConversations.activeTree。不传则不参与树级持久化。同时绑 v-model:messages 与 v-model:tree 时以 tree 为准；推荐持久化场景用 tree，两者择一。`update:tree` 只在四个离散时刻触发（结构变化 / 请求落终态 / 交互块回写 / 赞踩写回）， **流式逐 chunk 不触发**。自定义持久化前请读 README「`update:tree` 的触发口径」—— 只按「结构变化」落库会静默丢掉整轮回复内容。 |
-| `treeMode` | `boolean` | - | - | 显式声明是否以 `tree` 为权威持久化通道（默认由是否绑定 `v-model:tree` 自动推断）。为真时：`messages` 只作只读镜像输出、不再反向导入内部树（两条桥接同时回写会让 messages model 被 prop 回灌成 `[]`，进而清空整棵树）。自动推断读的是编译后的 vnode props（`'onUpdate:tree' in props`），覆盖 `v-model:tree` / 单向 `:tree` 两种写法，绝大多数场景无需管本 prop。仅当推断不适用时才显式声明——典型是用 `h()` / JSX 手写 vnode、或经高阶组件 `v-bind="$attrs"` 中转导致监听器形态不同。 |
-| `quote` | `QuoteConfig \| boolean` | - | - | 划词引用/追问（opt-in，默认关闭）。true 开启默认能力；false 关闭；对象按 QuoteConfig 细配并默认视为开启，与全局 provideAiChatConfig().quote 合并（props 优先）。响应式粒度是**混合**的（不可一概按「setup 快照」理解，故逐项写明）： - 运行时可变：`enable` / `roles` / `actions` / `pcQuoteAction` / `maxVisibleChips` / `toPrompt` / `toolbar` / `sheet` —— 均在使用那一刻经 getter 或 computed 读取； - setup 快照：`longPressDelay` / `keyboard` / `excludeSelector` —— 在 useTextSelection 装配时一次性取值（见 useQuoteBinding 传参处），运行时改需重建组件。 |
+| `tree` | `ExportedTree` | - | - | 对话树（v-model:tree）：分支感知的持久化通道，绑 useConversations.activeTree。不传则不参与树级持久化。同时绑 v-model:messages 与 v-model:tree 时以 tree 为准；推荐持久化场景用 tree，两者择一。<br>`update:tree` 只在四个离散时刻触发（结构变化 / 请求落终态 / 交互块回写 / 赞踩写回）， **流式逐 chunk 不触发**。自定义持久化前请读 README「`update:tree` 的触发口径」—— 只按「结构变化」落库会静默丢掉整轮回复内容。 |
+| `treeMode` | `boolean` | - | - | 显式声明是否以 `tree` 为权威持久化通道（默认由是否绑定 `v-model:tree` 自动推断）。<br>为真时：`messages` 只作只读镜像输出、不再反向导入内部树（两条桥接同时回写会让 messages model 被 prop 回灌成 `[]`，进而清空整棵树）。<br>自动推断读的是编译后的 vnode props（`'onUpdate:tree' in props`），覆盖 `v-model:tree` / 单向 `:tree` 两种写法，绝大多数场景无需管本 prop。仅当推断不适用时才显式声明——典型是用 `h()` / JSX 手写 vnode、或经高阶组件 `v-bind="$attrs"` 中转导致监听器形态不同。 |
+| `quote` | `QuoteConfig \| boolean` | - | - | 划词引用/追问（opt-in，默认关闭）。true 开启默认能力；false 关闭；对象按 QuoteConfig 细配并默认视为开启，与全局 provideAiChatConfig().quote 合并（props 优先）。<br>响应式粒度是**混合**的（不可一概按「setup 快照」理解，故逐项写明）：<br>- 运行时可变：`enable` / `roles` / `actions` / `pcQuoteAction` / `maxVisibleChips` / `toPrompt` / `toolbar` / `sheet` —— 均在使用那一刻经 getter 或 computed 读取；<br>- setup 快照：`longPressDelay` / `keyboard` / `excludeSelector` —— 在 useTextSelection 装配时一次性取值（见 useQuoteBinding 传参处），运行时改需重建组件。 |
 | `triggers` | `TriggerConfig[]` | - | - | 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置 |
 | `toolbarItems` | `SenderToolbarItems` | - | - | 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender；不传则用 Sender 默认值 ['attach','voice'] |
 | `autoSpacer` | `boolean` | - | - | 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，直通 Sender，默认 true。见 `SenderProps.autoSpacer` 说明。 |
-| `senderIcons` | `SenderIcons` | - | - | 覆盖 Sender 内置按钮图标（附件 / 语音 / 发送 / 停止），直通 Sender 的 `icons` prop。命名上刻意加 `sender` 前缀、不沿用同名直通的惯例（`toolbarItems` / `triggers` 那样）： AiChat 这一层还有消息操作条图标（`ActionItem.icon`）、划词菜单图标等多套图标，裸叫 `icons` 会被读成「全局图标表」，与实际作用域不符。 |
+| `senderIcons` | `SenderIcons` | - | - | 覆盖 Sender 内置按钮图标（附件 / 语音 / 发送 / 停止），直通 Sender 的 `icons` prop。<br>命名上刻意加 `sender` 前缀、不沿用同名直通的惯例（`toolbarItems` / `triggers` 那样）： AiChat 这一层还有消息操作条图标（`ActionItem.icon`）、划词菜单图标等多套图标，裸叫 `icons` 会被读成「全局图标表」，与实际作用域不符。 |
 | `senderVariant` | `SenderVariant` | - | - | 输入框外观形态，直通 Sender 的 `variant`，默认 `'card'`。侧边栏 / 移动端 / 全屏页这类贴边通栏形态传 `'plain'`，配合 `--aix-ai-chat-sender-margin: 0` 与 `--aix-sender-*` 尺寸旋钮即可，无需覆写 `.aix-sender`。命名前缀同 `senderIcons`（这一层还有别的 variant 概念，裸叫 variant 会读成组件整体形态）。 |
 | `reasoningVariant` | `'card' \| 'capsule' \| 'plain'` | - | - | 深度思考（reasoning 块）折叠面板的外观形态，默认 `'card'`；`'capsule'` 为 hug 宽度胶囊头 + 独立正文块（多数 AI 产品的当下形态），`'plain'` 无容器视觉。经 provideAiChatConfig 注入（ReasoningBlock 由注册表实例化、接不到 prop）；运行时可改 |
 | `suggestions` | `boolean \| { fillOnly?: boolean; max?: number }` | - | - | 追问建议（opt-in）：true 全默认；对象可配 fillOnly（点击仅回填不发送）/ max（上限，默认 5）。联合类型含 boolean：withDefaults 必须显式 default undefined（同 quote 的坑） |
+| `messages` | `ChatMessage[]` | `[]` | - | 消息列表（v-model:messages）：受控模式下由父组件接管，用于持久化 / 外部清空 / 跨组件共享 |
 
 ### AiChat Events
 
@@ -1832,6 +1865,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**Conversations** — 会话列表：分组、搜索、新建，以及单条会话的重命名与删除。
+
 ### Conversations Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1863,6 +1898,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**Skeleton** — 骨架屏占位：按 rows 出多行条，或按 aspectRatio 出一个占位块。
+
 ### Skeleton Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1879,6 +1916,16 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `default` | - | loading 为 false 时渲染的真实内容 |
 
 ---
+
+**LoadingDots** — 三点跳动的加载指示。
+
+### LoadingDots
+
+暂无对外 API。
+
+---
+
+**QuoteMenu** — 划词引用菜单的外壳：按 mode 选用悬浮工具条或列表面板皮肤，并统一转发操作。
 
 ### QuoteMenu Props
 
@@ -1902,6 +1949,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**QuoteChip** — 输入框上方的引用 chip：点正文定位回原文，点关闭移除该条引用。
+
 ### QuoteChip Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -1916,6 +1965,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `locate` | `quote: Quote` | 点击主体回链定位到原文 |
 
 ---
+
+**TriggerMenu** — 输入框的触发菜单：@提及 / 斜杠命令等按字符触发的候选列表。
 
 ### TriggerMenu Props
 
@@ -1936,6 +1987,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `update:activeIndex` | `i: number` | 键盘导航改变高亮项索引（v-model:activeIndex） |
 
 ---
+
+**Suggestions** — 追问建议：一行可点的候选问题，加载期间出骨架屏。
 
 ### Suggestions Props
 
@@ -1958,13 +2011,15 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 ---
 
+**ContextWindow** — 上下文用量指示器：展示已用 / 总量，超过阈值转警告态，可触发压缩。
+
 ### ContextWindow Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `used` | `number` | `0` | - | 已用 token 数 |
 | `total` | `number` | `0` | - | 上下文窗口总量 |
-| `percent` | `number` | - | - | 展示用占比（0–1）。缺省由 used/total 计算；total 为 0 时按 0 处理（不产生 NaN/Infinity）。后端只回百分比、不回 token 数时可只传本项：`total` 为 0 即视为「窗口总量未知」，摘要与用量文案一并退化为纯百分比，不会显示无意义的 `0/0`。 |
+| `percent` | `number` | - | - | 展示用占比（0–1）。缺省由 used/total 计算；total 为 0 时按 0 处理（不产生 NaN/Infinity）。<br>后端只回百分比、不回 token 数时可只传本项：`total` 为 0 即视为「窗口总量未知」，摘要与用量文案一并退化为纯百分比，不会显示无意义的 `0/0`。 |
 | `compressible` | `boolean` | `false` | - | 是否提供「压缩会话」入口，默认 false |
 | `compressing` | `boolean` | `false` | - | 压缩进行中：按钮禁用并显示进行中文案 |
 | `formatter` | `(n: number) => string` | - | - | 数值格式化，缺省按 k 单位（12000 → 12k） |
@@ -1977,6 +2032,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `compress` | - | 用户点击压缩：组件不发请求，宿主自行处理并回写 used |
 
 ---
+
+**MessageOutline** — 对话大纲：贴边的消息刻度条，点击跳到对应消息。
 
 ### MessageOutline Props
 
@@ -1992,6 +2049,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `select` | `entry: OutlineEntry` | 点击某条刻度：宿主负责滚动定位（组件不碰滚动容器） |
 
 ---
+
+**QuoteToolbar** — 划词引用的工具条皮肤：贴选区浮动，操作横排成一条。
 
 ### QuoteToolbar Props
 
@@ -2009,6 +2068,8 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 | `close` | - | 关闭工具栏 |
 
 ---
+
+**QuoteSheet** — 划词引用的面板皮肤：贴选区浮动，操作纵向成列表，适合项数较多时。
 
 ### QuoteSheet Props
 

@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+/** 菜单分组：可折叠的标题 + 子项容器。 */
 import { useId, useNamespace } from '@aix/hooks';
 import { Tooltip } from '@aix/popper';
 import { computed, onBeforeUnmount, provide, ref, watch } from 'vue';

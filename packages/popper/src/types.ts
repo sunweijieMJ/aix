@@ -10,7 +10,7 @@ export type TriggerType = 'hover' | 'click' | 'focus' | 'contextmenu' | 'manual'
 
 export interface PopperProps {
   /**
-   * 浮动元素相对于参考元素的位置
+   * 浮动元素相对于参考元素的位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'bottom'
    */
   placement?: Placement;
@@ -134,7 +134,7 @@ export interface TooltipProps {
   content?: string;
 
   /**
-   * 弹出位置
+   * 弹出位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'top'
    */
   placement?: Placement;
@@ -223,7 +223,7 @@ export interface PopoverProps {
   trigger?: Extract<TriggerType, 'click' | 'hover' | 'focus' | 'manual'>;
 
   /**
-   * 弹出位置
+   * 弹出位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'top'
    */
   placement?: Placement;
@@ -335,7 +335,7 @@ export interface DropdownProps {
   trigger?: Extract<TriggerType, 'click' | 'hover'>;
 
   /**
-   * 弹出位置
+   * 弹出位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'bottom-start'
    */
   placement?: Placement;

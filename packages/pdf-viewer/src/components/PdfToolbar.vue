@@ -70,6 +70,7 @@
 </template>
 
 <script setup lang="ts">
+/** PDF 工具栏：翻页、跳页、缩放与适应页面，三个区域都可用插槽替换。 */
 import { useLocale } from '@aix/hooks';
 import { Add, ArrowLeft, ArrowRight, Fullscreen, Minus } from '@aix/icons';
 import { locale } from '../locale';

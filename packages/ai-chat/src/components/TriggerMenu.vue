@@ -71,6 +71,7 @@ export interface TriggerMenuEmits {
 </script>
 
 <script setup lang="ts">
+/** 输入框的触发菜单：@提及 / 斜杠命令等按字符触发的候选列表。 */
 import { useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { computed, ref, watch, watchEffect } from 'vue';

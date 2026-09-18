@@ -46,6 +46,9 @@ export default defineConfig({
       'kit/*/vitest.config.ts',
       'apps/*/vitest.config.ts',
       'internal/*/vitest.config.ts',
+      // 仓库根脚本（文档管线等）。scripts/ 不是 workspace，turbo test 扫不到它，
+      // 只有根口径（test:unit / test:coverage）会跑
+      'scripts/vitest.config.ts',
       // Storybook 交互测试（真实浏览器），仅根口径存在；
       // 单测脚本用 --project '!storybook' 排除，stories 用 --project storybook 单跑
       {

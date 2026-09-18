@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+/** 文字提示：悬停触发的轻量提示气泡。 */
 import { useId, useZIndex } from '@aix/hooks';
 import { computed, nextTick, ref, watch } from 'vue';
 import { usePopper } from '../composables/usePopper';

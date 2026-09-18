@@ -28,6 +28,7 @@ export interface SkeletonProps {
 </script>
 
 <script setup lang="ts">
+/** 骨架屏占位：按 rows 出多行条，或按 aspectRatio 出一个占位块。 */
 import { computed } from 'vue';
 
 const props = withDefaults(defineProps<SkeletonProps>(), {

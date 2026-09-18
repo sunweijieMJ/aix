@@ -87,9 +87,9 @@ export interface VideoPlayerProps {
    * @default true
    */
   fluid?: boolean;
-  /** 宽度 */
+  /** 宽度，数字按 px 处理；未设时由 fluid / responsive 决定 */
   width?: number | string;
-  /** 高度 */
+  /** 高度，数字按 px 处理；未设时由 fluid / responsive 决定 */
   height?: number | string;
   /** 宽高比（如 '16:9'） */
   aspectRatio?: string;
@@ -104,7 +104,8 @@ export interface VideoPlayerProps {
    */
   transparent?: boolean;
   /**
-   * 是否跨域
+   * 是否给 video 元素加 `crossorigin="anonymous"`；跨域截帧 / 取像素需要它，
+   * 但源站未回 CORS 头时会导致加载失败，此时关掉
    * @default true
    */
   crossOrigin?: boolean;

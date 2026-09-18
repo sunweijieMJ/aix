@@ -5,6 +5,7 @@
 </template>
 
 <script setup lang="ts">
+/** 代码编辑器：基于 CodeMirror 6，支持多语言高亮、行号、折叠与 lint。 */
 import { computed, ref } from 'vue';
 import type { CSSProperties } from 'vue';
 import { useEditorCore } from './composables/useEditorCore';

@@ -42,6 +42,7 @@ export interface WelcomeProps {
 </script>
 
 <script setup lang="ts">
+/** 对话开场页：图标 / 标题 / 描述三段，各段都可用插槽替换。 */
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
 

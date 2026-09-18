@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+/** 气泡卡片：点击或悬停触发，相比 Tooltip 可承载标题与富内容。 */
 import { useId, useZIndex } from '@aix/hooks';
 import { computed, ref, watch, type CSSProperties } from 'vue';
 import { usePopper } from '../composables/usePopper';

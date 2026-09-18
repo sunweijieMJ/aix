@@ -96,6 +96,7 @@ export interface AttachmentsPanelEmits {
 </script>
 
 <script setup lang="ts">
+/** 待发送附件面板：承载附件卡片列表，支持点选、拖拽投放与整体收起。 */
 import { useNamespace } from '@aix/hooks';
 import { AttachFile, Close } from '@aix/icons';
 import { ref } from 'vue';

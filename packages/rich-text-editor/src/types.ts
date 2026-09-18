@@ -27,8 +27,7 @@ export type HeadersConfig = Record<string, string> | (() => Record<string, strin
 
 /** 附加表单字段 */
 export type ExtraDataConfig =
-  | Record<string, string | Blob>
-  | ((file: File) => Record<string, string | Blob>);
+  Record<string, string | Blob> | ((file: File) => Record<string, string | Blob>);
 
 // ========== 输出格式 ==========
 
@@ -231,67 +230,67 @@ export interface RichTextEditorProps {
   // ===== 14 项增强功能（全部可选，默认不启用） =====
 
   /**
-   * 表格功能
+   * 开启表格（插入 / 增删行列）；传对象可关掉列宽拖拽
    */
   table?: boolean | TableConfig;
 
   /**
-   * 任务列表（可勾选的 TODO 列表）
+   * 开启任务列表（可勾选的 TODO 列表）
    */
   taskList?: boolean;
 
   /**
-   * 图片功能（需配置 upload 回调或 server 地址）
+   * 开启图片插入，须在此配置 upload 回调或 server 地址
    */
   image?: ImageConfig;
 
   /**
-   * 视频功能
+   * 开启视频插入；上传方式同图片，须配 upload 回调或 server 地址
    */
   video?: boolean | VideoConfig;
 
   /**
-   * 文本对齐（左/中/右/两端）
+   * 开启文本对齐（左 / 中 / 右 / 两端）
    */
   textAlign?: boolean;
 
   /**
-   * 文本颜色 + 高亮背景
+   * 开启文本颜色与高亮背景的取色器
    */
   textColor?: boolean;
 
   /**
-   * 字体大小
+   * 开启字号选择；传对象可换掉可选字号列表
    */
   fontSize?: boolean | FontSizeConfig;
 
   /**
-   * 字体族
+   * 开启字体选择；传对象可换掉可选字体列表
    */
   fontFamily?: boolean | FontFamilyConfig;
 
   /**
-   * 上标/下标
+   * 开启上标 / 下标
    */
   superscriptSubscript?: boolean;
 
   /**
-   * 字符统计
+   * 开启字符与词数统计（结果由 character-count 事件抛出）；传对象可设上限与统计口径
    */
   characterCount?: boolean | CharacterCountConfig;
 
   /**
-   * @提及功能（需配置 queryItems 回调或 server 地址）
+   * 开启 @提及，须在此配置 queryItems 回调或 server 地址
    */
   mention?: MentionConfig;
 
   /**
-   * 高亮标记
+   * 开启高亮标记（荧光笔）
    */
   highlight?: boolean;
 
   /**
-   * Markdown 输入支持
+   * 开启 Markdown 输入语法（如行首 `#` 加空格转标题）
    */
   markdown?: boolean;
 }

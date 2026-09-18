@@ -40,6 +40,7 @@ export interface SuggestionsEmits {
 </script>
 
 <script setup lang="ts">
+/** 追问建议：一行可点的候选问题，加载期间出骨架屏。 */
 import { useNamespace } from '@aix/hooks';
 import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { SuggestionItem } from '../types';

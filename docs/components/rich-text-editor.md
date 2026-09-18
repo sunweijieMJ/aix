@@ -42,6 +42,8 @@ import '@aix/theme/style';
 需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
 :::
 
+**RichTextEditor** — 富文本编辑器：基于 Tiptap，内置工具栏，表格 / 视频 / 高亮等能力按 prop 开关。
+
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
@@ -58,19 +60,19 @@ import '@aix/theme/style';
 | `showToolbar` | `boolean` | `true` | - | 是否显示 Toolbar |
 | `extensions` | `AnyExtension[]` | - | - | 用户自定义 Tiptap 扩展（完全开放的扩展接口） |
 | `locale` | `'zh-CN' \| 'en-US'` | - | - | 语言覆盖（优先于全局 locale） |
-| `table` | `boolean \| TableConfig` | - | - | 表格功能 |
-| `taskList` | `boolean` | - | - | 任务列表（可勾选的 TODO 列表） |
-| `image` | `ImageConfig` | - | - | 图片功能（需配置 upload 回调或 server 地址） |
-| `video` | `boolean \| VideoConfig` | - | - | 视频功能 |
-| `textAlign` | `boolean` | - | - | 文本对齐（左/中/右/两端） |
-| `textColor` | `boolean` | - | - | 文本颜色 + 高亮背景 |
-| `fontSize` | `boolean \| FontSizeConfig` | - | - | 字体大小 |
-| `fontFamily` | `boolean \| FontFamilyConfig` | - | - | 字体族 |
-| `superscriptSubscript` | `boolean` | - | - | 上标/下标 |
-| `characterCount` | `boolean \| CharacterCountConfig` | - | - | 字符统计 |
-| `mention` | `MentionConfig` | - | - | @提及功能（需配置 queryItems 回调或 server 地址） |
-| `highlight` | `boolean` | - | - | 高亮标记 |
-| `markdown` | `boolean` | - | - | Markdown 输入支持 |
+| `table` | `boolean \| TableConfig` | - | - | 开启表格（插入 / 增删行列）；传对象可关掉列宽拖拽 |
+| `taskList` | `boolean` | - | - | 开启任务列表（可勾选的 TODO 列表） |
+| `image` | `ImageConfig` | - | - | 开启图片插入，须在此配置 upload 回调或 server 地址 |
+| `video` | `boolean \| VideoConfig` | - | - | 开启视频插入；上传方式同图片，须配 upload 回调或 server 地址 |
+| `textAlign` | `boolean` | - | - | 开启文本对齐（左 / 中 / 右 / 两端） |
+| `textColor` | `boolean` | - | - | 开启文本颜色与高亮背景的取色器 |
+| `fontSize` | `boolean \| FontSizeConfig` | - | - | 开启字号选择；传对象可换掉可选字号列表 |
+| `fontFamily` | `boolean \| FontFamilyConfig` | - | - | 开启字体选择；传对象可换掉可选字体列表 |
+| `superscriptSubscript` | `boolean` | - | - | 开启上标 / 下标 |
+| `characterCount` | `boolean \| CharacterCountConfig` | - | - | 开启字符与词数统计（结果由 character-count 事件抛出）；传对象可设上限与统计口径 |
+| `mention` | `MentionConfig` | - | - | 开启 @提及，须在此配置 queryItems 回调或 server 地址 |
+| `highlight` | `boolean` | - | - | 开启高亮标记（荧光笔） |
+| `markdown` | `boolean` | - | - | 开启 Markdown 输入语法（如行首 `#` 加空格转标题） |
 
 ### Events
 

@@ -295,6 +295,10 @@ const onSubtitleChange = (cue: SubtitleCue | null, index: number) => {
 需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
 :::
 
+**Subtitle** — 字幕显示组件
+
+支持加载 VTT/SRT/JSON/SBV/ASS 格式字幕文件，根据时间显示对应字幕
+
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |

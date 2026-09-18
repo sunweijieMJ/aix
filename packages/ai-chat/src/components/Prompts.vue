@@ -22,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+/** 推荐问题列表：点击某条抛出 select，AiChat 用它做开场引导。 */
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
 import type { PromptItem } from '../types';
