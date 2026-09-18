@@ -69,7 +69,7 @@
       </div>
     </div>
 
-    <!-- 工具栏 -->
+    <!-- @slot 自定义工具栏，作用域含 currentPage / totalPages / scale 与翻页、缩放方法；默认渲染内置 PdfToolbar -->
     <slot
       v-if="mergedConfig.showToolbar"
       name="toolbar"

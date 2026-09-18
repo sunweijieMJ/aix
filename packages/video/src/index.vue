@@ -13,7 +13,7 @@
       :crossorigin="crossOrigin ? 'anonymous' : undefined"
     />
 
-    <!-- 自定义控制栏插槽 -->
+    <!-- @slot 自定义控制栏，customControls 为 true 时渲染，作用域含 playerState 与 controls -->
     <slot
       v-if="customControls"
       name="controls"
@@ -38,7 +38,12 @@ import {
 } from './composables/useOrientationChange';
 import { useTouchEvents, type TouchEventsOptions } from './composables/useTouchEvents';
 import { useVideoPlayer, type VideoPlayerOptions } from './composables/useVideoPlayer';
-import type { ControlMethods, VideoPlayerProps, VideoPlayerEmits, VideoPlayerExpose } from './types';
+import type {
+  ControlMethods,
+  VideoPlayerProps,
+  VideoPlayerEmits,
+  VideoPlayerExpose,
+} from './types';
 
 defineOptions({
   name: 'VideoPlayer',

@@ -5,6 +5,7 @@
     :aria-describedby="isOpen ? tooltipId : undefined"
     v-on="referenceListeners"
   >
+    <!-- @slot 触发元素 -->
     <slot />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
@@ -17,6 +18,7 @@
         :class="['aix-tooltip', popperClass]"
         :style="mergedStyles"
       >
+        <!-- @slot 自定义提示内容（优先于 content prop） -->
         <slot name="content">{{ content }}</slot>
         <div ref="arrowElRef" class="aix-popper__arrow" :style="arrowStyles" />
       </div>

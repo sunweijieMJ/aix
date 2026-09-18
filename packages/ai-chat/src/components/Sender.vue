@@ -1207,9 +1207,13 @@ const slotScope = reactive({
 });
 
 defineSlots<{
+  /** 输入框前缀区（输入行左侧） */
   prefix?: (props: SenderSlotScope) => unknown;
+  /** 输入行上方的扩展区（附件预览 / 引用上下文等） */
   header?: (props: SenderSlotScope) => unknown;
+  /** 工具栏内容，渲染在内置 toolbarItems 之后、发送键之前 */
   toolbar?: (props: SenderSlotScope) => unknown;
+  /** 工具栏之下的底部扩展区（字数统计 / 快捷键提示等） */
   footer?: (props: SenderSlotScope) => unknown;
   /**
    * 替换内置附件面板 UI（仅在启用附件且面板展开时渲染），见 SenderAttachmentsSlotScope。

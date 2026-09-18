@@ -324,12 +324,8 @@ import {
 
 ## API
 
-::: warning 自动生成的 API 文档
-以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
-
-如需更新 API 文档，请：
-1. 修改组件源码中的 JSDoc 注释
-2. 运行 `pnpm docs:gen`（= `gen:docs` 生成到 README.md + `sync:docs` 同步到此文档）
+::: tip API 来源
+以下内容同步自 `packages/icons/README.md` 的 API 段。该包没有可解析的组件源码，API 表由人工维护；修改请改 README，再运行 `pnpm docs:gen`。
 :::
 
 ### 图标组件属性

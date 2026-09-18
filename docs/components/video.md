@@ -205,14 +205,12 @@ const videoSrc = '/videos/sample.mp4';
 ## API
 
 ::: warning 自动生成的 API 文档
-以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
+以下内容由 `pnpm docs:gen` 从组件源码生成，请勿手动编辑。
 
-如需更新 API 文档，请：
-1. 修改组件源码中的 JSDoc 注释
-2. 运行 `pnpm docs:gen`（= `gen:docs` 生成到 README.md + `sync:docs` 同步到此文档）
+需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
 :::
 
-### Props
+### VideoPlayer Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
@@ -227,43 +225,106 @@ const videoSrc = '/videos/sample.mp4';
 | `width` | `number \| string` | - | - | 宽度 |
 | `height` | `number \| string` | - | - | 高度 |
 | `aspectRatio` | `string` | - | - | 宽高比（如 '16:9'） |
-| `preload` | `"auto" \| "metadata" \| "none"` | `'auto'` | - | 预加载策略 |
+| `preload` | `'auto' \| 'metadata' \| 'none'` | `'auto'` | - | 预加载策略 |
 | `transparent` | `boolean` | `false` | - | 是否透明背景 |
 | `crossOrigin` | `boolean` | `true` | - | 是否跨域 |
 | `enableDebugLog` | `boolean` | `false` | - | 是否启用调试日志 |
 | `options` | `Partial<VideoJsOptions>` | - | - | video.js 额外配置 |
-| `streamOptions` | `Omit<TSImportType, union>` | - | - | 流适配器配置 |
-| `sourceType` | `any` | - | - | 视频源类型（不指定时自动推断） |
+| `streamOptions` | `Omit<StreamAdapterOptions, 'onReady' \| 'onError' \| 'onFirstFrame'>` | - | - | 流适配器配置 |
+| `sourceType` | `VideoSourceType` | - | - | 视频源类型（不指定时自动推断） |
 | `customControls` | `boolean` | `false` | - | 是否使用自定义控制栏 |
 | `enableTouchEvents` | `boolean` | `true` | - | 是否启用触摸事件优化（移动端） |
 | `autoFullscreenOnLandscape` | `boolean` | `false` | - | 横屏时是否自动全屏 |
 
-### Events
+### VideoPlayer Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `ready` | `VideoJsPlayer` | 播放器就绪，返回 video.js 播放器实例 |
-| `play` | `-` | 开始播放 |
-| `pause` | `-` | 暂停播放 |
-| `ended` | `-` | 播放结束 |
-| `timeupdate` | `number` | 播放时间更新，返回当前时间和总时长（秒） |
-| `progress` | `number` | 缓冲进度更新，返回已缓冲的百分比（0-1） |
-| `error` | `Error` | 播放错误，返回错误信息 |
-| `volumechange` | `number` | 音量变化，返回音量值（0-1）和是否静音 |
-| `fullscreenchange` | `boolean` | 全屏状态变化，返回是否全屏 |
-| `canplay` | `-` | 可以播放（已加载足够数据） |
-| `loadeddata` | `-` | 数据加载完成 |
-| `autoplayMuted` | `{ reason: "mobile-policy"; originalMuted: boolean; }` | 移动端自动播放策略触发静音，返回原因信息 |
-| `networkOffline` | `-` | 网络离线 |
-| `networkOnline` | `-` | 网络恢复在线 |
-| `networkSlow` | `NetworkStatus` | 网络变慢，返回网络状态信息 |
-| `networkChange` | `NetworkStatus` | 网络状态变化，返回网络状态信息 |
+| `ready` | `player: VideoJsPlayer` | 播放器就绪，返回 video.js 播放器实例 |
+| `play` | - | 开始播放 |
+| `pause` | - | 暂停播放 |
+| `ended` | - | 播放结束 |
+| `timeupdate` | `currentTime: number, duration: number` | 播放时间更新，返回当前时间和总时长（秒） |
+| `progress` | `buffered: number` | 缓冲进度更新，返回已缓冲的百分比（0-1） |
+| `error` | `error: Error` | 播放错误，返回错误信息 |
+| `volumechange` | `volume: number, muted: boolean` | 音量变化，返回音量值（0-1）和是否静音 |
+| `fullscreenchange` | `isFullscreen: boolean` | 全屏状态变化，返回是否全屏 |
+| `canplay` | - | 可以播放（已加载足够数据） |
+| `loadeddata` | - | 数据加载完成 |
+| `autoplayMuted` | `reason: { reason: 'mobile-policy'; originalMuted: boolean }` | 移动端自动播放策略触发静音，返回原因信息 |
+| `networkOffline` | - | 网络离线 |
+| `networkOnline` | - | 网络恢复在线 |
+| `networkSlow` | `status: NetworkStatus` | 网络变慢，返回网络状态信息 |
+| `networkChange` | `status: NetworkStatus` | 网络状态变化，返回网络状态信息 |
 
-### Slots
+### VideoPlayer Slots
 
-| 插槽名 | 说明 |
-|--------|------|
-| `controls` | - |
+| 插槽名 | 参数 | 说明 |
+|--------|------|------|
+| `controls` | - | 自定义控制栏，customControls 为 true 时渲染，作用域含 playerState 与 controls |
+
+### VideoPlayer Expose
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `isReady` | `Ref<boolean>` | 播放器是否就绪 |
+| `isPlaying` | `Ref<boolean>` | 是否正在播放 |
+| `isMuted` | `Ref<boolean>` | 是否静音 |
+| `isReconnecting` | `Ref<boolean>` | 是否正在重连 |
+| `autoPlayFailed` | `Ref<boolean>` | 自动播放是否失败 |
+| `isNativeFullscreen` | `Ref<boolean>` | 是否处于浏览器原生全屏 |
+| `getPlayer` | `() => VideoJsPlayer \| null` | 获取 video.js 播放器实例 |
+| `getVideo` | `() => HTMLVideoElement \| null` | 获取 video 元素 |
+| `play` | `() => Promise<void>` | 播放 |
+| `pause` | `() => void` | 暂停 |
+| `seek` | `(time: number) => void` | 跳转到指定时间 (秒) |
+| `setVolume` | `(volume: number) => void` | 设置音量 (0-1) |
+| `getVolume` | `() => number` | 获取音量 (0-1) |
+| `toggleMute` | `() => void` | 切换静音 |
+| `toggleFullscreen` | `() => void` | 进入/退出全屏 |
+| `enterNativeFullscreen` | `() => void` | 进入浏览器原生全屏 |
+| `exitNativeFullscreen` | `() => void` | 退出浏览器原生全屏 |
+| `togglePictureInPicture` | `() => Promise<void>` | 进入/退出画中画 |
+| `getCurrentTime` | `() => number` | 获取当前播放时间 (秒) |
+| `getDuration` | `() => number` | 获取视频时长 (秒) |
+| `setPlaybackRate` | `(rate: number) => void` | 设置播放速率 (0.25-4) |
+| `getPlaybackRate` | `() => number` | 获取播放速率 |
+| `reload` | `() => void` | 重新加载视频 |
+| `forceReload` | `(shouldPlay?: boolean) => void` | 强制重载播放器（保留状态，用于修复卡顿/黑屏） |
+
+---
+
+### DefaultControls Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `playerState` | `PlayerState` | - | ✅ | 播放器状态 |
+| `controls` | `ControlMethods` | - | ✅ | 控制方法 |
+
+---
+
+### LiveControls Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `playerState` | `PlayerState` | - | ✅ | 播放器状态 |
+| `controls` | `ControlMethods` | - | ✅ | 控制方法 |
+| `autoHideDelay` | `number` | `3000` | - | 自动隐藏延迟(ms)，0 表示禁用 |
+| `showLiveBadge` | `boolean` | `true` | - | 是否显示 LIVE 标识 |
+| `showRefresh` | `boolean` | `true` | - | 是否显示刷新按钮 |
+
+---
+
+### PlaybackControls Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `playerState` | `PlayerState` | - | ✅ | 播放器状态 |
+| `controls` | `ControlMethods` | - | ✅ | 控制方法 |
+| `autoHideDelay` | `number` | `3000` | - | 自动隐藏延迟(ms)，0 表示禁用 |
+| `playbackRates` | `number[]` | - | - | 可用的倍速选项 |
+| `showPlaybackRate` | `boolean` | `true` | - | 是否显示倍速按钮 |
+| `showTime` | `boolean` | `true` | - | 是否显示时间 |
 
 ## 支持的视频源类型
 

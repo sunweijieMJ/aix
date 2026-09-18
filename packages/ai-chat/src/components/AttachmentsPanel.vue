@@ -27,6 +27,7 @@
          接管 Sender 的 #attachments-panel 要连 add / remove / retry / 进度 / 拖拽高亮整套重画，
          而实际上绝大多数定制只想换这块的排版与文案（竖排虚线框 → 横排浅底之类）。
          拖放高亮（dragIn）与键盘可达性仍由外层容器负责，自定义内容不必重做。 -->
+    <!-- @slot 上传占位区（点击 / 拖放触发区），作用域给出 pick 与 dragIn；拖放高亮与键盘可达性仍由面板负责 -->
     <slot name="placeholder" :pick="() => emit('pick')" :drag-in="dragIn">
       <div
         role="button"

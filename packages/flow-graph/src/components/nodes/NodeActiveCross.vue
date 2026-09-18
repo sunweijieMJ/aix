@@ -48,7 +48,9 @@
 import { computed } from 'vue';
 
 interface Props {
+  /** SVG 渐变 id 的唯一后缀，避免多个节点间互相覆盖 */
   uid: string;
+  /** 路径颜色，colors 为空时使用 */
   color: string;
   /** 多路径颜色列表，优先级高于 color */
   colors?: string[];

@@ -18,7 +18,7 @@
       ]"
       :style="subtitleStyle"
     >
-      <!-- 自定义 slot - 传递字幕文本和分段信息 -->
+      <!-- @slot 自定义字幕渲染，作用域含 text / fullText / currentSegment / totalSegments / data；默认渲染当前分段文本 -->
       <slot
         :text="currentSegmentText"
         :full-text="displayText"

@@ -8,10 +8,12 @@
     <!-- avatar / header 插槽带 info 作用域：Bubble 只持有 role/status/itemKey，完整消息由
          BubbleList 在转发时补 item（气泡本身拿不到 ChatMessage，见其转发处注释）。 -->
     <div v-if="avatar || $slots.avatar" :class="ns.e('avatar')">
+      <!-- @slot 头像区，作用域 info 含 role / status / itemKey -->
       <slot name="avatar" :info="info"><img :src="avatar" alt="" /></slot>
     </div>
     <div :class="ns.e('wrapper')">
       <div v-if="$slots.header" :class="ns.e('header')">
+        <!-- @slot 气泡上方的消息级头部（发送者名 / 时间戳） -->
         <slot name="header" :info="info" />
       </div>
       <div
@@ -51,6 +53,7 @@
           </div>
         </div>
         <template v-else>
+          <!-- @slot 整条内容区，覆盖默认的内容块渲染，作用域 blocks 为内容块列表 -->
           <slot name="content" :blocks="content" :info="info">
             <component :is="renderedNode" v-if="contentRender" />
             <template v-else>
@@ -91,6 +94,7 @@
                Conversations #item、ReasoningBlock 正文）；不存在该语义的（如 Sender 附件面板）
                照常用原生 fallback 即可。 -->
           <template v-if="status === 'error'">
+            <!-- @slot 出错态的自定义 UI，作用域含 retry 重试句柄；未提供时显示内置「出错了 + 重试」条 -->
             <slot v-if="$slots.error" name="error" :info="info" :retry="() => emit('retry')" />
             <span v-else :class="ns.e('error')">
               <span :class="ns.e('error-text')">{{ errorText || t.errorMessage }}</span>

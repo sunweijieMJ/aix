@@ -57,6 +57,25 @@ pnpm gen <component-name>
   - 构建: `pnpm storybook:build`
   - 输出: `dist/storybook/`
 
+### 组件 API 文档管线
+
+组件的 Props / Events / Slots / Expose 表格不手写，由 `pnpm docs:gen` 从源码生成：
+
+```text
+src/types.ts + <Component>.vue（类型声明与 JSDoc）
+  └─ scripts/docs/gen-docs.ts（vue-docgen-api + TypeScript AST，结果只在内存里）
+       ├─ packages/<pkg>/README.md        ## API
+       └─ docs/components/<pkg>.md        ## API
+  internal/mcp-server 的 extract 调用 scripts/docs/print-api.ts 拿同一份解析结果
+```
+
+- 参与生成的组件就是 `src/index.ts` 对外导出的 .vue 组件，不需要任何配置；
+  入口没导出 .vue 的包退回包根 `src/*.vue`。
+- CI 的 Docs Check 会重跑 `pnpm docs:gen` 并要求零 diff；改了类型或 JSDoc 后本地跑一遍再提交。
+- 分工：包 README 是 npm 落地页（介绍、安装、最小示例、API 表、类型定义）；
+  `docs/components/<pkg>.md` 承载完整教程、可交互演示、主题变量与最佳实践。
+  同一段手写内容只维护一处，API 表两处都由生成器填充。
+
 ## 使用文档
 
 - [功能清单](#功能清单)
@@ -67,10 +86,14 @@ pnpm gen <component-name>
 
 ## 功能清单
 
+- [x] `ai-chat` AI 对话组件
+- [x] `audio` 语音 SDK（ASR / TTS / 录音 / 波形）
 - [x] `button` 按钮组件
 - [x] `code-editor` 代码编辑器
+- [x] `flow-graph` 流程图
 - [x] `hooks` 公共 Composables
 - [x] `icons` 图标组件
+- [x] `menu` 导航菜单
 - [x] `pdf-viewer` PDF 查看器
 - [x] `popper` 弹出层组件
 - [x] `rich-text-editor` 富文本编辑器
@@ -86,10 +109,14 @@ pnpm gen <component-name>
 │   └── server/                  #   后端 API 服务
 │
 ├── packages/                    # 组件包（发布到 npm @aix/*）
+│   ├── ai-chat/                 #   AI 对话组件
+│   ├── audio/                   #   语音 SDK
 │   ├── button/                  #   按钮组件
 │   ├── code-editor/             #   代码编辑器组件
+│   ├── flow-graph/              #   流程图组件
 │   ├── hooks/                   #   公共 Composables
 │   ├── icons/                   #   图标组件
+│   ├── menu/                    #   导航菜单组件
 │   ├── pdf-viewer/              #   PDF 查看器组件
 │   ├── popper/                  #   弹出层组件
 │   ├── rich-text-editor/        #   富文本编辑器组件
@@ -197,7 +224,8 @@ pnpm test:coverage        # 测试覆盖率报告
 ```bash
 pnpm storybook:dev        # 启动 Storybook（端口 6006）
 pnpm docs:dev             # 启动 VitePress 文档
-pnpm docs:gen             # 从源码生成 API 文档并同步到 VitePress
+pnpm docs:gen             # 从源码生成 README 与 VitePress 的 API 段，并刷新 MCP 数据
+pnpm docs:check           # CI 同款：重跑 docs:gen 后要求零 diff
 pnpm build:docs-all       # 构建 Storybook + VitePress
 ```
 

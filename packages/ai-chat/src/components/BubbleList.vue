@@ -59,10 +59,12 @@
               "
             >
               <template v-if="$slots.content" #content="slotProps">
+                <!-- @slot 转发给每个 Bubble 的内容区，作用域补 item（完整 ChatMessage） -->
                 <slot name="content" :item="item as ChatMessage" v-bind="slotProps" />
               </template>
               <!-- 转发 footer 作用域 slot：补齐消息操作（复制/重生成等）的逃生口 -->
               <template v-if="$slots.footer" #footer>
+                <!-- @slot 气泡下方的操作条区，作用域 item 为该条消息 -->
                 <slot name="footer" :item="item as ChatMessage" />
               </template>
               <!-- header / avatar / error 单独显式转发（不走下面的通用穿透）：这三个是**消息级**
@@ -72,15 +74,18 @@
                  作用域来自各块渲染器（如 thought-chain-item-content 的 item 是 ThoughtChainItem），
                  同名不同义，届时 item 指代什么将取决于是哪个块，是更糟的歧义。 -->
               <template v-if="$slots.header" #header="sp">
+                <!-- @slot 消息级头部，作用域补 item -->
                 <slot name="header" :item="item as ChatMessage" v-bind="sp" />
               </template>
               <template v-if="$slots.avatar" #avatar="sp">
+                <!-- @slot 头像区，作用域补 item -->
                 <slot name="avatar" :item="item as ChatMessage" v-bind="sp" />
               </template>
               <!-- error 额外补一个 error 作用域：业务接管错误 UI 的第一件事必然是读原始错误，
                  而它埋在 extra.error 里（约定见 ChatMessage.extra），逐个业务自己去翻既啰嗦
                  又容易漏掉「err 可能是字符串而非 Error」这一层。 -->
               <template v-if="$slots.error" #error="sp">
+                <!-- @slot 出错态自定义 UI，作用域补 item 与 extra.error 里的原始错误 -->
                 <slot
                   name="error"
                   :item="item as ChatMessage"

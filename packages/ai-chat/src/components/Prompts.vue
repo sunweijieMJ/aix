@@ -27,8 +27,14 @@ import { computed } from 'vue';
 import type { PromptItem } from '../types';
 import { isImageSource, safeImageSrc } from '../utils/url';
 
-const props = defineProps<{ items: PromptItem[] }>();
-defineEmits<{ (e: 'select', item: PromptItem): void }>();
+const props = defineProps<{
+  /** 快捷问题列表 */
+  items: PromptItem[];
+}>();
+defineEmits<{
+  /** 点击某个快捷问题 */
+  (e: 'select', item: PromptItem): void;
+}>();
 
 const ns = useNamespace('prompts');
 

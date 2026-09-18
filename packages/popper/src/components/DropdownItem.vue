@@ -10,6 +10,7 @@
     @keydown.enter.prevent="handleClick"
     @keydown.space.prevent="handleClick"
   >
+    <!-- @slot 自定义菜单项内容（优先于 label prop） -->
     <slot>{{ label }}</slot>
   </li>
 </template>

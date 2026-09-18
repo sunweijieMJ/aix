@@ -10,6 +10,7 @@ defineOptions({
 });
 
 defineProps<{
+  /** 箭头定位样式，由 Popper 按浮层位置计算后传入 */
   style?: CSSProperties;
 }>();
 </script>

@@ -37,29 +37,27 @@ import '@aix/theme/style';
 ## API
 
 ::: warning 自动生成的 API 文档
-以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
+以下内容由 `pnpm docs:gen` 从组件源码生成，请勿手动编辑。
 
-如需更新 API 文档，请：
-1. 修改组件源码中的 JSDoc 注释
-2. 运行 `pnpm docs:gen`（= `gen:docs` 生成到 README.md + `sync:docs` 同步到此文档）
+需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
 :::
 
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `modelValue` | `string \| Record` | - | - | 编辑器内容（v-model 双向绑定） HTML 字符串或 JSON 对象 |
-| `outputFormat` | `OutputFormat` | `'html'` | - | 内容输出格式 |
+| `modelValue` | `string \| Record<string, unknown>` | - | - | 编辑器内容（v-model 双向绑定） HTML 字符串或 JSON 对象 |
+| `outputFormat` | `'html' \| 'json' \| 'text'` | `'html'` | - | 内容输出格式 |
 | `readonly` | `boolean` | `false` | - | 是否只读 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
-| `placeholder` | `string` | `` | - | 占位文本 |
+| `placeholder` | `string` | `''` | - | 占位文本 |
 | `autofocus` | `boolean` | `false` | - | 是否自动聚焦 |
 | `height` | `string` | - | - | 编辑器固定高度（CSS 值） |
 | `minHeight` | `string` | `'200px'` | - | 编辑器最小高度 |
 | `maxHeight` | `string` | - | - | 编辑器最大高度 |
 | `showToolbar` | `boolean` | `true` | - | 是否显示 Toolbar |
-| `extensions` | `Array<AnyExtension>` | - | - | 用户自定义 Tiptap 扩展（完全开放的扩展接口） |
-| `locale` | `"zh-CN" \| "en-US"` | - | - | 语言覆盖（优先于全局 locale） |
+| `extensions` | `AnyExtension[]` | - | - | 用户自定义 Tiptap 扩展（完全开放的扩展接口） |
+| `locale` | `'zh-CN' \| 'en-US'` | - | - | 语言覆盖（优先于全局 locale） |
 | `table` | `boolean \| TableConfig` | - | - | 表格功能 |
 | `taskList` | `boolean` | - | - | 任务列表（可勾选的 TODO 列表） |
 | `image` | `ImageConfig` | - | - | 图片功能（需配置 upload 回调或 server 地址） |
@@ -78,9 +76,28 @@ import '@aix/theme/style';
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `update:modelValue` | `string \| Record` | v-model 更新 |
-| `change` | `string \| Record` | 内容变化 |
-| `focus` | `FocusEvent` | 获得焦点 |
-| `blur` | `FocusEvent` | 失去焦点 |
-| `ready` | `Editor` | 编辑器就绪 |
-| `character-count` | `{ characters: number; words: number; }` | 字符统计更新（需启用 characterCount） |
+| `update:modelValue` | `value: string \| Record<string, unknown>` | v-model 更新 |
+| `change` | `value: string \| Record<string, unknown>` | 内容变化 |
+| `focus` | `event: FocusEvent` | 获得焦点 |
+| `blur` | `event: FocusEvent` | 失去焦点 |
+| `ready` | `editor: Editor` | 编辑器就绪 |
+| `character-count` | `count: { characters: number; words: number }` | 字符统计更新（需启用 characterCount） |
+
+### Expose
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `editor` | `Ref<Editor \| null>` | Tiptap Editor 实例（供高级用户直接操作） |
+| `getHTML` | `() => string` | 获取 HTML 内容 |
+| `getJSON` | `() => Record<string, unknown>` | 获取 JSON 内容 |
+| `getText` | `() => string` | 获取纯文本 |
+| `setContent` | `(content: string \| Record<string, unknown>) => void` | 设置内容 |
+| `clearContent` | `() => void` | 清空内容 |
+| `focus` | `(position?: 'start' \| 'end' \| 'all') => void` | 聚焦 |
+| `blur` | `() => void` | 取消聚焦 |
+| `insertContent` | `(content: string) => void` | 插入内容 |
+| `undo` | `() => void` | 撤销 |
+| `redo` | `() => void` | 重做 |
+| `getCharacterCount` | `() => number` | 获取字符数（需启用 characterCount） |
+| `getWordCount` | `() => number` | 获取词数（需启用 characterCount） |
+| `isEmpty` | `() => boolean` | 判断内容是否为空 |

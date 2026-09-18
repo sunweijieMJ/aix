@@ -1,15 +1,21 @@
 <template>
   <div :class="[ns.b(), ns.m(align), ns.is('fill-height', fillHeight)]">
     <div v-if="icon || $slots.icon" :class="ns.e('icon')">
+      <!-- @slot 顶部图标，覆盖 icon prop 的图片 -->
       <slot name="icon"><img :src="icon" alt="" /></slot>
     </div>
     <h3 v-if="title || $slots.title" :class="ns.e('title')">
+      <!-- @slot 标题，覆盖 title prop -->
       <slot name="title">{{ title }}</slot>
     </h3>
     <p v-if="description || $slots.description" :class="ns.e('description')">
+      <!-- @slot 描述文案，覆盖 description prop -->
       <slot name="description">{{ description }}</slot>
     </p>
-    <div v-if="$slots.extra" :class="ns.e('extra')"><slot name="extra" /></div>
+    <div v-if="$slots.extra" :class="ns.e('extra')">
+      <!-- @slot 描述下方的附加区（如快捷问题） -->
+      <slot name="extra" />
+    </div>
   </div>
 </template>
 

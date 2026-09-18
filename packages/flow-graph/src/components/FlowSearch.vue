@@ -40,7 +40,9 @@ import zhCN from '../locale/zh-CN';
 import { FlowGraphLocaleKey, type FlowNode } from '../types';
 
 const props = defineProps<{
+  /** 参与搜索的节点列表 */
   nodes: FlowNode[];
+  /** 候选列表最大高度（px） */
   suggestionsMaxHeight?: number;
 }>();
 

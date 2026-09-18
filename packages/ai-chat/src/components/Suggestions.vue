@@ -19,6 +19,7 @@
         @click="emit('select', item)"
       >
         <component :is="item.icon" v-if="item.icon" :class="ns.e('icon')" />
+        <!-- @slot 单条建议的内容，作用域 item；默认显示 label 或 text -->
         <slot :item="item">{{ item.label ?? item.text }}</slot>
       </button>
     </template>
@@ -33,6 +34,7 @@ export interface SuggestionsProps {
   loading?: boolean;
 }
 export interface SuggestionsEmits {
+  /** 点击某条建议 */
   (e: 'select', item: SuggestionItem): void;
 }
 </script>

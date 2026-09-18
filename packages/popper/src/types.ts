@@ -193,13 +193,18 @@ export interface TooltipProps {
 }
 
 export interface TooltipEmits {
+  /** 显示状态变更 */
   (e: 'update:open', value: boolean): void;
+  /** 显示后触发 */
   (e: 'show'): void;
+  /** 隐藏后触发 */
   (e: 'hide'): void;
 }
 
 export interface TooltipExpose {
+  /** 显示 */
   show: () => void;
+  /** 隐藏 */
   hide: () => void;
 }
 
@@ -288,13 +293,18 @@ export interface PopoverProps {
 }
 
 export interface PopoverEmits {
+  /** 显示状态变更 */
   (e: 'update:open', value: boolean): void;
+  /** 显示后触发 */
   (e: 'show'): void;
+  /** 隐藏后触发 */
   (e: 'hide'): void;
 }
 
 export interface PopoverExpose {
+  /** 显示 */
   show: () => void;
+  /** 隐藏 */
   hide: () => void;
 }
 
@@ -392,7 +402,9 @@ export interface DropdownEmits {
 }
 
 export interface DropdownExpose {
+  /** 显示 */
   show: () => void;
+  /** 隐藏 */
   hide: () => void;
 }
 
@@ -416,6 +428,7 @@ export interface DropdownItemProps {
 }
 
 export interface DropdownItemEmits {
+  /** 菜单项被点击时触发，载荷为 command；一般用 Dropdown 的 command 事件统一处理，需要单项自己响应时用它 */
   (e: 'click', command: string | number | undefined): void;
 }
 
@@ -479,5 +492,6 @@ export interface ContextMenuExpose {
    * - 传 `HTMLElement`：以该元素为锚定参考，菜单会跟随其位移（autoUpdate）。
    */
   show: (target: MouseEvent | HTMLElement) => void;
+  /** 隐藏菜单 */
   hide: () => void;
 }

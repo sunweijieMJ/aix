@@ -1,348 +1,167 @@
 import fs from 'fs/promises';
 import path from 'path';
 import chalk from 'chalk';
-import { glob } from 'glob';
-import { parse } from 'vue-docgen-api';
+import { renderApiBody, renderApiSection } from './api-markdown';
+import { API_HEADING_RE, extractSection, replaceSection, stripHeading } from './markdown-sections';
+import { collectPackageApis } from './pipeline';
 
 /**
- * Generate component API documentation to README.md
+ * 组件 API 文档生成：解析各包入口导出的组件源码，把 `## API` 段同时写进包 README
+ * 与 `docs/components/<pkg>.md`。解析结果只存在内存里，不落中间文件。
+ *
+ * 没有组件源码的包（如 icons），文档页的 API 段退回抽取 README 里的手写表格。
  */
+
+/**
+ * 已知没有 docs/components/<name>.md 的包，跳过它们不算失败。
+ *
+ * 分两类：
+ * - hooks / theme 不是组件，本就不该有组件文档页；
+ * - ai-chat / audio / flow-graph 是组件但文档尚未撰写，属待办。
+ *
+ * 不在此列的包一旦缺文档就会让本命令失败。要新增豁免必须显式改这里。
+ */
+const PACKAGES_WITHOUT_COMPONENT_DOC = new Set([
+  'hooks',
+  'theme',
+  'ai-chat',
+  'audio',
+  'flow-graph',
+]);
+
+/** API 段由源码生成时的横幅 */
+const GENERATED_BANNER = `::: warning 自动生成的 API 文档
+以下内容由 \`pnpm docs:gen\` 从组件源码生成，请勿手动编辑。
+
+需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 \`pnpm docs:gen\`。
+:::`;
+
+/** API 段只能从 README 手写表格同步时的横幅 */
+function syncedBanner(packageName: string): string {
+  return `::: tip API 来源
+以下内容同步自 \`packages/${packageName}/README.md\` 的 API 段。该包没有可解析的组件源码，API 表由人工维护；修改请改 README，再运行 \`pnpm docs:gen\`。
+:::`;
+}
+
 async function generateDocs() {
   console.log(chalk.cyan('🚀 Generating component API documentation...\n'));
 
-  // Find all component packages
-  const packages = await glob('packages/*/src/*.vue', {
-    ignore: ['**/node_modules/**', '**/dist/**'],
-  });
+  const { packages, withoutComponents, failures: collectFailures } = await collectPackageApis();
+  const failures = collectFailures.map((f) => `${f.dirName}：${f.message}`);
+  let readmeCount = 0;
+  let docCount = 0;
+  let skipCount = 0;
 
-  if (packages.length === 0) {
-    console.log(chalk.yellow('⚠️  No component files found'));
-    return;
+  // 有组件源码的包：README 与文档页都由内存里的解析结果渲染
+  for (const { dirName, packageDir, api } of packages) {
+    try {
+      console.log(
+        chalk.blue(`📝 ${chalk.bold(dirName)}：${api.components.map((c) => c.name).join(', ')}`),
+      );
+
+      const readmePath = path.join(packageDir, 'README.md');
+      if (!(await exists(readmePath))) {
+        failures.push(`${dirName}：缺 README.md，API 段无处可写`);
+        continue;
+      }
+      const readme = await fs.readFile(readmePath, 'utf-8');
+      await fs.writeFile(readmePath, replaceSection(readme, API_HEADING_RE, renderApiSection(api)));
+      readmeCount++;
+
+      const docSection = `## API\n\n${GENERATED_BANNER}\n\n${renderApiBody(api)}`;
+      const outcome = await injectComponentDoc(dirName, docSection);
+      if (outcome === 'injected') docCount++;
+      else if (outcome === 'skipped') skipCount++;
+      else failures.push(outcome);
+    } catch (error: any) {
+      failures.push(`${dirName}：${error.message}`);
+    }
   }
 
-  let successCount = 0;
-  let failCount = 0;
-
-  for (const componentPath of packages) {
+  // 没有组件源码的包：文档页 API 段同步 README 里的手写表格
+  for (const dirName of withoutComponents) {
     try {
-      // Parse component
-      const componentInfo = await parse(componentPath);
-      const packageDir = path.dirname(path.dirname(componentPath));
-      const packageName = path.basename(packageDir);
+      const readmePath = path.join('packages', dirName, 'README.md');
+      if (!(await exists(readmePath))) continue;
+      const readmeSection = extractSection(await fs.readFile(readmePath, 'utf-8'), API_HEADING_RE);
 
-      console.log(chalk.blue(`📝 Updating ${chalk.bold(packageName)} README...`));
+      const docPath = componentDocPath(dirName);
+      if (!(await exists(docPath))) {
+        if (PACKAGES_WITHOUT_COMPONENT_DOC.has(dirName)) {
+          skipCount++;
+          continue;
+        }
+        failures.push(missingDocMessage(dirName));
+        continue;
+      }
+      if (!readmeSection) {
+        failures.push(
+          `${dirName}：没有可解析的组件源码，README.md 里也找不到 API 段` +
+            `（需要一个以 "## API" 开头的二级标题）`,
+        );
+        continue;
+      }
 
-      // Generate API markdown
-      const apiMarkdown = generateApiMarkdown(componentInfo);
-
-      // Update README.md
-      const readmePath = path.join(packageDir, 'README.md');
-      await updateReadmeApi(readmePath, apiMarkdown);
-
-      console.log(chalk.green(`✅ ${packageName} README.md updated\n`));
-      successCount++;
+      const docSection = `## API\n\n${syncedBanner(dirName)}\n\n${stripHeading(readmeSection)}\n`;
+      const outcome = await injectComponentDoc(dirName, docSection);
+      if (outcome === 'injected') docCount++;
+      else if (outcome !== 'skipped') failures.push(outcome);
     } catch (error: any) {
-      console.error(chalk.red(`❌ Failed to process ${componentPath}: ${error.message}\n`));
-      failCount++;
+      failures.push(`${dirName}：${error.message}`);
     }
   }
 
   console.log(chalk.cyan('\n' + '='.repeat(50)));
   console.log(
     chalk.green(
-      `✨ Documentation generation complete! Success: ${successCount}, Failed: ${failCount}`,
+      `✨ 完成：README ${readmeCount} 个，文档页 ${docCount} 个，跳过 ${skipCount} 个，失败 ${failures.length} 个`,
     ),
   );
+  if (failures.length > 0) {
+    console.log(chalk.red('\n✗ 失败明细：'));
+    for (const failure of failures) console.log(chalk.red(`  · ${failure}`));
+    process.exitCode = 1;
+  }
   console.log(chalk.cyan('='.repeat(50) + '\n'));
 }
 
 /**
- * 清洗进入 Markdown 表格单元格的文本：
- * 压缩换行与连续空白（多行类型/多行 JSDoc 描述会撑断表格），并转义未转义的竖线
+ * 把 API 段注入 docs/components/<name>.md。
+ * 返回 'injected' / 'skipped'（已登记豁免），或一条失败信息。
  */
-function sanitizeCell(text: string): string {
-  return text
-    .replace(/\n/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/(?<!\\)\|/g, '\\|')
-    .trim();
+async function injectComponentDoc(dirName: string, section: string): Promise<string> {
+  const docPath = componentDocPath(dirName);
+  if (!(await exists(docPath))) {
+    return PACKAGES_WITHOUT_COMPONENT_DOC.has(dirName) ? 'skipped' : missingDocMessage(dirName);
+  }
+
+  const doc = await fs.readFile(docPath, 'utf-8');
+  const updated = replaceSection(doc, API_HEADING_RE, section);
+  await fs.writeFile(docPath, updated, 'utf-8');
+  console.log(chalk.green(`✅ docs/components/${dirName}.md：API 段已注入`));
+  return 'injected';
 }
 
-/**
- * Format type for better display
- */
-function formatType(prop: any): string {
-  if (!prop.type) {
-    return '`any`';
-  }
-
-  const { type } = prop;
-
-  // Handle union types
-  if (type.name === 'union') {
-    const elements = type.elements
-      ?.map((e: any) => {
-        // Handle string literals: 'primary', 'default'
-        if (e.value !== undefined) {
-          return `"${e.value}"`;
-        }
-        // Handle type names: string, number
-        if (e.name) {
-          return e.name;
-        }
-        return e;
-      })
-      .join(' \\| '); // Escape | for Markdown tables
-    return elements ? `\`${elements}\`` : '`any`';
-  }
-
-  // Handle array types
-  if (type.name === 'array') {
-    const elementType = type.elements?.[0]?.name || 'any';
-    return `\`${elementType}[]\``;
-  }
-
-  // Handle generic types with elements (e.g., Partial<T>, Omit<T, K>)
-  if (type.elements && type.elements.length > 0) {
-    const elementsStr = type.elements.map((e: any) => e.name || 'any').join(', ');
-    return `\`${type.name}<${elementsStr}>\``;
-  }
-
-  // Handle function types (runtime `func` and interface-declared `TSFunctionType`)
-  if (type.name === 'func' || type.name === 'function' || type.name === 'TSFunctionType') {
-    return '`Function`';
-  }
-
-  // Handle object types
-  if (type.name === 'object') {
-    return '`Object`';
-  }
-
-  // Handle import types (e.g., TSImportType) - simplify to 'any'
-  if (type.name === 'TSImportType' || type.name.startsWith('TS')) {
-    return '`any`';
-  }
-
-  // Handle generic types with < > in name (e.g., Ref<number>, Promise<string>)
-  if (type.name.includes('<')) {
-    return `\`${type.name}\``;
-  }
-
-  // Default: wrap in backticks
-  return `\`${type.name}\``;
+function componentDocPath(dirName: string): string {
+  return path.resolve(`docs/components/${dirName}.md`);
 }
 
-/**
- * Format default value for better display
- */
-function formatDefaultValue(defaultValue: any): string {
-  if (!defaultValue || defaultValue.value === undefined) {
-    return '-';
-  }
-
-  let value = defaultValue.value;
-
-  // Clean up quotes and extra characters
-  value = value.replace(/^['"`]|['"`]$/g, '');
-
-  // Handle functions - show simplified version
-  if (value.startsWith('()') || value.startsWith('function')) {
-    // Extract the return value if possible
-    if (value.includes('=> ({})') || value.includes('return {}')) {
-      return '`{}`';
-    }
-    if (value.includes('=> ([])') || value.includes('return []')) {
-      return '`[]`';
-    }
-    // For other functions, just show '-'
-    return '-';
-  }
-
-  // Handle special values
-  if (value === 'true' || value === 'false' || value === 'null' || value === 'undefined') {
-    return `\`${value}\``;
-  }
-
-  // Handle numbers
-  if (!isNaN(Number(value))) {
-    return `\`${value}\``;
-  }
-
-  // Handle empty strings
-  if (value === '') {
-    return `\`''\``;
-  }
-
-  // Handle objects/arrays (stringify)
-  if (value.startsWith('{') || value.startsWith('[')) {
-    return `\`${value}\``;
-  }
-
-  // Default: wrap in backticks and quotes
-  return `\`'${value}'\``;
+function missingDocMessage(dirName: string): string {
+  return (
+    `${dirName}：缺 docs/components/${dirName}.md。` +
+    `请补写该文档，或把包名加进 gen-docs.ts 的 PACKAGES_WITHOUT_COMPONENT_DOC`
+  );
 }
 
-/**
- * Generate API markdown from component info
- */
-function generateApiMarkdown(componentInfo: any): string {
-  let markdown = '## API\n\n';
-
-  // Props
-  if (componentInfo.props && componentInfo.props.length > 0) {
-    markdown += '### Props\n\n';
-    markdown += '| 属性名 | 类型 | 默认值 | 必填 | 说明 |\n';
-    markdown += '|--------|------|--------|:----:|------|\n';
-
-    componentInfo.props.forEach((prop: any) => {
-      const name = prop.name;
-
-      // Handle complex types with improved formatting
-      // 对象字面量等复杂类型的原始文本可能含换行/竖线，需清洗后才能放进表格
-      const type = sanitizeCell(formatType(prop));
-
-      const defaultValue = formatDefaultValue(prop.defaultValue);
-      const required = prop.required ? '✅' : '-';
-      const description = sanitizeCell(prop.description || '-');
-
-      markdown += `| \`${name}\` | ${type} | ${defaultValue} | ${required} | ${description} |\n`;
-    });
-
-    markdown += '\n';
-  }
-
-  // Events
-  if (componentInfo.events && componentInfo.events.length > 0) {
-    markdown += '### Events\n\n';
-    markdown += '| 事件名 | 参数 | 说明 |\n';
-    markdown += '|--------|------|------|\n';
-
-    componentInfo.events.forEach((event: any) => {
-      const name = event.name;
-      let params = '-';
-
-      if (event.type) {
-        const { names, elements } = event.type;
-
-        if (names && names.length > 0) {
-          // Handle Array types
-          if (names[0] === 'Array' && elements && elements.length > 0) {
-            const elementType = elements[0].name || 'any';
-            params = `${elementType}[]`;
-          }
-          // Handle union types
-          else if (names[0] === 'union' && elements && elements.length > 0) {
-            const types = elements.map((e: any) => e.name || e.value || 'any').join(' \\| '); // Escape | for Markdown tables
-            params = types;
-          }
-          // Handle other types
-          else {
-            params = names.join(' | ');
-          }
-        }
-      }
-
-      // 多行 JSDoc 描述（含列表项）会撑断表格，与 Props/Slots 一致做清洗
-      const description = sanitizeCell(event.description || '-');
-
-      // Clean up params: remove newlines and extra spaces
-      params = sanitizeCell(params);
-
-      markdown += `| \`${name}\` | \`${params}\` | ${description} |\n`;
-    });
-
-    markdown += '\n';
-  }
-
-  // Slots
-  if (componentInfo.slots && componentInfo.slots.length > 0) {
-    markdown += '### Slots\n\n';
-    markdown += '| 插槽名 | 说明 |\n';
-    markdown += '|--------|------|\n';
-
-    componentInfo.slots.forEach((slot: any) => {
-      const name = slot.name || 'default';
-      const description = sanitizeCell(slot.description || '-');
-
-      markdown += `| \`${name}\` | ${description} |\n`;
-    });
-
-    markdown += '\n';
-  }
-
-  // Methods (if any)
-  if (componentInfo.methods && componentInfo.methods.length > 0) {
-    markdown += '### Methods\n\n';
-    markdown += '| 方法名 | 参数 | 返回值 | 说明 |\n';
-    markdown += '|--------|------|--------|------|\n';
-
-    componentInfo.methods.forEach((method: any) => {
-      const name = method.name;
-      const params = method.params
-        ?.map((p: any) => `${p.name}: ${p.type?.name || 'any'}`)
-        .join(', ');
-      const returns = method.returns?.type?.name || 'void';
-      const description = sanitizeCell(method.description || '-');
-
-      markdown += `| \`${name}\` | \`${params || '-'}\` | \`${returns}\` | ${description} |\n`;
-    });
-
-    markdown += '\n';
-  }
-
-  // Keep one trailing newline, remove excessive ones
-  return markdown.replace(/\n+$/, '\n');
+async function exists(filePath: string): Promise<boolean> {
+  return fs
+    .access(filePath)
+    .then(() => true)
+    .catch(() => false);
 }
 
-/**
- * Update API section in README.md
- */
-async function updateReadmeApi(readmePath: string, apiMarkdown: string) {
-  try {
-    // Read existing README
-    const content = await fs.readFile(readmePath, 'utf-8');
-
-    // Find API section using regex
-    const apiStartRegex = /^## API$/m;
-    const nextSectionRegex = /^## /m;
-
-    const apiStartMatch = content.match(apiStartRegex);
-
-    if (apiStartMatch) {
-      // Find where API section starts
-      const apiStartIndex = apiStartMatch.index!;
-
-      // Find the next section after API
-      const afterApiContent = content.slice(apiStartIndex + apiStartMatch[0].length);
-      const nextSectionMatch = afterApiContent.match(nextSectionRegex);
-
-      let newContent: string;
-
-      if (nextSectionMatch) {
-        // Replace content between API and next section
-        const nextSectionIndex = apiStartIndex + apiStartMatch[0].length + nextSectionMatch.index!;
-        newContent =
-          content.slice(0, apiStartIndex) + apiMarkdown + content.slice(nextSectionIndex);
-      } else {
-        // API is the last section, replace from API to end
-        newContent = content.slice(0, apiStartIndex) + apiMarkdown;
-      }
-
-      await fs.writeFile(readmePath, newContent, 'utf-8');
-    } else {
-      // No API section found, append at the end
-      const newContent = content.trim() + '\n\n' + apiMarkdown;
-      await fs.writeFile(readmePath, newContent, 'utf-8');
-    }
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      // README doesn't exist, create new one with just API
-      await fs.writeFile(readmePath, apiMarkdown, 'utf-8');
-    } else {
-      throw error;
-    }
-  }
-}
-
-// Execute
-generateDocs().catch(console.error);
+// 未捕获异常同样要让退出码非零，否则 CI 的 docs:check 会带着半成品继续比对
+generateDocs().catch((error: unknown) => {
+  console.error(chalk.red('生成执行异常：'), error);
+  process.exitCode = 1;
+});

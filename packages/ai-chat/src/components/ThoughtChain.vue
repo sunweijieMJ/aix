@@ -71,6 +71,7 @@
                 </component>
               </div>
             </div>
+            <!-- @slot 单个步骤的正文，作用域 item / index；默认按 Markdown 渲染 item.content -->
             <slot name="item-content" :item="item" :index="i">
               <MarkdownRenderer v-if="item.content" :content="item.content" />
             </slot>

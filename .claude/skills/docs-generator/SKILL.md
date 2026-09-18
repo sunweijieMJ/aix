@@ -34,29 +34,28 @@ metadata:
 ## 管线是怎么跑的
 
 ```
-组件源码的 JSDoc
-      │  vue-docgen-api 解析（scripts/docs/gen-docs.ts）
-      ▼
-packages/<pkg>/README.md 的 ## API 段        ← 机器所有
-      │  抽取 + 注入（scripts/docs/sync-docs.ts）
-      ▼
-docs/components/<pkg>.md 的 ## API 段        ← 机器所有
+组件源码（types.ts + .vue 的类型声明与 JSDoc）
+      │  vue-docgen-api + TypeScript AST（scripts/docs/extract-api.ts），结果只在内存里
+      ├─ 渲染 → packages/<pkg>/README.md 的 ## API 段        ← 机器所有
+      ├─ 渲染 → docs/components/<pkg>.md 的 ## API 段        ← 机器所有
+      └─ MCP Server extract 调用 scripts/docs/print-api.ts 拿同一份结果
 ```
 
 | 命令 | 做的事 |
 |------|--------|
-| `pnpm gen:docs` | vue-docgen 解析组件 → 覆写各包 `README.md` 的 `## API` 段 |
-| `pnpm sync:docs` | 从各包 README 抽 `## API` 段 → 注入 `docs/components/<pkg>.md` |
-| **`pnpm docs:gen`** | **= 上面两步，日常用这个** |
+| **`pnpm docs:gen`** | **解析组件 → 覆写各包 README 与文档页的 `## API` 段 → 刷新 MCP 数据，日常用这个** |
+| `pnpm docs:check` | CI 同款：跑完 `docs:gen` 要求 README / 文档页零 diff |
 | `pnpm docs:dev` | 起 VitePress（`http://localhost:5173`） |
 
-两个重要约束：
+三个重要约束：
 
-- **`gen:docs` 只处理 `packages/*/src/*.vue`**（包根下的主组件）。子组件
-  （`src/components/*.vue`）不在解析范围内——它们的 Props 即使写了 JSDoc 也不会进 API 表格。
-  这是为什么"对外暴露的组件 Props 必须放 `src/types.ts` 并被主组件引用"是硬要求。
-- **`sync:docs` 缺文档会让命令失败**（退出码非 0），这是有意的。已登记豁免的包写在
-  `sync-docs.ts` 的 `PACKAGES_WITHOUT_COMPONENT_DOC`：`hooks` / `theme` 不是组件，
+- **参与生成的组件 = `src/index.ts` 导出的 .vue 组件**，不需要配置。内部子组件不导出就不进表；
+  多组件包的表格以组件名为前缀（`### MenuItem Props`）。`icons` 的 580 个生成组件被硬编码排除
+  （`pipeline.ts` 的 `PACKAGES_WITHOUT_API_GENERATION`）。
+- **类型列取源码声明文本**，本包内的类型别名会展开一层；事件参数、插槽作用域参数、
+  `defineExpose({...} satisfies XExpose)` 的成员都会进表。改表格内容等于改源码声明或 JSDoc。
+- **缺文档页会让命令失败**（退出码非 0），这是有意的。已登记豁免的包写在
+  `gen-docs.ts` 的 `PACKAGES_WITHOUT_COMPONENT_DOC`：`hooks` / `theme` 不是组件，
   `ai-chat` / `audio` / `flow-graph` 是"文档待写"。新增组件包**要么补文档，要么显式加进这个集合**。
 
 ---
@@ -67,7 +66,8 @@ docs/components/<pkg>.md 的 ## API 段        ← 机器所有
 
 | 用户想要的 | 该动的地方 |
 |-----------|-----------|
-| Props/Emits 的类型、默认值、说明不对或缺失 | **改组件源码的 JSDoc**，然后跑 `pnpm docs:gen` |
+| Props/Emits 的类型、默认值、说明不对或缺失 | **改组件源码的类型声明与 JSDoc**，然后跑 `pnpm docs:gen` |
+| 子组件的 Props 要进表 | 从 `src/index.ts` 导出它，然后跑 `pnpm docs:gen` |
 | 缺"何时使用"、代码演示、最佳实践 | 手写 `docs/components/<pkg>.md` 的**非 API 区域** |
 | 新包第一次建文档页 | 按下方骨架新建，然后跑 `pnpm docs:gen` 填 API |
 
@@ -147,8 +147,8 @@ pnpm docs:gen      # 生成 + 同步，失败会明确告诉你哪个包缺文�
 pnpm docs:dev      # http://localhost:5173/components/<pkg>
 ```
 
-`pnpm docs:gen` 的退出码要看——`sync:docs` 会因为"包有 README 的 API 段但没有组件文档页"
-而失败，这时补文档页或登记豁免，不要忽略。
+`pnpm docs:gen` 的退出码要看——它会因为"包有组件但没有文档页"而失败，
+这时补文档页或登记豁免，不要忽略。
 
 ### 步骤 5: 侧边栏
 
@@ -161,17 +161,21 @@ pnpm docs:dev      # http://localhost:5173/components/<pkg>
 
 | 症状 | 原因 |
 |------|------|
-| API 表格是空的 / 没有默认值列 | JSDoc 缺 `@default`，或 Props 没写在被主组件引用的 `types.ts` 里 |
+| API 表格是空的 / 没有默认值列 | JSDoc 缺 `@default`，或 Props 没写在 `defineProps<T>()` 引用的接口里 |
 | 手写的 API 表格消失了 | 它在 `## API` 段内，被管线覆写了——这是预期行为 |
-| 出现两个 API 段 | README 的标题不是**精确** `## API`（`gen-docs.ts` 用 `/^## API$/m` 严格匹配，不匹配时会在文件末尾追加一份） |
-| `pnpm docs:gen` 报某个包缺文档 | 补 `docs/components/<pkg>.md`，或加进 `sync-docs.ts` 的 `PACKAGES_WITHOUT_COMPONENT_DOC` |
-| 子组件的 Props 没进文档 | 正常：`gen:docs` 只解析 `packages/*/src/*.vue` |
+| 出现两个 API 段 | README 的 API 标题不是以 `## API` 开头的二级标题，管线找不到就会在文件末尾追加一份 |
+| `pnpm docs:gen` 报某个包缺文档 | 补 `docs/components/<pkg>.md`，或加进 `gen-docs.ts` 的 `PACKAGES_WITHOUT_COMPONENT_DOC` |
+| 子组件的 Props 没进文档 | 它没从 `src/index.ts` 导出 |
+| Events / Slots 的说明是 `-` | Emits 接口的调用签名没有 JSDoc；插槽没有 `defineSlots` JSDoc 也没有模板 `<!-- @slot -->` |
+| Expose 表没出来 | `defineExpose` 的实参没用 `satisfies XExpose`，且包内找不到 `<组件名>Expose` 接口 |
+| CI Docs Check 红 | 改了类型或 JSDoc 没跑 `pnpm docs:gen`，或生成后的 README / 文档页没一起提交 |
 
 ---
 
 ## 相关文档
 
-- `scripts/docs/gen-docs.ts` / `scripts/docs/sync-docs.ts` — 管线实现（本 Skill 的事实来源）
+- `scripts/docs/gen-docs.ts` — 管线入口（本 Skill 的事实来源）；`print-api.ts` 是给 MCP 的 JSON 出口
+- `scripts/docs/component-files.ts` / `extract-api.ts` / `api-markdown.ts` — 组件发现、提取与渲染；`api-model.ts` 是数据结构
 - `docs/guide/component-jsdoc.md` — JSDoc 注释规范
 - `docs/components/button.md` — 文档页的参考实现
 - [component-design.md](../../agents/component-design.md) — 组件设计规范

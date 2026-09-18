@@ -6,13 +6,16 @@
          包裹层（__header-default）上。这样业务提供 #header 完全接管内容时，容器天然零样式，
          不必再 reset padding/border-bottom 才能让自己的布局生效。 -->
     <div v-if="hasHeader" :class="ns.e('header')">
+      <!-- @slot 顶部标题栏整体，覆盖默认的「图标 + 标题 + extra」布局 -->
       <slot name="header">
         <div :class="ns.e('header-default')">
           <span v-if="headerIcon || $slots['header-icon']" :class="ns.e('header-icon')">
+            <!-- @slot 标题栏图标，覆盖 headerIcon 图片 -->
             <slot name="header-icon"><img :src="headerIcon" alt="" /></slot>
           </span>
           <span :class="ns.e('header-title')">{{ headerTitle }}</span>
           <span v-if="$slots['header-extra']" :class="ns.e('header-extra')">
+            <!-- @slot 标题栏右侧附加区（关闭按钮等） -->
             <slot name="header-extra" />
           </span>
         </div>
@@ -30,13 +33,21 @@
         :fill-height="welcome?.fillHeight"
       >
         <!-- 透传 Welcome 的图标/标题/描述具名插槽，供业务做品牌图标与富文本标题（如局部主色着色）。 -->
-        <template v-if="$slots['welcome-icon']" #icon><slot name="welcome-icon" /></template>
-        <template v-if="$slots['welcome-title']" #title><slot name="welcome-title" /></template>
+        <template v-if="$slots['welcome-icon']" #icon>
+          <!-- @slot 欢迎页图标（透传 Welcome 的 icon 插槽） -->
+          <slot name="welcome-icon" />
+        </template>
+        <template v-if="$slots['welcome-title']" #title>
+          <!-- @slot 欢迎页标题（透传 Welcome 的 title 插槽） -->
+          <slot name="welcome-title" />
+        </template>
         <template v-if="$slots['welcome-description']" #description>
+          <!-- @slot 欢迎页描述（透传 Welcome 的 description 插槽） -->
           <slot name="welcome-description" />
         </template>
         <template v-if="prompts?.length || $slots['welcome-extra']" #extra>
           <Prompts v-if="prompts?.length" :items="prompts" @select="onPromptSelect" />
+          <!-- @slot 欢迎页附加区，渲染在快捷问题之后 -->
           <slot name="welcome-extra" />
         </template>
       </Welcome>
@@ -61,6 +72,7 @@
       >
         <!-- 透传气泡内容作用域 slot：使用方提供时覆盖默认 Markdown 渲染 -->
         <template v-if="$slots.content" #content="slotProps">
+          <!-- @slot 气泡内容区，覆盖默认渲染（透传 BubbleList 的 content 插槽） -->
           <slot name="content" v-bind="slotProps" />
         </template>
         <!-- 气泡上方的消息级头部（发送者名 / 时间戳 / 业务徽标）。
@@ -69,15 +81,18 @@
              （被 AICHAT_RESERVED_SLOTS 拦下、不进块插槽穿透）。
              content / footer 之所以没有前缀，是它们在 AiChat 这层本就没有第二种含义。 -->
         <template v-if="$slots['bubble-header']" #header="sp">
+          <!-- @slot 气泡内的消息级头部（发送者名 / 时间戳 / 徽标），跟随气泡对齐 -->
           <slot name="bubble-header" v-bind="sp" />
         </template>
         <!-- 行级插槽（气泡之外、占满整行）：整行居中的时间戳 / 日期分隔线等。
              与 bubble-header 的分工：那个在气泡内、跟随气泡左右对齐；这个是独立的一行。 -->
         <template v-if="$slots['row-before']" #row-before="sp">
+          <!-- @slot 气泡所在行之前的整行区域（居中时间戳 / 日期分隔线） -->
           <slot name="row-before" v-bind="sp" />
         </template>
         <!-- 出错态自定义（错误码 / 限流与鉴权分支等）；未提供时回退内置的「出错了 + 重试」条 -->
         <template v-if="$slots.error" #error="sp">
+          <!-- @slot 出错态自定义 UI，作用域含 item、error 与 retry -->
           <slot name="error" v-bind="sp" />
         </template>
         <!-- 消息操作：通过 actions prop 配置（默认 ['copy','regenerate']），
@@ -91,6 +106,7 @@
                  以及一整套「已经接好线」的动作句柄（见 BubbleFooterActions）一并给出，
                  免得业务为做版本切换去组件 ref 上反查 getBranches / switchBranch、
                  为做复制再重写一遍剪贴板降级逻辑。 -->
+            <!-- @slot 气泡下方的操作条，作用域含 item、branch、speaking 与已接线的 actions 句柄；提供后覆盖内置 BubbleActions -->
             <slot
               name="footer"
               :item="item"
@@ -141,6 +157,7 @@
         @select="onOutlineSelect"
       />
       <template v-if="quoteMenu.visible.value">
+        <!-- @slot 划词引用菜单，作用域含 items / invoke / close / mode / selection / trigger；默认渲染内置 QuoteMenu -->
         <slot
           name="quote-menu"
           :items="quoteMenu.items.value"
@@ -177,6 +194,7 @@
          所以那条路走不通。本容器 position:relative，业务在其中做绝对定位即可，
          不必再借 Sender 的盒子（也就不用去改它的 overflow）。 -->
     <div v-if="$slots['sender-before']" :class="ns.e('sender-before')">
+      <!-- @slot 消息区与输入框之间的自由区（横幅 / 提示），不在 Sender 盒内 -->
       <slot name="sender-before" />
     </div>
     <Sender
@@ -229,24 +247,30 @@
             {{ t.quoteChipsCollapse }}
           </button>
         </div>
+        <!-- @slot Sender 顶部扩展区，与内置引用 chips 追加共存（透传 Sender 的 header 插槽） -->
         <slot name="sender-header" v-bind="scope" />
       </template>
       <template v-if="$slots.toolbar" #toolbar="scope">
+        <!-- @slot Sender 工具栏（透传 Sender 的 toolbar 插槽） -->
         <slot name="toolbar" v-bind="scope" />
       </template>
       <template v-if="$slots.prefix" #prefix="scope">
+        <!-- @slot 输入框前缀区（透传 Sender 的 prefix 插槽） -->
         <slot name="prefix" v-bind="scope" />
       </template>
       <!-- Sender 底部扩展区（工具栏之下、仍在输入框盒内）：字数统计、快捷键提示等 -->
       <template v-if="$slots['sender-footer']" #footer="scope">
+        <!-- @slot Sender 底部扩展区，工具栏之下（透传 Sender 的 footer 插槽） -->
         <slot name="sender-footer" v-bind="scope" />
       </template>
       <!-- 自定义附件面板 UI：原样转发给 Sender（作用域见 SenderAttachmentsSlotScope） -->
       <template v-if="$slots['attachments-panel']" #attachments-panel="scope">
+        <!-- @slot 自定义附件面板 UI（透传 Sender 的同名插槽） -->
         <slot name="attachments-panel" v-bind="scope" />
       </template>
       <!-- 只换内置面板里的上传占位区（比整块接管轻得多）；与上一个插槽互斥使用 -->
       <template v-if="$slots['attachments-placeholder']" #attachments-placeholder="scope">
+        <!-- @slot 只替换内置附件面板的上传占位区（透传 Sender 的同名插槽） -->
         <slot name="attachments-placeholder" v-bind="scope" />
       </template>
     </Sender>
@@ -254,6 +278,7 @@
          不叫 #footer——那个名字在本层已被气泡底部操作条占用。写在 </AiChat> 之外亦可，
          但那样就脱离了组件的 flex 布局，得由业务自己补 flex-shrink 之类。 -->
     <div v-if="$slots.bottom" :class="ns.e('bottom')">
+      <!-- @slot 整个组件最底部（Sender 之下）的常驻区，如免责声明 -->
       <slot name="bottom" />
     </div>
   </div>

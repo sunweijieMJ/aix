@@ -64,12 +64,12 @@ const onTimeUpdate = () => {
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `source` | `SubtitleSource` | - | - | 字幕来源 |
+| `source` | `{ type: 'url'; url: string; format?: SubtitleFormat } \| { type: 'text'; content: string; format: SubtitleFormat } \| { type: 'cues'; cues: SubtitleCue[] }` | - | - | 字幕来源 |
 | `currentTime` | `number` | - | - | 当前播放时间 (秒)，用于外部控制字幕显示 |
 | `visible` | `boolean` | `true` | - | 是否显示字幕 |
-| `position` | `"top" \| "bottom" \| "center"` | `'bottom'` | - | 字幕位置 |
+| `position` | `'top' \| 'bottom' \| 'center'` | `'bottom'` | - | 字幕位置 |
 | `fontSize` | `number \| string` | `20` | - | 字体大小，可以是数字(px)或 CSS 字符串 |
-| `background` | `"blur" \| "solid" \| "none"` | `'blur'` | - | 背景样式：blur-毛玻璃、solid-渐变、none-透明 |
+| `background` | `'blur' \| 'solid' \| 'none'` | `'blur'` | - | 背景样式：blur-毛玻璃、solid-渐变、none-透明 |
 | `maxWidth` | `number \| string` | `'1200px'` | - | 最大宽度，可以是数字(px)或 CSS 字符串 |
 | `singleLine` | `boolean` | `false` | - | 是否单行显示（固定高度场景下启用，需配合 fixedHeight 使用） |
 | `fixedHeight` | `number` | - | - | 固定高度（用于计算分段，单位 px） |
@@ -80,15 +80,28 @@ const onTimeUpdate = () => {
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `loaded` | `SubtitleCue[]` | 字幕加载完成，返回所有字幕条目 |
-| `error` | `Error` | 字幕加载失败，返回错误信息 |
-| `change` | `SubtitleCue \| null` | 当前字幕变化，返回当前字幕条目和索引（null 表示无字幕） |
+| `loaded` | `cues: SubtitleCue[]` | 字幕加载完成，返回所有字幕条目 |
+| `error` | `error: Error` | 字幕加载失败，返回错误信息 |
+| `change` | `cue: SubtitleCue \| null, index: number` | 当前字幕变化，返回当前字幕条目和索引（null 表示无字幕） |
 
 ### Slots
 
-| 插槽名 | 说明 |
-|--------|------|
-| `default` | - |
+| 插槽名 | 参数 | 说明 |
+|--------|------|------|
+| `default` | - | 自定义字幕渲染，作用域含 text / fullText / currentSegment / totalSegments / data；默认渲染当前分段文本 |
+
+### Expose
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `getCues` | `() => SubtitleCue[]` | 获取所有字幕条目 |
+| `getCurrentCue` | `() => SubtitleCue \| null` | 获取当前字幕 |
+| `getCurrentIndex` | `() => number` | 获取当前字幕索引 |
+| `getCueAtTime` | `(time: number) => SubtitleCue \| null` | 根据时间获取字幕 |
+| `reload` | `() => Promise<void>` | 重新加载字幕 |
+| `loading` | `Ref<boolean>` | 是否正在加载 |
+| `error` | `Ref<Error \| null>` | 加载错误 |
+
 ## 类型定义
 
 ```typescript

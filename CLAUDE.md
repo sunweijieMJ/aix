@@ -79,7 +79,7 @@ aix/
 
 ## 组件包结构规范
 
-**新建包一律用 `pnpm gen <kebab-name>`**（`scripts/gen/`，含 20 个 `.eta` 模板），不要手写脚手架文件。
+**新建包一律用 `pnpm gen <kebab-name>`**（`scripts/gen/`，含 21 个 `.eta` 模板，其中一个生成 `docs/components/<name>.md`），不要手写脚手架文件。
 `--dry-run` 可先预览。生成结果：
 
 ```

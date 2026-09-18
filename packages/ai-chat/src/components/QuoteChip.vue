@@ -18,9 +18,11 @@
 
 <script lang="ts">
 export interface QuoteChipProps {
+  /** 引用数据 */
   quote: Quote;
 }
 export interface QuoteChipEmits {
+  /** 点击删除该引用 */
   (e: 'remove'): void;
   /** 点击主体回链定位到原文 */
   (e: 'locate', quote: Quote): void;

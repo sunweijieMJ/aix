@@ -31,6 +31,7 @@
       </svg>
     </span>
     <span class="aix-button__content">
+      <!-- @slot 按钮内容 -->
       <slot />
     </span>
   </button>

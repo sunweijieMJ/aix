@@ -31,7 +31,7 @@ Aix 是一套基于 Vue 3 的企业级 UI 组件库，旨在帮助开发者快�
 
 ## 浏览器支持
 
-现代浏览器和 IE11（需要 polyfills）。
+基于 Vue 3，支持现代浏览器（Edge / Firefox / Chrome / Safari 最近两个版本），不支持 IE。
 
 | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png" alt="Edge" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Edge | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png" alt="Firefox" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Firefox | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png" alt="Chrome" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Chrome | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png" alt="Safari" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Safari |
 | --- | --- | --- | --- |
@@ -39,7 +39,7 @@ Aix 是一套基于 Vue 3 的企业级 UI 组件库，旨在帮助开发者快�
 
 ## 版本
 
-当前版本：v1.0.0
+各组件包独立发版，版本号以 npm 上对应包的 `version` 为准，变更记录见各包目录下的 `CHANGELOG.md`。
 
 ## 参与贡献
 

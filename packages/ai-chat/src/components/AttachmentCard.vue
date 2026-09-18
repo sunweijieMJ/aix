@@ -94,12 +94,15 @@ export type AttachmentCardItem = AttachmentItem &
   Partial<Pick<PendingAttachment, 'status' | 'percent' | 'error'>>;
 
 export interface AttachmentCardProps {
+  /** 附件条目（含上传状态与缩略图信息） */
   item: AttachmentCardItem;
   /** 是否显示删除按钮（输入区预览 true / 气泡回显 false），默认 false */
   removable?: boolean;
 }
 export interface AttachmentCardEmits {
+  /** 点击删除按钮 */
   (e: 'remove'): void;
+  /** 上传失败态点击重试 */
   (e: 'retry'): void;
 }
 </script>

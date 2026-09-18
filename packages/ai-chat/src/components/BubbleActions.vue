@@ -149,6 +149,7 @@
       </button>
     </template>
     <!-- 扩展位：items 之后渲染，自由追加任意 VNode -->
+    <!-- @slot 追加在内置操作项之后的自定义内容 -->
     <slot />
   </div>
 </template>
@@ -181,13 +182,17 @@ export interface BubbleActionsProps {
   branchDisabled?: boolean;
 }
 export interface BubbleActionsEmits {
+  /** 内置 copy 操作：复制消息文本 */
   (e: 'copy'): void;
   /** 内置 copySource 操作：复制原始 markdown 源码 */
   (e: 'copy-source'): void;
+  /** 内置 regenerate 操作：重新生成该消息 */
   (e: 'regenerate'): void;
   /** 内置 continue 操作：向被手动停止（status==='abort'）的消息续写 */
   (e: 'continue'): void;
+  /** 内置 feedback 操作：赞 / 踩变化，null 为取消 */
   (e: 'feedback', value: MessageFeedback | null): void;
+  /** 内置 speak 操作：切换朗读 */
   (e: 'speak'): void;
   /** 内置 quote 操作：整条引用该消息（AiChat 接线构造 Quote 进 pendingQuotes） */
   (e: 'quote'): void;

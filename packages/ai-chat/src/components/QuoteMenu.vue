@@ -11,9 +11,11 @@
 
 <script lang="ts">
 export interface QuoteMenuProps {
+  /** 菜单动作列表（已解析为可直接渲染的项） */
   items: ResolvedQuoteAction[];
   /** 本次触发来源 = 唯一平台事实：longpress → sheet，pointer/keyboard → toolbar */
   source: 'pointer' | 'keyboard' | 'longpress';
+  /** 'menu' 显示动作菜单；'selecting' 表示选区仍在调整中 */
   mode: 'menu' | 'selecting';
   /** 选区包围盒（toolbar 锚点，source=pointer/keyboard 时必传） */
   getRect?: () => DOMRect;
@@ -23,10 +25,13 @@ export interface QuoteMenuProps {
   contextEl?: HTMLElement | null;
   /** 深度换肤：仅替换单端皮肤，L2 逻辑复用 */
   toolbar?: Component;
+  /** 深度换肤：替换 sheet（长按）端皮肤 */
   sheet?: Component;
 }
 export interface QuoteMenuEmits {
+  /** 点击某个动作，参数为动作 key */
   (e: 'invoke', key: string): void;
+  /** 关闭菜单 */
   (e: 'close'): void;
 }
 </script>

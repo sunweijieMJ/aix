@@ -470,25 +470,25 @@ app.use(
 
 ## API
 
-### Props
+### Menu Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `items` | `Array<MenuItemData>` | - | - | 数据驱动的菜单结构；与默认插槽可同时使用 |
+| `items` | `MenuItemData<M>[]` | - | - | 数据驱动的菜单结构；与默认插槽可同时使用 |
 | `selectedKey` | `string` | - | - | 当前选中项 key（v-model:selectedKey） |
-| `openKeys` | `Array<string>` | - | - | 展开的分组 key 列表（v-model:openKeys）。只管理内联分组，flyout 的悬停展开为组件内部状态 |
-| `defaultOpenKeys` | `Array<string>` | - | - | 非受控模式下的展开分组。未传 openKeys 也未传本项时，所有分组默认展开；accordion 开启时不适用，默认全部折叠。用户手动折叠或展开任一分组之前，本项的变化会重新应用，菜单数据异步到达后再传入也生效 |
-| `theme` | `MenuTheme` | `'gray'` | - | 配色主题 |
+| `openKeys` | `string[]` | - | - | 展开的分组 key 列表（v-model:openKeys）。只管理内联分组，flyout 的悬停展开为组件内部状态 |
+| `defaultOpenKeys` | `string[]` | - | - | 非受控模式下的展开分组。未传 openKeys 也未传本项时，所有分组默认展开；accordion 开启时不适用，默认全部折叠。用户手动折叠或展开任一分组之前，本项的变化会重新应用，菜单数据异步到达后再传入也生效 |
+| `theme` | `'gray' \| 'white' \| 'glass-light' \| 'glass-dark' \| (string & {})` | `'gray'` | - | 配色主题 |
 | `accordion` | `boolean` | `false` | - | 同一层级的分组只允许展开一个 |
 | `popupMaxVisible` | `number` | `9` | - | flyout 单层最多可见项数，超出后弹层内部滚动 |
-| `popupPlacement` | `MenuPopupPlacement` | `'right-start'` | - | flyout 弹层位置 |
+| `popupPlacement` | `'right-start' \| 'right' \| 'right-end' \| 'left-start' \| 'left' \| 'left-end'` | `'right-start'` | - | flyout 弹层位置 |
 | `popupClass` | `string` | - | - | 追加到所有 flyout 弹层根节点的 class |
-| `popupTeleportTo` | `MenuPopupTeleportTo` | `'body'` | - | flyout 弹层的挂载目标。`false` 时弹层就地渲染在触发项所在的 li 内并按 fixed 定位，适用于微前端严格样式隔离等弹层不能离开组件子树的场景 |
+| `popupTeleportTo` | `string \| HTMLElement \| false` | `'body'` | - | flyout 弹层的挂载目标。`false` 时弹层就地渲染在触发项所在的 li 内并按 fixed 定位，适用于微前端严格样式隔离等弹层不能离开组件子树的场景 |
 | `searchable` | `boolean` | `false` | - | 是否显示内置搜索框（位于 header 插槽之下、列表之上）。只决定搜索框的渲染，过滤由 searchValue 驱动 |
 | `searchValue` | `string` | - | - | 搜索关键字（v-model:searchValue）。非空时按 label 过滤 items 并按命中位置决定分组展开，不依赖 searchable，可由外部输入框驱动；复合组件写法只透出事件不过滤 |
 | `searchPlaceholder` | `string` | - | - | 搜索框占位文案，默认取语言包 |
 | `searchClearable` | `boolean` | `true` | - | 搜索框有关键字时，右侧显示可点击的清除按钮 |
-| `filterMethod` | `Function` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
+| `filterMethod` | `(item: MenuItemData<M>, keyword: string) => boolean` | - | - | 自定义匹配规则；默认对 label 做不区分大小写的包含匹配 |
 | `searchHighlight` | `boolean` | `true` | - | 搜索时给命中文字标色；命中项藏在 flyout 弹层里时，子菜单触发项在箭头前显示提示圆点。圆点只对 items 数据驱动写法生效 |
 | `width` | `number` | - | - | 宽度（px，v-model:width）。未传、非 resizable 且没有持久化存值时不设置内联宽度，由外层布局决定；resizable 但未传时从 200 起算 |
 | `resizable` | `boolean` | `false` | - | 是否允许拖拽右边缘调整宽度 |
@@ -496,84 +496,88 @@ app.use(
 | `maxWidth` | `number` | `300` | - | 可拖拽的最大宽度（px） |
 | `widthStorageKey` | `string` | - | - | 宽度持久化的 localStorage 键。有值或换键时读回该键存的宽度并作为内联宽度生效，不要求开启 resizable；宽度变化后写入，拖拽期间等松手再写 |
 
-### Events
+### Menu Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `update:selectedKey` | `string` | 选中项变化（v-model:selectedKey） |
-| `update:openKeys` | `string[]` | 展开的分组列表变化（v-model:openKeys） |
-| `update:width` | `number` | 宽度变化（v-model:width），拖拽过程中持续触发 |
-| `update:searchValue` | `string` | 搜索框文本变化（v-model:searchValue） |
-| `search` | `string` | 搜索关键字变化，参数为去除首尾空格后的关键字 |
-| `select` | `MenuSelectPayload` | 用户点击叶子项 |
-| `open-change` | `string[]` | 分组展开状态变化 |
+| `update:selectedKey` | `key: string` | 选中项变化（v-model:selectedKey） |
+| `update:openKeys` | `keys: string[]` | 展开的分组列表变化（v-model:openKeys） |
+| `update:width` | `width: number` | 宽度变化（v-model:width），拖拽过程中持续触发 |
+| `update:searchValue` | `value: string` | 搜索框文本变化（v-model:searchValue） |
+| `search` | `keyword: string` | 搜索关键字变化，参数为去除首尾空格后的关键字 |
+| `select` | `payload: MenuSelectPayload<M>` | 用户点击叶子项 |
+| `open-change` | `keys: string[]` | 分组展开状态变化 |
 
-### Slots
+### Menu Slots
 
-| 插槽名 | 说明 |
-|--------|------|
-| `header` | 列表上方区域，设计稿放 logo；内置搜索框渲染在它之下 |
-| `default` | 复合组件写法的菜单内容，可与 items 同时使用，渲染在 items 之后 |
-| `footer` | 列表下方区域，设计稿放用户行与设置入口 |
-| `item` | 自定义数据驱动叶子项的内容 |
-| `icon` | 自定义数据驱动节点的图标，只对带 icon 的节点生效 |
-| `group-title` | 自定义数据驱动分组的标题 |
+| 插槽名 | 参数 | 说明 |
+|--------|------|------|
+| `header` | - | 列表上方区域，设计稿放 logo；内置搜索框渲染在它之下 |
+| `default` | - | 复合组件写法的菜单内容，可与 items 同时使用，渲染在 items 之后 |
+| `footer` | - | 列表下方区域，设计稿放用户行与设置入口 |
+| `item` | `props: MenuItemSlotProps<M>` | 自定义数据驱动叶子项的内容 |
+| `icon` | `props: { item: MenuItemData<M> }` | 自定义数据驱动节点的图标，只对带 icon 的节点生效 |
+| `group-title` | `props: { item: MenuItemData<M> }` | 自定义数据驱动分组的标题 |
 
-## 子组件 API
+---
 
 ### MenuItem Props
 
-| 属性名     | 类型           | 默认值  | 必填 | 说明                                         |
-| ---------- | -------------- | ------- | :--: | -------------------------------------------- |
-| `itemKey`  | `string`       | -       |  ✅  | 唯一标识                                     |
-| `label`    | `string`       | -       |  -   | 显示文案；同时作为溢出时 Tooltip 的内容      |
-| `icon`     | `MenuIconSource` | -     |  -   | 图标：组件、图片地址或字体图标类名，16×16    |
-| `disabled` | `boolean`      | `false` |  -   | 是否禁用                                     |
-| `data`     | `MenuItemData` | -       |  -   | 数据驱动模式下的原始节点，随 select 事件透出 |
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `itemKey` | `string` | - | ✅ | 唯一标识 |
+| `label` | `string` | - | - | 显示文案；同时作为溢出时 Tooltip 的内容 |
+| `icon` | `Component \| string` | - | - | 图标：组件、图片地址或字体图标类名，16×16 |
+| `disabled` | `boolean` | `false` | - | 是否禁用 |
+| `data` | `MenuItemData` | - | - | 数据驱动模式下的原始节点，随 select 事件透出 |
 
 ### MenuItem Slots
 
-| 插槽名    | 说明                         |
-| --------- | ---------------------------- |
-| `default` | 自定义内容，默认渲染 `label` |
-| `icon`    | 自定义图标                   |
+| 插槽名 | 参数 | 说明 |
+|--------|------|------|
+| `icon` | - | 自定义图标，替代 icon prop |
+| `default` | - | 自定义文案内容，替代 label prop |
+
+---
 
 ### MenuGroup Props
 
-| 属性名        | 类型      | 默认值 | 必填 | 说明                                          |
-| ------------- | --------- | ------ | :--: | --------------------------------------------- |
-| `groupKey`    | `string`  | -      |  ✅  | 唯一标识，作为 openKeys 的取值                |
-| `title`       | `string`  | -      |  -   | 分组标题                                      |
-| `icon`        | `MenuIconSource` | - |  -   | 标题前的图标：组件、图片地址或字体图标类名     |
-| `collapsible` | `boolean` | `true` |  -   | 是否可折叠。为 false 时始终展开，标题不可点击 |
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `groupKey` | `string` | - | ✅ | 唯一标识，作为 openKeys 的取值 |
+| `title` | `string` | - | - | 分组标题 |
+| `icon` | `Component \| string` | - | - | 标题前的图标：组件、图片地址或字体图标类名，16×16 |
+| `collapsible` | `boolean` | `true` | - | 是否可折叠。为 false 时始终展开，标题不可点击 |
 
 ### MenuGroup Slots
 
-| 插槽名    | 说明                         |
-| --------- | ---------------------------- |
-| `default` | 分组内的菜单项               |
-| `title`   | 自定义标题，默认渲染 `title` |
-| `icon`    | 自定义标题前的图标           |
+| 插槽名 | 参数 | 说明 |
+|--------|------|------|
+| `icon` | - | 自定义标题前的图标，替代 icon prop |
+| `title` | - | 自定义标题内容，替代 title prop |
+| `default` | - | 分组内的菜单项 |
+
+---
 
 ### SubMenu Props
 
-| 属性名          | 类型           | 默认值  | 必填 | 说明                                              |
-| --------------- | -------------- | ------- | :--: | ------------------------------------------------- |
-| `itemKey`       | `string`       | -       |  ✅  | 唯一标识                                          |
-| `label`         | `string`       | -       |  -   | 显示文案                                          |
-| `icon`          | `MenuIconSource` | -     |  -   | 图标：组件、图片地址或字体图标类名，16×16         |
-| `disabled`      | `boolean`      | `false` |  -   | 是否禁用                                          |
-| `popupWithIcon` | `boolean`      | `false` |  -   | 弹层内的子项是否带图标，决定弹层宽度（158 / 182） |
-| `popupClass`    | `string`       | -       |  -   | 追加到本弹层根节点的 class                        |
-| `data`          | `MenuItemData` | -       |  -   | 数据驱动模式下的原始节点                          |
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `itemKey` | `string` | - | ✅ | 唯一标识 |
+| `label` | `string` | - | - | 显示文案 |
+| `icon` | `Component \| string` | - | - | 图标：组件、图片地址或字体图标类名，16×16 |
+| `disabled` | `boolean` | `false` | - | 是否禁用 |
+| `popupWithIcon` | `boolean` | `false` | - | 弹层内的子项是否带图标，决定弹层宽度（158 / 182） |
+| `popupClass` | `string` | - | - | 追加到本弹层根节点的 class |
+| `data` | `MenuItemData` | - | - | 数据驱动模式下的原始节点 |
 
 ### SubMenu Slots
 
-| 插槽名    | 说明                               |
-| --------- | ---------------------------------- |
-| `default` | 弹层内的子项                       |
-| `title`   | 自定义触发项文案，默认渲染 `label` |
-| `icon`    | 自定义图标                         |
+| 插槽名 | 参数 | 说明 |
+|--------|------|------|
+| `icon` | - | 自定义触发项图标，替代 icon prop |
+| `title` | - | 自定义触发项文案，替代 label prop |
+| `default` | - | 弹层内的子项 |
 
 ## 工具函数
 

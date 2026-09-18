@@ -38,7 +38,9 @@ export interface QuoteToolbarProps {
   contextEl?: HTMLElement | null;
 }
 export interface QuoteToolbarEmits {
+  /** 点击某个动作，参数为动作 key */
   (e: 'invoke', key: string): void;
+  /** 关闭工具栏 */
   (e: 'close'): void;
 }
 </script>

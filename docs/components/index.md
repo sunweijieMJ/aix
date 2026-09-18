@@ -9,6 +9,12 @@ Aix 提供了丰富的企业级 UI 组件，覆盖常见的业务场景。
 | [Button 按钮](/components/button) | `@aix/button` | 触发业务逻辑时使用 |
 | [Icons 图标](/components/icons) | `@aix/icons` | 580+ SVG 图标组件 |
 
+## 导航组件
+
+| 组件 | 包名 | 说明 |
+|------|------|------|
+| [Menu 菜单](/components/menu) | `@aix/menu` | 侧边导航，支持分组、flyout 子菜单、搜索与拖拽宽度 |
+
 ## 媒体组件
 
 | 组件 | 包名 | 说明 |
@@ -16,6 +22,19 @@ Aix 提供了丰富的企业级 UI 组件，覆盖常见的业务场景。
 | [VideoPlayer 视频播放器](/components/video) | `@aix/video` | 支持 HLS/FLV/DASH/RTSP 等多协议 |
 | [Subtitle 字幕](/components/subtitle) | `@aix/subtitle` | 支持 VTT/SRT/ASS 等多格式字幕 |
 | [PdfViewer PDF 预览器](/components/pdf-viewer) | `@aix/pdf-viewer` | PDF 预览、文本选择、图片提取 |
+
+## 编辑器组件
+
+| 组件 | 包名 | 说明 |
+|------|------|------|
+| [CodeEditor 代码编辑器](/components/code-editor) | `@aix/code-editor` | 基于 CodeMirror 的代码编辑器 |
+| [RichTextEditor 富文本编辑器](/components/rich-text-editor) | `@aix/rich-text-editor` | 富文本编辑器 |
+
+## 弹出层组件
+
+| 组件 | 包名 | 说明 |
+|------|------|------|
+| [Popper 弹出层](/components/popper) | `@aix/popper` | Popper / Tooltip / Popover / Dropdown / ContextMenu |
 
 ## 工具包
 

@@ -1,4 +1,5 @@
 <template>
+  <!-- @slot 参考元素（触发元素） -->
   <slot name="reference" />
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
     <Transition
@@ -9,6 +10,7 @@
       @after-leave="onHide"
     >
       <div v-if="isOpen" ref="floatingElRef" :class="floatingClasses" :style="mergedStyles">
+        <!-- @slot 浮动内容 -->
         <slot />
         <PopperArrow v-if="arrow" ref="arrowElRef" :style="arrowStyles" />
       </div>

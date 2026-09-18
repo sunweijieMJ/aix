@@ -112,20 +112,18 @@ import { Button } from '@aix/button';
 ## API
 
 ::: warning 自动生成的 API 文档
-以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
+以下内容由 `pnpm docs:gen` 从组件源码生成，请勿手动编辑。
 
-如需更新 API 文档，请：
-1. 修改组件源码中的 JSDoc 注释
-2. 运行 `pnpm docs:gen`（= `gen:docs` 生成到 README.md + `sync:docs` 同步到此文档）
+需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
 :::
 
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `type` | `"primary" \| "default" \| "dashed" \| "text" \| "link"` | `'default'` | - | 按钮类型 |
-| `htmlType` | `"button" \| "submit" \| "reset"` | `'button'` | - | 原生 button 元素的 type 属性（type 名称已被风格类型占用） 注意：默认值为 'button'，与原生默认的 'submit' 不同， 避免按钮放入 form 后意外触发表单提交；需要提交表单时显式传入 'submit' |
-| `size` | `"small" \| "medium" \| "large"` | `'medium'` | - | 按钮尺寸 |
+| `type` | `'primary' \| 'default' \| 'dashed' \| 'text' \| 'link'` | `'default'` | - | 按钮类型 |
+| `htmlType` | `'button' \| 'submit' \| 'reset'` | `'button'` | - | 原生 button 元素的 type 属性（type 名称已被风格类型占用）注意：默认值为 'button'，与原生默认的 'submit' 不同，避免按钮放入 form 后意外触发表单提交；需要提交表单时显式传入 'submit' |
+| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | - | 按钮尺寸 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
 | `loading` | `boolean` | `false` | - | 是否加载中，加载中时按钮不可点击并显示加载动画 |
 
@@ -133,10 +131,10 @@ import { Button } from '@aix/button';
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `click` | `MouseEvent` | 点击按钮时触发 |
+| `click` | `event: MouseEvent` | 点击按钮时触发 |
 
 ### Slots
 
-| 插槽名 | 说明 |
-|--------|------|
-| `default` | - |
+| 插槽名 | 参数 | 说明 |
+|--------|------|------|
+| `default` | - | 按钮内容 |

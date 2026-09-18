@@ -10,6 +10,7 @@
     </template>
     <div v-else class="aix-skeleton__block" :style="blockStyle" />
   </div>
+  <!-- @slot loading 为 false 时渲染的真实内容 -->
   <slot v-else />
 </template>
 

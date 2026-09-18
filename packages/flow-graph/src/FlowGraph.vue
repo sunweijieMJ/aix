@@ -45,6 +45,7 @@
     />
     <MiniMap class="aix-flow-minimap" position="bottom-right" pannable zoomable />
     <Panel :position="bottomBarPos" :style="bottomBarStyle" class="aix-flow-bottom-panel">
+      <!-- @slot 底部操作栏，作用域给出 addNode / openSearch / closeSearch / fitView / zoomIn / zoomOut；默认渲染新建节点按钮与缩放控件 -->
       <slot
         name="bottom-bar"
         :add-node="addNode"

@@ -24,6 +24,11 @@ export function getPackagesDir(): string {
   return path.resolve(process.cwd(), 'packages');
 }
 
+/** 仓库根（`pnpm gen` 只在仓库根运行） */
+export function getRepoRoot(): string {
+  return process.cwd();
+}
+
 /** 获取组件目录路径 */
 export function getComponentDir(componentName: string): string {
   return path.join(getPackagesDir(), componentName);

@@ -1,6 +1,8 @@
 import { COMPONENT_LIBRARY_CONFIG, DEFAULT_MAX_CONCURRENT_EXTRACTION } from '../constants';
 import { createParsers } from '../parsers/index';
 import type { ComponentExample, ComponentInfo, ExtractorConfig, PackageInfo } from '../types/index';
+import { loadApiIndex, mergeApiDefinitions, toApiDefinitions } from '../utils/api-source';
+import type { ApiIndex } from '../utils/api-source';
 import {
   DataManager,
   findComponentFiles,
@@ -33,6 +35,8 @@ export class ComponentExtractor {
   private dataManager: DataManager;
   /** workspace 根，用于把绝对路径相对化后落盘 */
   private repoRoot: string;
+  /** 文档管线给出的结构化 API，整个提取过程只加载一次 */
+  private apiIndex?: Promise<ApiIndex | null>;
 
   constructor(config: ExtractorConfig) {
     this.config = config;
@@ -81,6 +85,23 @@ export class ComponentExtractor {
 
     // 只有一个、且就是包本身的显示名时没有区分价值
     return names.size > 1 ? [...names].sort() : undefined;
+  }
+
+  /**
+   * 结构化 API 索引，首次访问时运行文档管线
+   */
+  private getApiIndex(): Promise<ApiIndex | null> {
+    this.apiIndex ??= loadApiIndex(this.repoRoot || null).then((index) => {
+      if (this.config.verbose) {
+        log.info(
+          index
+            ? `📐 已从源码解析 ${index.size} 个包的 API`
+            : '📐 文档管线不可用，API 走 README 表格',
+        );
+      }
+      return index;
+    });
+    return this.apiIndex;
   }
 
   /**
@@ -239,6 +260,20 @@ export class ComponentExtractor {
       description = packageInfo.description || '';
       category = this.extractCategory(packageInfo.name);
       tags = this.extractTags(packageInfo, '');
+    }
+
+    // 同名条目以文档管线对源码的解析为准：类型文本、可选值、默认值都是从源码直接拿的，
+    // 不经 Markdown 表格转手。README 表格里源码没有的条目保留，
+    // 没有组件源码的包（icons / hooks / theme）整份走 README 表格解析
+    const sourceApi = (await this.getApiIndex())?.get(packageInfo.name);
+    if (sourceApi) {
+      const fromSource = toApiDefinitions(sourceApi);
+      props = mergeApiDefinitions(fromSource.props, props);
+      emits = mergeApiDefinitions(fromSource.emits, emits ?? []);
+      slots = mergeApiDefinitions(fromSource.slots, slots ?? []);
+      if (this.config.verbose) {
+        log.info(`✅ 从源码解析 API: ${sourceApi.components.map((c) => c.name).join(', ')}`);
+      }
     }
 
     // 文档快照：发布出去的包里没有 packages/ 源码，靠快照保证文档类能力可用

@@ -36,6 +36,7 @@
           :color="data?.color || fallbackColor"
           :colors="data?.pathColors ?? []"
         />
+        <!-- @slot 节点主体内容，作用域含 size / nodeState / clicking / onClick -->
         <slot
           :size="size"
           :node-state="nodeState"
@@ -120,9 +121,13 @@ import NodeActiveCross from './NodeActiveCross.vue';
  * 子类通过 `v-bind="$props"` 透传给 BaseNode，未声明的字段会落到 $attrs 被忽略。
  */
 interface Props {
+  /** 节点 id（由 Vue Flow 注入） */
   id: string;
+  /** 节点数据 */
   data?: NodeData;
+  /** 是否正在拖拽（由 Vue Flow 注入） */
   dragging?: boolean;
+  /** 连接点是否可连接（由 Vue Flow 注入） */
   connectable?: HandleConnectable;
   /** 节点默认尺寸（px）：当 data.size 未设置时使用 */
   defaultSize: number;

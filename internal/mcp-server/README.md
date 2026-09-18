@@ -29,7 +29,7 @@
 
 ## 特性
 
-- 📖 **从 README 提取 API**：按列名解析 markdown 表格，容忍多种列序，产出 Props / Emits / Slots
+- 📖 **API 直接来自源码**：`extract` 在仓库内调用文档管线（`scripts/docs/print-api.ts`）拿到源码解析结果（类型文本、别名展开、字面量可选值、事件与插槽参数），与 README / 文档站的 API 表同源；管线不可用的包退回按列名解析 README 表格
 - 🔍 **中英文搜索**：组件按字段加权匹配；图标内置中文别名表，"用户""设置"等查询可直接命中
 - 📦 **组件 + 工具包双索引**：同时覆盖 `packages/` 的组件和 `kit/` `internal/` 的工具包
 - 🪶 **响应体裁剪**：列表和搜索只返回摘要，详情按需获取，避免一次调用灌爆上下文
@@ -197,11 +197,11 @@ graph TB
     ↓
 读 package.json（版本、依赖、作者）
     ↓
-解析 README.md
-    ├─ 扫描全文所有 markdown 表格
-    ├─ 按列名识别 Props / Emits / Slots 表
-    ├─ 记录每张表所属章节（区分同一包内的多个子组件）
-    └─ 抽取代码示例、特性列表
+解析 README.md（描述、特性、代码示例、分类标签）
+    ↓
+Props / Emits / Slots
+    ├─ 仓库内：运行一次 scripts/docs/print-api.ts，按包名取结构化 API，`group` 为组件名，字面量可选值进 enum
+    └─ 拿不到时：扫描 README 全文表格，按列名识别，按章节标注归属
     ↓
 图标包单独处理（解析导出、抽 SVG、生成中英文关键词）
     ↓
@@ -323,7 +323,8 @@ node dist/cli.js extract --packages=../../packages
 
 **某个组件的 Props 是空的**
 
-Props 来自 README 的 markdown 表格，需要满足：首列是属性名（`属性名` / `属性` / `参数` / `配置` / `选项` 等），
+仓库内提取时 Props 来自源码解析，先确认组件从 `src/index.ts` 导出、且 `defineProps<T>()` 引用的接口有成员。
+退回 README 表格解析时（icons / hooks / theme，或文档管线不可用），需要满足：首列是属性名（`属性名` / `属性` / `参数` / `配置` / `选项` 等），
 且至少有「类型」「默认值」「可选值」之一。缺类型列的纯说明表会被有意跳过，避免噪声。
 
 **`component-source://` 资源读不到**
@@ -332,7 +333,8 @@ Props 来自 README 的 markdown 表格，需要满足：首列是属性名（`�
 
 **改了组件文档但 AI 拿到的还是旧的**
 
-数据是 `extract` 时的快照，改完文档要重跑 `extract`；仓库内运行时 README / CHANGELOG 会直读磁盘最新内容。
+数据是 `extract` 时的快照。`pnpm docs:gen` 末尾会自动重跑 `extract`；只改了 README 或 CHANGELOG 则不必，
+仓库内运行时这两类文档会直读磁盘最新内容。
 
 ## 常见问题
 

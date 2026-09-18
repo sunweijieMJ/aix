@@ -1,5 +1,6 @@
 <template>
   <span class="aix-context-menu__trigger" aria-haspopup="menu" v-on="referenceListeners">
+    <!-- @slot 触发区域，trigger 为 contextmenu 时在其内右键弹出菜单 -->
     <slot />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
@@ -20,6 +21,7 @@
           :aria-label="t.contextMenu"
           @keydown="onMenuKeyDown"
         >
+          <!-- @slot 菜单内容（使用 DropdownItem） -->
           <slot name="menu" />
         </ul>
       </div>
