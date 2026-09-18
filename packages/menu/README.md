@@ -426,7 +426,8 @@ flyout 弹层里 `glass-dark` 沿用侧栏同款深色配色，其余三套共�
 | `--aix-menu-item-gap`                      | `8px`           | 侧栏        | 菜单项之间的间距                                 |
 | `--aix-menu-group-title-height`            | `38px`          | 侧栏        | 一级分组标题高度                                 |
 | `--aix-menu-group-title-padding`           | `0 8px`         | 侧栏        | 一级分组标题内边距                               |
-| `--aix-menu-resize-handle-width`           | `4px`           | 侧栏        | 拖拽把手命中区宽度，以右边缘为中心左右均分       |
+| `--aix-menu-resize-handle-inset`           | `2px`           | 侧栏        | 拖拽把手命中区在侧栏右边缘线内侧的宽度           |
+| `--aix-menu-resize-handle-outset`          | `4px`           | 侧栏        | 拖拽把手命中区在侧栏右边缘线外侧的宽度           |
 | `--aix-menu-search-height`                 | `38px`          | 侧栏        | 搜索框高度                                       |
 | `--aix-menu-search-padding`                | `8px`           | 侧栏        | 搜索框内边距                                     |
 | `--aix-menu-search-gap`                    | `10px`          | 侧栏        | 搜索图标与输入框间距                             |
