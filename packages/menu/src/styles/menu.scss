@@ -6,7 +6,7 @@
   --aix-menu-radius: 8px;
   --aix-menu-item-font-size: 14px;
   --aix-menu-item-line-height: 20px;
-  --aix-menu-item-font-weight-active: 600;
+  --aix-menu-item-font-weight-active: 500;
   --aix-menu-icon-size: 16px;
   --aix-menu-icon-gap: 8px;
   --aix-menu-highlight-dot-size: 6px;
@@ -24,10 +24,10 @@
   --aix-menu-transition-duration: 0.2s;
 }
 
-// 4px 细滚动条：只显示圆角滑块，隐藏轨道与按钮
+// 4px 细滚动条：只显示圆角滑块，隐藏轨道与按钮；滑块仅在指针停在滚动容器上时可见
 @mixin thin-scrollbar($thumb-color) {
   scrollbar-width: thin;
-  scrollbar-color: #{$thumb-color} transparent;
+  scrollbar-color: transparent transparent;
 
   &::-webkit-scrollbar {
     width: 4px;
@@ -43,7 +43,15 @@
 
   &::-webkit-scrollbar-thumb {
     border-radius: 9px;
-    background: #{$thumb-color};
+    background: transparent;
+  }
+
+  &:hover {
+    scrollbar-color: #{$thumb-color} transparent;
+
+    &::-webkit-scrollbar-thumb {
+      background: #{$thumb-color};
+    }
   }
 }
 
@@ -85,7 +93,7 @@
   --aix-menu-item-gap: 8px;
   --aix-menu-group-title-height: 38px;
   --aix-menu-group-title-padding: 0 8px;
-  --aix-menu-resize-handle-width: 6px;
+  --aix-menu-resize-handle-width: 4px;
   --aix-menu-search-height: 38px;
   --aix-menu-search-padding: 8px;
   --aix-menu-search-gap: 10px;
@@ -93,6 +101,8 @@
   --aix-menu-search-clear-size: 16px;
   --aix-menu-search-font-size: 14px;
   --aix-menu-search-line-height: 22px;
+  --aix-menu-scrollbar-width: 4px;
+  --aix-menu-scrollbar-inset: 2px;
 
   display: flex;
   position: relative;
@@ -118,9 +128,16 @@
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
-    margin: 0;
-    padding: 0;
-    overflow: hidden auto;
+
+    // 列表右移到距侧栏边缘 --aix-menu-scrollbar-inset 处，再用等量 padding 把内容收回
+    // --aix-menu-padding 的位置，滚动条落进右侧留白；滚动条常驻，菜单项宽度才不随它出现而变
+    margin: 0 calc(var(--aix-menu-scrollbar-inset) - var(--aix-menu-padding)) 0 0;
+    padding: 0
+      calc(
+        var(--aix-menu-padding) - var(--aix-menu-scrollbar-inset) - var(--aix-menu-scrollbar-width)
+      )
+      0 0;
+    overflow: hidden scroll;
     gap: var(--aix-menu-item-gap);
     list-style: none;
   }
@@ -149,6 +166,7 @@
     text-align: center;
   }
 
+  // 以侧栏右边缘居中，内侧半幅只吃滚动条外沿到边缘那段留白，不与滚动条抢指针
   &__resize-handle {
     position: absolute;
     z-index: 1;
@@ -256,12 +274,12 @@
     border: 0;
     border-radius: 50%;
     background: transparent;
-    color: var(--aix-menu-search-placeholder-color);
+    color: var(--aix-menu-search-clear-color);
     font-size: var(--aix-menu-search-clear-size);
     cursor: pointer;
 
     &:hover {
-      color: var(--aix-menu-search-icon-color);
+      color: var(--aix-menu-search-clear-color-hover);
     }
 
     &:focus-visible {
@@ -336,6 +354,9 @@
     width: var(--aix-menu-icon-size);
     height: var(--aix-menu-icon-size);
     font-size: var(--aix-menu-icon-size);
+
+    // 字体图标不跟随选中项字重加粗
+    font-weight: 400;
 
     > * {
       width: 100%;
@@ -466,6 +487,9 @@
     width: var(--aix-menu-icon-size);
     height: var(--aix-menu-icon-size);
     font-size: var(--aix-menu-icon-size);
+
+    // 字体图标不跟随选中项字重加粗
+    font-weight: 400;
 
     > * {
       width: 100%;

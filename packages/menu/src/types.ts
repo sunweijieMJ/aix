@@ -43,7 +43,7 @@ export interface MenuItemData<M extends MenuItemMeta = MenuItemMeta> {
   key: string;
   /** 显示文案；`divider` 不需要 */
   label?: string;
-  /** 图标：组件、图片地址或字体图标类名；分组节点的图标渲染在标题前 */
+  /** 图标：组件、图片地址或字体图标类名；分组节点的图标渲染在标题前，需开启 showGroupIcon */
   icon?: MenuIconSource;
   /**
    * 是否禁用
@@ -122,6 +122,11 @@ export interface MenuProps<M extends MenuItemMeta = MenuItemMeta> {
    * @default false
    */
   accordion?: boolean;
+  /**
+   * 内联分组的标题前是否显示图标，对 `icon` prop 与 `icon` 插槽同时生效
+   * @default false
+   */
+  showGroupIcon?: boolean;
   /**
    * flyout 单层最多可见项数，超出后弹层内部滚动
    * @default 9
@@ -223,7 +228,7 @@ export interface MenuGroupProps {
   groupKey: string;
   /** 分组标题 */
   title?: string;
-  /** 标题前的图标：组件、图片地址或字体图标类名，16×16 */
+  /** 标题前的图标：组件、图片地址或字体图标类名，16×16；需根组件开启 showGroupIcon */
   icon?: MenuIconSource;
   /**
    * 是否可折叠。为 false 时始终展开，标题不可点击

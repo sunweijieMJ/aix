@@ -313,6 +313,7 @@ export function useMenu<M extends MenuItemMeta>(
     theme: computed(() => props.theme ?? 'gray'),
     selectedKey,
     openKeys,
+    showGroupIcon: computed(() => props.showGroupIcon ?? false),
     popupMaxVisible: computed(() => props.popupMaxVisible ?? 9),
     popupPlacement: computed(() => props.popupPlacement ?? 'right-start'),
     popupClass: toRef(props, 'popupClass'),

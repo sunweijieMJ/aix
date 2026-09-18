@@ -73,9 +73,18 @@ function onEscape(event: KeyboardEvent) {
   emit('update:modelValue', '');
 }
 
-/** 按钮嵌在 label 里，阻止默认行为挡掉 label 的聚焦转发，再手动把焦点还给输入框 */
-function onClear() {
+/**
+ * 按钮嵌在 label 里，阻止默认行为挡掉 label 的聚焦转发。
+ * 指针点击后主动失焦，搜索框回到默认态；detail 为 0 说明由键盘触发，
+ * 此时按钮随关键字清空一起卸载，焦点要还给输入框才不会掉回文档开头。
+ */
+function onClear(event: MouseEvent) {
   emit('update:modelValue', '');
-  nextTick(() => inputRef.value?.focus());
+  if (event.detail === 0) {
+    nextTick(() => inputRef.value?.focus());
+    return;
+  }
+  focused.value = false;
+  inputRef.value?.blur();
 }
 </script>

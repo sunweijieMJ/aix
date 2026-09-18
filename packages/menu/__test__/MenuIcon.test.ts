@@ -71,9 +71,27 @@ describe('图标来源', () => {
 });
 
 describe('分组图标', () => {
-  it('数据驱动分组的 icon 渲染在标题文字之前', () => {
+  it('showGroupIcon 未开启时不渲染分组标题图标', () => {
     wrapper = mountMenu({
       props: {
+        items: [
+          {
+            key: 'g',
+            type: 'group',
+            label: 'G',
+            icon: 'icon-g',
+            children: [{ key: 'g1', label: 'G1' }],
+          },
+        ],
+      },
+    });
+    expect(groupLi(wrapper.element, 'G').querySelector('.aix-menu-group__icon')).toBeNull();
+  });
+
+  it('showGroupIcon 开启后数据驱动分组的 icon 渲染在标题文字之前', () => {
+    wrapper = mountMenu({
+      props: {
+        showGroupIcon: true,
         items: [
           {
             key: 'g',
@@ -97,9 +115,10 @@ describe('分组图标', () => {
     expect(groupLi(wrapper.element, 'H').querySelector('.aix-menu-group__icon')).toBeNull();
   });
 
-  it('复合组件写法下 MenuGroup 的 icon prop 与 icon 插槽都能渲染标题图标', () => {
+  it('showGroupIcon 开启后复合组件写法的 icon prop 与 icon 插槽都能渲染标题图标', () => {
     wrapper = mount(Menu, {
       attachTo: document.body,
+      props: { showGroupIcon: true },
       slots: {
         default: () => [
           h(MenuGroup, { groupKey: 'a', title: 'A', icon: IconStub }, () => [

@@ -53,6 +53,14 @@ function clearButton() {
   return wrapper!.find('button.aix-menu-search__clear');
 }
 
+/** detail 为 0 表示键盘触发；trigger 改不了只读的 detail，这里发原生事件 */
+function clickClear(detail: number) {
+  clearButton().element.dispatchEvent(
+    new MouseEvent('click', { bubbles: true, cancelable: true, detail }),
+  );
+  return nextTick();
+}
+
 function marks(root: ParentNode = wrapper!.element) {
   return Array.from(root.querySelectorAll<HTMLElement>('mark.aix-menu-highlight')).map(
     (el) => el.textContent,
@@ -511,20 +519,33 @@ describe('Menu 搜索框清除按钮', () => {
     expect(clearButton().exists()).toBe(false);
   });
 
-  it('点击清空关键字、还原列表并把焦点交回输入框', async () => {
+  it('指针点击清空关键字、还原列表并让搜索框回到默认态', async () => {
     wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await searchInput().trigger('focus');
     await type('a1');
     expect(visibleLabels()).toEqual(['A1']);
 
-    await clearButton().trigger('click');
+    await clickClear(1);
     await nextTick();
 
     expect(searchInput().element.value).toBe('');
     expect(wrapper.emitted('update:searchValue')?.at(-1)).toEqual(['']);
     expect(wrapper.emitted('search')?.at(-1)).toEqual(['']);
-    expect(document.activeElement).toBe(searchInput().element);
+    expect(document.activeElement).not.toBe(searchInput().element);
+    expect(wrapper.find('.aix-menu-search').classes()).not.toContain('aix-menu-search--focused');
     expect(clearButton().exists()).toBe(false);
     expect(visibleLabels().length).toBeGreaterThan(1);
+  });
+
+  it('键盘触发清除后焦点回到输入框', async () => {
+    wrapper = mountMenu({ props: { items: ITEMS, searchable: true } });
+    await type('a1');
+
+    await clickClear(0);
+    await nextTick();
+
+    expect(searchInput().element.value).toBe('');
+    expect(document.activeElement).toBe(searchInput().element);
   });
 
   it('aria-label 跟随应用级 locale', async () => {

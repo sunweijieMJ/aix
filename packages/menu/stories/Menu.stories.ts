@@ -309,6 +309,14 @@ const meta: Meta<typeof Menu> = {
         defaultValue: { summary: 'false' },
       },
     },
+    showGroupIcon: {
+      control: 'boolean',
+      description: '内联分组的标题前是否显示图标',
+      table: {
+        type: { summary: 'boolean' },
+        defaultValue: { summary: 'false' },
+      },
+    },
     resizable: {
       control: 'boolean',
       description: '是否允许拖拽右边缘调整宽度',
@@ -1180,7 +1188,7 @@ export const SearchClear: Story = {
       <Menu v-bind="args" :items="items" />
       <div style="padding: 16px 24px; color: #86909c; font-size: 13px; line-height: 1.8;">
         <p style="margin: 0;">输入关键字后，搜索框右侧出现清除按钮。</p>
-        <p style="margin: 0;">Esc 与清除按钮等效，都会清空关键字且保持焦点。</p>
+        <p style="margin: 0;">Esc 清空关键字并保持焦点；点击清除按钮清空后搜索框回到默认态。</p>
       </div>
     `,
   }),
@@ -1197,7 +1205,10 @@ export const SearchClear: Story = {
     await userEvent.click(clear);
 
     await expect(input).toHaveValue('');
-    await expect(input).toHaveFocus();
+    await expect(input).not.toHaveFocus();
+    await expect(canvas.getByRole('textbox').closest('.aix-menu-search')).not.toHaveClass(
+      'aix-menu-search--focused',
+    );
     await expect(canvas.queryByRole('button', { name: '清除搜索关键字' })).toBeNull();
   },
 };
@@ -1406,13 +1417,14 @@ export const RealData: Story = {
 };
 
 /**
- * 业务接入：`icon` 直接写字体图标类名或图片地址，分组标题也带图标；`widthStorageKey` 让拖出来的宽度在刷新后保留。
+ * 业务接入：`icon` 直接写字体图标类名或图片地址，`showGroupIcon` 打开分组标题图标；`widthStorageKey` 让拖出来的宽度在刷新后保留。
  */
 export const BusinessIcons: Story = {
   // width 进 args 会被 v-bind 传成受控值，宽度锁死后拖不动、也就存不下来
   args: {
     resizable: true,
     searchable: true,
+    showGroupIcon: true,
     widthStorageKey: 'aix-menu-story-width',
   },
   render: (args) => ({

@@ -17,6 +17,8 @@ export interface MenuContext {
   selectedKey: Ref<string | undefined>;
   /** 展开的内联分组 key 列表 */
   openKeys: Ref<string[]>;
+  /** 内联分组的标题前是否显示图标 */
+  showGroupIcon: Ref<boolean>;
   /** flyout 单层最多可见项数，超出后弹层内部滚动 */
   popupMaxVisible: Ref<number>;
   /** flyout 弹层相对触发项的位置 */

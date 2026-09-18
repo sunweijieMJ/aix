@@ -688,6 +688,7 @@ describe('Menu 插槽', () => {
   it('icon 作用域插槽替换带 icon 节点的图标，无 icon 的节点不渲染图标容器', () => {
     wrapper = mountMenu({
       props: {
+        showGroupIcon: true,
         items: [
           { key: 'a', label: 'A', icon: IconStub },
           { key: 'b', label: 'B' },

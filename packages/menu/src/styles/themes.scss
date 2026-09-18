@@ -34,7 +34,9 @@
   --aix-menu-search-color: #1d2129;
   --aix-menu-search-icon-color: #1d2129;
   --aix-menu-search-placeholder-color: #86909c;
-  --aix-menu-resize-indicator-color: #1546f2;
+  --aix-menu-search-clear-color: #c9cdd4;
+  --aix-menu-search-clear-color-hover: #86909c;
+  --aix-menu-resize-indicator-color: #00c261;
 }
 
 .aix-menu--white,
@@ -57,7 +59,9 @@
   --aix-menu-search-color: #1d2129;
   --aix-menu-search-icon-color: #1d2129;
   --aix-menu-search-placeholder-color: #86909c;
-  --aix-menu-resize-indicator-color: #1546f2;
+  --aix-menu-search-clear-color: #c9cdd4;
+  --aix-menu-search-clear-color-hover: #86909c;
+  --aix-menu-resize-indicator-color: #00c261;
 }
 
 .aix-menu--glass-light,
@@ -80,7 +84,9 @@
   --aix-menu-search-color: #1d2129;
   --aix-menu-search-icon-color: #1d2129;
   --aix-menu-search-placeholder-color: #c9cdd4;
-  --aix-menu-resize-indicator-color: #1546f2;
+  --aix-menu-search-clear-color: #c9cdd4;
+  --aix-menu-search-clear-color-hover: #86909c;
+  --aix-menu-resize-indicator-color: #00c261;
 }
 
 .aix-menu--glass-dark,
@@ -103,7 +109,24 @@
   --aix-menu-search-color: #fff;
   --aix-menu-search-icon-color: #fff;
   --aix-menu-search-placeholder-color: rgb(255 255 255 / 0.4);
-  --aix-menu-resize-indicator-color: #1546f2;
+  --aix-menu-search-clear-color: rgb(255 255 255 / 0.4);
+  --aix-menu-search-clear-color-hover: rgb(255 255 255 / 0.8);
+  --aix-menu-resize-indicator-color: #00c261;
+}
+
+// 深色玻璃主题下白底弹层与侧栏割裂，弹层取同名侧栏变量走同一套配色。
+// 上面那块同时声明了 .aix-menu-popup--glass-dark，Teleport 到 body 的弹层也能取到值
+.aix-menu-popup--glass-dark {
+  --aix-menu-popup-bg: var(--aix-menu-bg);
+  --aix-menu-popup-shadow: 0 1px 5px 0 rgb(0 0 0 / 0.3);
+  --aix-menu-popup-item-color: var(--aix-menu-item-color);
+  --aix-menu-popup-item-bg-hover: var(--aix-menu-item-bg-hover);
+  --aix-menu-popup-item-bg-active: var(--aix-menu-item-bg-active);
+  --aix-menu-popup-item-color-active: var(--aix-menu-item-color-active);
+  --aix-menu-popup-scrollbar-color: var(--aix-menu-scrollbar-color);
+  --aix-menu-popup-focus-ring-color: var(--aix-menu-focus-ring-color);
+
+  backdrop-filter: blur(15px);
 }
 
 .aix-menu--glass-light,

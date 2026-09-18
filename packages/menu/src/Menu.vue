@@ -57,6 +57,7 @@ defineOptions({
 const props = withDefaults(defineProps<MenuProps<M>>(), {
   theme: 'gray',
   accordion: false,
+  showGroupIcon: false,
   popupMaxVisible: 9,
   popupPlacement: 'right-start',
   popupTeleportTo: 'body',
@@ -79,7 +80,7 @@ defineSlots<{
   footer?: () => unknown;
   /** 自定义数据驱动叶子项的内容 */
   item?: (props: MenuItemSlotProps<M>) => unknown;
-  /** 自定义数据驱动节点的图标，只对带 icon 的节点生效 */
+  /** 自定义数据驱动节点的图标，只对带 icon 的节点生效；分组标题另需开启 showGroupIcon */
   icon?: (props: { item: MenuItemData<M> }) => unknown;
   /** 自定义数据驱动分组的标题 */
   'group-title'?: (props: { item: MenuItemData<M> }) => unknown;

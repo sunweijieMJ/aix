@@ -9,7 +9,7 @@
       @click="onToggle"
     >
       <MenuIcon v-if="collapsible" :src="chevronDown" :class="ns.e('arrow')" />
-      <span v-if="icon || $slots.icon" :class="ns.e('icon')" aria-hidden="true">
+      <span v-if="showGroupIcon && (icon || $slots.icon)" :class="ns.e('icon')" aria-hidden="true">
         <slot name="icon">
           <MenuItemIcon v-if="icon" :icon="icon" />
         </slot>
@@ -62,7 +62,7 @@ defineSlots<{
   default?: () => unknown;
   /** 自定义标题内容，替代 title prop */
   title?: () => unknown;
-  /** 自定义标题前的图标，替代 icon prop */
+  /** 自定义标题前的图标，替代 icon prop；需根组件开启 showGroupIcon */
   icon?: () => unknown;
 }>();
 
@@ -72,6 +72,7 @@ const ctx = useMenuContext();
 const titleRef = ref<HTMLElement | null>(null);
 const { overflowed } = useTextOverflow(titleRef, () => props.title);
 const parent = useMenuLevel();
+const { showGroupIcon } = ctx;
 const groupLevel = parent.groupLevel + 1;
 const listId = `aix-menu-group-${useId()}`;
 

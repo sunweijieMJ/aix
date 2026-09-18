@@ -361,7 +361,7 @@ function onSearch(keyword: string) {
 
 ### 主题
 
-四套内置主题：`gray`（默认）、`white`、`glass-light`、`glass-dark`。glass 两套依赖 `backdrop-filter`，要放在有背景的容器上才能看到毛玻璃效果。flyout 弹层四套主题共用白底配色。
+四套内置主题：`gray`（默认）、`white`、`glass-light`、`glass-dark`。glass 两套依赖 `backdrop-filter`，要放在有背景的容器上才能看到毛玻璃效果。flyout 弹层里 `glass-dark` 沿用侧栏同款深色配色，其余三套共用白底配色。
 
 <ClientOnly>
 <div class="demo-block menu-demo">
@@ -653,6 +653,8 @@ const width = ref(200);
 | `--aix-menu-search-color`              | 搜索框输入文字                                                  |
 | `--aix-menu-search-icon-color`         | 搜索框图标                                                      |
 | `--aix-menu-search-placeholder-color`  | 搜索框占位文字                                                  |
+| `--aix-menu-search-clear-color`        | 搜索框清除按钮                                                  |
+| `--aix-menu-search-clear-color-hover`  | 搜索框清除按钮 hover                                            |
 | `--aix-menu-popup-bg`                  | flyout 弹层背景                                                 |
 | `--aix-menu-popup-shadow`              | flyout 弹层阴影                                                 |
 | `--aix-menu-popup-item-color`          | 弹层内菜单项文字                                                |
@@ -661,6 +663,8 @@ const width = ref(200);
 | `--aix-menu-popup-item-color-active`   | 弹层内选中项文字                                                |
 | `--aix-menu-popup-scrollbar-color`     | 弹层滚动条                                                      |
 | `--aix-menu-popup-focus-ring-color`    | 弹层键盘焦点环，定义在 `.aix-menu-popup` 基础块，默认 `#00c261` |
+
+弹层配色定义在 `.aix-menu-popup` 基础块；`.aix-menu-popup--glass-dark` 下的弹层变量取同名侧栏变量，与侧栏同色。弹层默认 Teleport 到 body，不继承侧栏，改配色时 `.aix-menu--<name>` 与 `.aix-menu-popup--<name>` 两个选择器都要写。
 
 ### 尺寸变量
 
@@ -671,7 +675,7 @@ const width = ref(200);
 | `--aix-menu-radius`                        | `8px`           | 侧栏 + 弹层 | 菜单项、分组标题、弹层圆角                       |
 | `--aix-menu-item-font-size`                | `14px`          | 侧栏 + 弹层 | 菜单项字号                                       |
 | `--aix-menu-item-line-height`              | `20px`          | 侧栏 + 弹层 | 菜单项行高                                       |
-| `--aix-menu-item-font-weight-active`       | `600`           | 侧栏 + 弹层 | 侧栏选中项字重                                   |
+| `--aix-menu-item-font-weight-active`       | `500`           | 侧栏 + 弹层 | 侧栏选中项字重                                   |
 | `--aix-menu-icon-size`                     | `16px`          | 侧栏 + 弹层 | 图标尺寸                                         |
 | `--aix-menu-icon-gap`                      | `8px`           | 侧栏 + 弹层 | 图标与文字间距                                   |
 | `--aix-menu-highlight-dot-size`            | `6px`           | 侧栏 + 弹层 | 搜索命中藏在弹层里时子菜单触发项的提示圆点直径   |
@@ -693,7 +697,7 @@ const width = ref(200);
 | `--aix-menu-item-gap`                      | `8px`           | 侧栏        | 菜单项之间的间距                                 |
 | `--aix-menu-group-title-height`            | `38px`          | 侧栏        | 一级分组标题高度                                 |
 | `--aix-menu-group-title-padding`           | `0 8px`         | 侧栏        | 一级分组标题内边距                               |
-| `--aix-menu-resize-handle-width`           | `6px`           | 侧栏        | 拖拽把手命中区宽度                               |
+| `--aix-menu-resize-handle-width`           | `4px`           | 侧栏        | 拖拽把手命中区宽度，以右边缘为中心左右均分       |
 | `--aix-menu-search-height`                 | `38px`          | 侧栏        | 搜索框高度                                       |
 | `--aix-menu-search-padding`                | `8px`           | 侧栏        | 搜索框内边距                                     |
 | `--aix-menu-search-gap`                    | `10px`          | 侧栏        | 搜索图标与输入框间距                             |
@@ -701,6 +705,8 @@ const width = ref(200);
 | `--aix-menu-search-clear-size`             | `16px`          | 侧栏        | 搜索框清除按钮尺寸                               |
 | `--aix-menu-search-font-size`              | `14px`          | 侧栏        | 搜索框字号                                       |
 | `--aix-menu-search-line-height`            | `22px`          | 侧栏        | 搜索框行高                                       |
+| `--aix-menu-scrollbar-width`               | `4px`           | 侧栏        | 列表滚动条宽度                                   |
+| `--aix-menu-scrollbar-inset`               | `2px`           | 侧栏        | 列表滚动条到侧栏右边缘的距离                     |
 | `--aix-menu-tooltip-width`                 | `136px`         | 提示浮层    | 文字溢出提示的宽度                               |
 
 ## 多语言
@@ -831,6 +837,7 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 | `defaultOpenKeys` | `string[]` | - | - | 非受控模式下的展开分组。未传 openKeys 也未传本项时，所有分组默认展开；accordion 开启时不适用，默认全部折叠。用户手动折叠或展开任一分组之前，本项的变化会重新应用，菜单数据异步到达后再传入也生效 |
 | `theme` | `'gray' \| 'white' \| 'glass-light' \| 'glass-dark' \| (string & {})` | `'gray'` | - | 配色主题 |
 | `accordion` | `boolean` | `false` | - | 同一层级的分组只允许展开一个 |
+| `showGroupIcon` | `boolean` | `false` | - | 内联分组的标题前是否显示图标，对 `icon` prop 与 `icon` 插槽同时生效 |
 | `popupMaxVisible` | `number` | `9` | - | flyout 单层最多可见项数，超出后弹层内部滚动 |
 | `popupPlacement` | `'right-start' \| 'right' \| 'right-end' \| 'left-start' \| 'left' \| 'left-end'` | `'right-start'` | - | flyout 弹层位置 |
 | `popupClass` | `string` | - | - | 追加到所有 flyout 弹层根节点的 class |
@@ -867,7 +874,7 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 | `default` | - | 复合组件写法的菜单内容，可与 items 同时使用，渲染在 items 之后 |
 | `footer` | - | 列表下方区域，设计稿放用户行与设置入口 |
 | `item` | `props: MenuItemSlotProps<M>` | 自定义数据驱动叶子项的内容 |
-| `icon` | `props: { item: MenuItemData<M> }` | 自定义数据驱动节点的图标，只对带 icon 的节点生效 |
+| `icon` | `props: { item: MenuItemData<M> }` | 自定义数据驱动节点的图标，只对带 icon 的节点生效；分组标题另需开启 showGroupIcon |
 | `group-title` | `props: { item: MenuItemData<M> }` | 自定义数据驱动分组的标题 |
 
 ---
@@ -897,14 +904,14 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 |--------|------|--------|:----:|------|
 | `groupKey` | `string` | - | ✅ | 唯一标识，作为 openKeys 的取值 |
 | `title` | `string` | - | - | 分组标题 |
-| `icon` | `Component \| string` | - | - | 标题前的图标：组件、图片地址或字体图标类名，16×16 |
+| `icon` | `Component \| string` | - | - | 标题前的图标：组件、图片地址或字体图标类名，16×16；需根组件开启 showGroupIcon |
 | `collapsible` | `boolean` | `true` | - | 是否可折叠。为 false 时始终展开，标题不可点击 |
 
 ### MenuGroup Slots
 
 | 插槽名 | 参数 | 说明 |
 |--------|------|------|
-| `icon` | - | 自定义标题前的图标，替代 icon prop |
+| `icon` | - | 自定义标题前的图标，替代 icon prop；需根组件开启 showGroupIcon |
 | `title` | - | 自定义标题内容，替代 title prop |
 | `default` | - | 分组内的菜单项 |
 
