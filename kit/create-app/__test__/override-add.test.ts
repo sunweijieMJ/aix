@@ -211,7 +211,8 @@ describe('override add - 生成物必须自包含', () => {
       // 本包只生成按租户的骨架。详见 templates-override/README.md
       const cwd = makeProject();
       expect(
-        runAdd(['sysu', '-m', 'api,components,directives,layout,locale,store', '-y'], cwd).status,
+        runAdd(['sysu', '-m', 'api,components,directives,layout,locale,plugins,store', '-y'], cwd)
+          .status,
       ).toBe(0);
 
       const roots = [path.join(cwd, 'src/overrides'), path.join(cwd, 'src/plugins/override')];

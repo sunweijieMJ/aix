@@ -13,6 +13,9 @@ import { getCustomLayout } from './layout';
 <% if (it.modules.includes('locale')) { -%>
 import { getCustomLocales } from './locale';
 <% } -%>
+<% if (it.modules.includes('plugins')) { -%>
+import { getCustomPlugins } from './plugins';
+<% } -%>
 <% if (it.modules.includes('router')) { -%>
 import { getCustomRoutes } from './router';
 <% } -%>
@@ -51,6 +54,9 @@ const config: OverrideConfig = {
 <% } -%>
 <% if (it.modules.includes('directives')) { -%>
   directives: getCustomDirectives(),
+<% } -%>
+<% if (it.modules.includes('plugins')) { -%>
+  plugins: getCustomPlugins(),
 <% } -%>
 };
 

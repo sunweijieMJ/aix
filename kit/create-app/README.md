@@ -133,6 +133,7 @@ create-app my-app --template admin -d "我的项目" \
 | `directives` | 运行时 | 指令覆盖（新增/替换全局指令）    |
 | `layout`     | 运行时 | 布局覆盖（整体/区域替换）        |
 | `locale`     | 运行时 | 国际化覆盖（文案覆盖/新增）      |
+| `plugins`    | 运行时 | 插件覆盖（注册额外的 Vue 插件）  |
 | `store`      | 运行时 | 状态覆盖（Pinia action 包装）    |
 
 **前置条件**：覆盖层内核（`src/plugins/override/`）与基础设施（`<output>/index.ts`、`constants.ts`、

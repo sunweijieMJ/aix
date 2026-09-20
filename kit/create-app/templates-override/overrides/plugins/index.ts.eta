@@ -1,0 +1,16 @@
+import type { RuntimeOverrideConfig } from '@/plugins/override';
+
+/**
+ * <%= it.project %> - 插件覆盖
+ *
+ * 与其他维度不同，本维度是一个工厂函数：接收运行时上下文（router / pinia / i18n），
+ * 返回的插件列表由 initOverrides 在 beforeMount 阶段按顺序 app.use()。
+ *
+ * @example
+ * ```ts
+ * return ({ router }) => [createTrackerPlugin({ router })];
+ * ```
+ */
+export function getCustomPlugins(): NonNullable<RuntimeOverrideConfig['plugins']> {
+  return () => [];
+}

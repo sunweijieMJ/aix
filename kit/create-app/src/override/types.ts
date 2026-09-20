@@ -51,6 +51,7 @@ const MODULES = {
   directives: { description: '指令覆盖（新增/替换全局指令）', dimension: '运行时', hasDir: true },
   layout: { description: '布局覆盖（整体/区域替换）', dimension: '运行时', hasDir: true },
   locale: { description: '国际化覆盖（文案覆盖/新增）', dimension: '运行时', hasDir: true },
+  plugins: { description: '插件覆盖（注册额外的 Vue 插件）', dimension: '运行时', hasDir: true },
   store: { description: '状态覆盖（Pinia action 包装）', dimension: '运行时', hasDir: true },
 } satisfies Record<string, ModuleDef>;
 
