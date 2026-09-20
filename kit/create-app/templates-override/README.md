@@ -12,8 +12,9 @@
 
 **这里只有「按租户」的那部分。** 覆盖层内核（`src/plugins/override/`）与基础设施
 （`<output>/index.ts`、`constants.ts`、`registry.ts`、`deployment.ts`）由**模板真源**提供
-——admin 模板的 `overrides` 特性。`override add` 在生成前会检查它们是否存在，
-缺了直接报 `E_MISSING_OVERRIDE_KERNEL` 并说明去哪儿拿。
+——admin 模板的 `overrides` 特性。`override add` 在生成前检查其中骨架装载依赖的那几个
+（内核 + `index.ts` / `constants.ts` / `registry.ts`），缺了直接报 `E_MISSING_OVERRIDE_KERNEL`
+并说明去哪儿拿；`deployment.ts` 只被 `constants.ts` 自己 import，骨架不依赖，不在检查内。
 
 ## 为什么内核不放在这里
 
