@@ -67,8 +67,11 @@ defineSlots<{
 ```
 
 插槽名、作用域参数（`props: MenuItemSlotProps`）和说明都从类型字面量读取。
+只有 `<template v-for="name in names" #[name]="sp"><slot :name="name" v-bind="sp" /></template>`
+这种把任意具名插槽原样转发给子组件的写法，插槽名在编译期不可枚举，不进 `defineSlots`，在 README 里手写说明。
 
-没有 `defineSlots` 的组件，用 **HTML 注释**放在 `<template>` 中，而不是 `<script>` 中：
+没有 `defineSlots` 的组件，参数列只能拿到模板 `<slot :a :b-c>` 的绑定名（渲染成 `{ a, bC }`，没有类型），
+说明用 **HTML 注释**放在 `<template>` 中，而不是 `<script>` 中：
 
 ### 方法 1: 在 template 顶部
 
@@ -258,8 +261,9 @@ export { default as SubMenu } from './components/SubMenu.vue';
 ```text
 组件源码（types.ts + .vue 的类型声明与 JSDoc）
   └─ pnpm docs:gen（scripts/docs/gen-docs.ts，解析结果只在内存里）
-       ├─ packages/<pkg>/README.md        ## API
-       └─ docs/components/<pkg>.md        ## API
+       ├─ packages/<pkg>/README.md        ## API、## 类型定义（已有该段时）
+       ├─ docs/components/<pkg>.md        ## API、## 类型定义（已有该段时）
+       └─ 校验文档页 / sidebar / 组件总览三处登记一致
   └─ MCP Server extract 调用 scripts/docs/print-api.ts 拿同一份解析结果
 ```
 

@@ -142,6 +142,7 @@
         <!-- 透传块插槽：把非保留具名插槽（约定 <块类型>-<内部slot>）逐层下传，
              经 BubbleList → Bubble 最终落到块渲染器内部 slot。 -->
         <template v-for="name in blockSlotNames" :key="name" #[name]="sp">
+          <!-- @vue-expect-error 动态转发的块插槽名不可枚举，不在 defineSlots 名单内 -->
           <slot :name="name" v-bind="sp" />
         </template>
       </BubbleList>
@@ -313,7 +314,10 @@ export interface AiChatProps {
    * 仅当新旧后端的**流格式也不同**时才需要连同 parseChunk 一起换，那种场景才必须重建实例。
    */
   request: UseChatOptions['request'];
-  /** 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat。每次请求才读取，运行时可改 */
+  /**
+   * 流分帧模式（'sse' / 'line'）；透传给 useChat。每次请求才读取，运行时可改
+   * @default 'sse'
+   */
   streamMode?: 'sse' | 'line';
   /**
    * 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传
@@ -332,6 +336,7 @@ export interface AiChatProps {
    * 真实 BubbleList；用于业务从远端异步恢复会话历史时的过渡态（如接入 useConversations
    * 异步 storage.load，配合其 isLoading 传入本 prop）。默认 false（不生效时行为不变：
    * messages 为空显示 Welcome，否则显示 BubbleList）。透传给 BubbleList 的 loading prop。
+   * @default false
    */
   historyLoading?: boolean;
   /**
@@ -396,14 +401,18 @@ export interface AiChatProps {
   };
   /** 输入框占位提示，缺省取 locale.senderPlaceholder */
   placeholder?: string;
-  /** 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter'；透传给 Sender */
+  /**
+   * 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之；透传给 Sender
+   * @default 'enter'
+   */
   submitType?: 'enter' | 'shiftEnter';
   /**
-   * 消息操作条配置，默认 ['copy','regenerate']。
+   * 消息操作条配置。
    * 数组形态：仅对 role==='ai' && status==='success' 的消息渲染；
    * 函数形态：对每条消息调用，返回 items 则渲染、null/[] 不渲染（可按状态/角色细控）。
    * 设为 [] 关闭默认操作条；#footer slot 提供时优先（覆盖机制不变）。
    * 函数形态应为纯函数（同输入同输出）；返回值随消息 status 响应式更新。
+   * @default ['copy', 'regenerate']
    */
   actions?: ActionsItems | ((message: ChatMessage) => ActionsItems | null);
   /**
@@ -425,18 +434,25 @@ export interface AiChatProps {
    * 返回空串等同未提供（回退 i18n 文案）。仅对 `status === 'error'` 的消息调用。
    */
   errorText?: (message: ChatMessage) => string;
-  /** 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。运行时可改 */
+  /**
+   * 请求失败自动重试次数（不含首次）；透传给 useChat。abort 不触发重试。运行时可改
+   * @default 0
+   */
   retryTimes?: number;
-  /** 两次重试间隔（ms），默认 1000；透传给 useChat。运行时可改 */
+  /**
+   * 两次重试间隔（ms）；透传给 useChat。运行时可改
+   * @default 1000
+   */
   retryInterval?: number;
   /**
-   * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。
-   * 默认见 useChat 的 continuePrompt 说明。运行时可改
+   * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。运行时可改
+   * @default '请从刚才中断的地方继续往下写，不要重复已经写过的内容。'
    */
   continuePrompt?: string;
   /**
-   * 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。
+   * 流静默超时（ms），0 为关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。
    * 每次 attempt 起表时取值，运行时可改
+   * @default 0
    */
   streamTimeout?: number;
   /**
@@ -445,8 +461,9 @@ export interface AiChatProps {
    */
   markdownRenderers?: MarkdownRenderers;
   /**
-   * 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），
-   * 默认 false；注入到气泡内 MarkdownRenderer。运行时可改（切换时引擎按新模式重载）
+   * 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin）；
+   * 注入到气泡内 MarkdownRenderer。运行时可改（切换时引擎按新模式重载）
+   * @default false
    */
   allowHtml?: boolean;
   /**
@@ -510,11 +527,15 @@ export interface AiChatProps {
   quote?: QuoteConfig | boolean;
   /** 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置 */
   triggers?: TriggerConfig[];
-  /** 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender；不传则用 Sender 默认值 ['attach','voice'] */
+  /**
+   * 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender
+   * @default ['attach', 'voice']
+   */
   toolbarItems?: SenderToolbarItems;
   /**
-   * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，直通 Sender，默认 true。
+   * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，直通 Sender。
    * 见 `SenderProps.autoSpacer` 说明。
+   * @default true
    */
   autoSpacer?: boolean;
   /**
@@ -526,16 +547,18 @@ export interface AiChatProps {
    */
   senderIcons?: SenderIcons;
   /**
-   * 输入框外观形态，直通 Sender 的 `variant`，默认 `'card'`。
+   * 输入框外观形态，直通 Sender 的 `variant`。
    * 侧边栏 / 移动端 / 全屏页这类贴边通栏形态传 `'plain'`，配合
    * `--aix-ai-chat-sender-margin: 0` 与 `--aix-sender-*` 尺寸旋钮即可，无需覆写 `.aix-sender`。
    * 命名前缀同 `senderIcons`（这一层还有别的 variant 概念，裸叫 variant 会读成组件整体形态）。
+   * @default 'card'
    */
   senderVariant?: SenderVariant;
   /**
-   * 深度思考（reasoning 块）折叠面板的外观形态，默认 `'card'`；
+   * 深度思考（reasoning 块）折叠面板的外观形态；
    * `'capsule'` 为 hug 宽度胶囊头 + 独立正文块（多数 AI 产品的当下形态），`'plain'` 无容器视觉。
    * 经 provideAiChatConfig 注入（ReasoningBlock 由注册表实例化、接不到 prop）；运行时可改
+   * @default 'card'
    */
   reasoningVariant?: ThinkingVariant;
   /**
@@ -568,6 +591,36 @@ export interface BubbleFooterActions {
   startEdit: (id: string) => void;
   /** 切换内置语音播报（再点同条停、点别条切）；未开启 speech 时为空操作 */
   speak: (message: ChatMessage) => void;
+}
+
+/** `#footer` 插槽的作用域：消息、分支元信息、朗读态与已接线的动作句柄 */
+export interface AiChatFooterSlotScope {
+  /** 本条消息 */
+  item: ChatMessage;
+  /** 分支元信息（当前序号 / 兄弟总数）；无多版本或非末子气泡时为 undefined */
+  branch?: BranchMeta;
+  /** 分支切换是否应禁用（请求进行中） */
+  branchDisabled: boolean;
+  /** 本条消息是否正在语音播报 */
+  speaking: boolean;
+  /** 已接线的动作句柄集合，见 BubbleFooterActions */
+  actions: BubbleFooterActions;
+}
+
+/** `#quote-menu` 插槽的作用域：菜单项、调用与关闭句柄，以及当前选区 / 长按触发信息 */
+export interface AiChatQuoteMenuSlotScope {
+  /** 解析后的菜单动作列表 */
+  items: ResolvedQuoteAction[];
+  /** 按 key 执行某个动作 */
+  invoke: (key: string) => void;
+  /** 关闭菜单 */
+  close: () => void;
+  /** 'selecting' 有精选选区 / 'menu' 长按整条消息 */
+  mode: 'menu' | 'selecting';
+  /** 当前划词选区；长按整条消息触发时为 null */
+  selection: ActiveSelection | null;
+  /** 长按触发信息（落点坐标与整条消息锚点）；划词触发时为 null */
+  trigger: LongPressTrigger | null;
 }
 
 export interface AiChatEmits {
@@ -635,6 +688,7 @@ import type { OutlineEntry } from '../composables/useMessageOutline';
 import { useQuoteBinding } from '../composables/useQuoteBinding';
 import { useSpeech } from '../composables/useSpeech';
 import { useSuggestions } from '../composables/useSuggestions';
+import type { ActiveSelection, LongPressTrigger } from '../composables/useTextSelection';
 import { useVisibleMessage } from '../composables/useVisibleMessage';
 import type { SSEChunk } from '../composables/useXStream';
 import type { AiChatLocale } from '../locale';
@@ -659,6 +713,12 @@ import type {
   OutlineOptions,
   ParsedChunk,
   ThinkingVariant,
+  BranchMeta,
+  ResolvedQuoteAction,
+  BubbleListContentSlotScope,
+  BubbleListErrorSlotScope,
+  BubbleListItemSlotScope,
+  BubbleListRowSlotScope,
 } from '../types';
 import { devWarn } from '../utils/devWarn';
 import { messageText, attachmentBlock, textBlock, quoteBlock } from '../utils/helpers';
@@ -673,7 +733,14 @@ import Prompts from './Prompts.vue';
 import QuoteChip from './QuoteChip.vue';
 import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
-import type { SenderIcons, SenderToolbarItems, SenderVariant } from './Sender.vue';
+import type {
+  SenderIcons,
+  SenderToolbarItems,
+  SenderVariant,
+  SenderSlotScope,
+  SenderAttachmentsSlotScope,
+  SenderAttachmentsPlaceholderSlotScope,
+} from './Sender.vue';
 import Suggestions from './Suggestions.vue';
 import Welcome from './Welcome.vue';
 
@@ -691,6 +758,52 @@ const props = withDefaults(defineProps<AiChatProps>(), {
   autoSpacer: undefined,
 });
 const emit = defineEmits<AiChatEmits>();
+
+defineSlots<{
+  /** 顶部标题栏整体，覆盖默认的「图标 + 标题 + extra」布局 */
+  header?: () => unknown;
+  /** 标题栏图标，覆盖 headerIcon 图片 */
+  'header-icon'?: () => unknown;
+  /** 标题栏右侧附加区（关闭按钮等） */
+  'header-extra'?: () => unknown;
+  /** 欢迎页图标（透传 Welcome 的 icon 插槽） */
+  'welcome-icon'?: () => unknown;
+  /** 欢迎页标题（透传 Welcome 的 title 插槽） */
+  'welcome-title'?: () => unknown;
+  /** 欢迎页描述（透传 Welcome 的 description 插槽） */
+  'welcome-description'?: () => unknown;
+  /** 欢迎页附加区，渲染在快捷问题之后 */
+  'welcome-extra'?: () => unknown;
+  /** 气泡内容区，覆盖默认渲染（透传 BubbleList 的 content 插槽） */
+  content?: (props: BubbleListContentSlotScope) => unknown;
+  /** 气泡内的消息级头部（发送者名 / 时间戳 / 徽标），跟随气泡对齐 */
+  'bubble-header'?: (props: BubbleListItemSlotScope) => unknown;
+  /** 气泡所在行之前的整行区域（居中时间戳 / 日期分隔线） */
+  'row-before'?: (props: BubbleListRowSlotScope) => unknown;
+  /** 出错态自定义 UI，作用域含 item、error 与 retry */
+  error?: (props: BubbleListErrorSlotScope) => unknown;
+  /** 气泡下方的操作条，作用域含 item、branch、speaking 与已接线的 actions 句柄；提供后覆盖内置 BubbleActions */
+  footer?: (props: AiChatFooterSlotScope) => unknown;
+  /** 划词引用菜单，作用域含 items / invoke / close / mode / selection / trigger；默认渲染内置 QuoteMenu */
+  'quote-menu'?: (props: AiChatQuoteMenuSlotScope) => unknown;
+  /** 消息区与输入框之间的自由区（横幅 / 提示），不在 Sender 盒内 */
+  'sender-before'?: () => unknown;
+  /** Sender 顶部扩展区，与内置引用 chips 追加共存（透传 Sender 的 header 插槽） */
+  'sender-header'?: (props: SenderSlotScope) => unknown;
+  /** Sender 工具栏（透传 Sender 的 toolbar 插槽） */
+  toolbar?: (props: SenderSlotScope) => unknown;
+  /** 输入框前缀区（透传 Sender 的 prefix 插槽） */
+  prefix?: (props: SenderSlotScope) => unknown;
+  /** Sender 底部扩展区，工具栏之下（透传 Sender 的 footer 插槽） */
+  'sender-footer'?: (props: SenderSlotScope) => unknown;
+  /** 自定义附件面板 UI（透传 Sender 的同名插槽） */
+  'attachments-panel'?: (props: SenderAttachmentsSlotScope) => unknown;
+  /** 只替换内置附件面板的上传占位区（透传 Sender 的同名插槽） */
+  'attachments-placeholder'?: (props: SenderAttachmentsPlaceholderSlotScope) => unknown;
+  /** 整个组件最底部（Sender 之下）的常驻区，如免责声明 */
+  bottom?: () => unknown;
+}>();
+
 const ns = useNamespace('ai-chat');
 const config = useAiChatConfig();
 const slots = useSlots();

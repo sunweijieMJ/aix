@@ -44,3 +44,19 @@ describe('extractPackageApi', () => {
     expect(unresolvedProps).toEqual([]);
   });
 });
+
+describe('extractPackageApi 插槽', () => {
+  it('`<slot :name>` 动态转发的表达式名不进表，同名静态声明保留', async () => {
+    const { api } = await extract('SlotForwarder.vue');
+    const names = api.components[0]!.slots.map((s) => s.name).sort();
+    expect(names).toEqual(['footer', 'header']);
+  });
+});
+
+it('没有 defineSlots 时，参数列退回模板绑定名并 camelize', async () => {
+  const { api } = await extract('SlotForwarder.vue');
+  const header = api.components[0]!.slots.find((s) => s.name === 'header');
+  expect(header?.params).toBe('{ count, isOpen }');
+  expect(header?.description).toBe('头部，作用域给出条目数与展开态');
+  expect(api.components[0]!.slots.find((s) => s.name === 'footer')?.params).toBeUndefined();
+});

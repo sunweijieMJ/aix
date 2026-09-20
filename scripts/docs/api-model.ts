@@ -52,9 +52,19 @@ export interface ApiComponent {
   expose: ApiExposeMember[];
 }
 
+/** `src/types.ts` 导出的一条类型声明 */
+export interface ApiTypeDeclaration {
+  name: string;
+  kind: 'type' | 'interface' | 'enum';
+  /** 连同 JSDoc 的源码原文 */
+  text: string;
+}
+
 export interface ApiPackage {
   /** npm 包名 */
   package: string;
   generatedBy: 'pnpm docs:gen';
   components: ApiComponent[];
+  /** 公开类型声明，不含已渲染成组件表的 Props / Emits / Slots / Expose 接口 */
+  types: ApiTypeDeclaration[];
 }

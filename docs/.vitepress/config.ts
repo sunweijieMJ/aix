@@ -96,12 +96,21 @@ export default withMermaid(
             items: [{ text: 'Menu 菜单', link: '/components/menu' }],
           },
           {
+            text: 'AI 组件',
+            items: [{ text: 'AiChat AI 对话', link: '/components/ai-chat' }],
+          },
+          {
             text: '媒体组件',
             items: [
               { text: 'VideoPlayer 视频播放器', link: '/components/video' },
+              { text: 'Audio 语音', link: '/components/audio' },
               { text: 'Subtitle 字幕', link: '/components/subtitle' },
               { text: 'PdfViewer PDF 预览器', link: '/components/pdf-viewer' },
             ],
+          },
+          {
+            text: '图形组件',
+            items: [{ text: 'FlowGraph 流程图', link: '/components/flow-graph' }],
           },
           {
             text: '编辑器组件',

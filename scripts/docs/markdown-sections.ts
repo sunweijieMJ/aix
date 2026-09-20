@@ -8,11 +8,14 @@
 /** API 段标题。`## API 参考` 这种带后缀的写法也算 */
 export const API_HEADING_RE = /^## API\b.*$/m;
 
+/** 类型定义段标题，只认精确的 `## 类型定义` */
+export const TYPES_HEADING_RE = /^## 类型定义[ \t]*\r?$/m;
+
 const NEXT_H2_RE = /^## /m;
 
 const FENCE_RE = /^(`{3,}|~{3,})/;
 
-/** 围栏代码块覆盖的 [start, end) 字符区间 */
+/** 围栏代码块覆盖的 [start, end) 字符区间；没有收尾的围栏不算代码块 */
 function fencedRanges(content: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   let offset = 0;
@@ -33,7 +36,6 @@ function fencedRanges(content: string): Array<[number, number]> {
     }
     offset += line.length + 1;
   }
-  if (openAt !== null) ranges.push([openAt, content.length]);
   return ranges;
 }
 

@@ -127,7 +127,7 @@ function printSuccessMessage(componentName: string): void {
   );
   console.log(
     chalk.white(
-      `  7. 把 docs/components/${componentName}.md 挂进 docs/.vitepress/config.ts 的 sidebar`,
+      `  7. 把 docs/components/${componentName}.md 挂进 docs/.vitepress/config.ts 的 sidebar 与 docs/components/index.md（docs:gen 会校验）`,
     ),
   );
 }

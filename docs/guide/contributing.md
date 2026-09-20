@@ -368,16 +368,18 @@ pnpm docs:gen
 ```
 
 它会覆写包 README 的 `## API` 段，并注入 `docs/components/<pkg>.md`；`src/index.ts` 导出的每个 .vue 组件都会有自己的表。
+两处若已有 `## 类型定义` 二级标题，该段也会由 `src/types.ts` 导出的类型整段重写（已进 API 表的 Props / Emits / Slots / Expose 接口除外）。
+最后它会校验文档页、`docs/.vitepress/config.ts` 的 sidebar、`docs/components/index.md` 三处登记一致。
 CI 会重跑一遍并要求零 diff，所以生成结果要一起提交。
 
 两份手写文档的分工：
 
 | 位置 | 内容 | 读者 |
 |------|------|------|
-| `packages/<pkg>/README.md` | 一句话介绍、安装、最小示例、`## API`（生成）、类型定义 | npm 页面 |
-| `docs/components/<pkg>.md` | 何时使用、可交互演示、主题变量、最佳实践、`## API`（生成） | 文档站 |
+| `packages/<pkg>/README.md` | 一句话介绍、安装、最小示例、`## API`（生成）、`## 类型定义`（可选，生成） | npm 页面 |
+| `docs/components/<pkg>.md` | 何时使用、可交互演示、主题变量、最佳实践、`## API`（生成）、`## 类型定义`（可选，生成） | 文档站 |
 
-同一段说明只写一处，不要把教程复制进 README，也不要把类型定义再抄一份进文档页。
+同一段说明只写一处，不要把教程复制进 README；类型定义段只放标题，内容由管线填。
 新建文档页照 `docs/components/button.md` 的结构：
 
 ```markdown

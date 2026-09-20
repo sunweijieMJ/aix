@@ -64,6 +64,11 @@ yarn.lock
 .DS_Store
 *.pem
 
+# 编辑器交换文件
+*.swp
+*.swo
+*~
+
 *storybook.log
 storybook-static
 

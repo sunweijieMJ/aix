@@ -96,6 +96,7 @@
               <!-- 透传块插槽：把非保留（上述几个之外）具名插槽原样转发给每个 Bubble，
                最终落到块渲染器内部 slot（如 thought-chain-item-content → item-content）。 -->
               <template v-for="name in passthroughSlotNames" :key="name" #[name]="sp">
+                <!-- @vue-expect-error 动态转发的块插槽名不可枚举，不在 defineSlots 名单内 -->
                 <slot :name="name" v-bind="sp" />
               </template>
             </Bubble>
@@ -187,6 +188,10 @@ import type {
   BlockActionPayload,
   BlockIntentPayload,
   BubbleTypingConfig,
+  BubbleListContentSlotScope,
+  BubbleListErrorSlotScope,
+  BubbleListItemSlotScope,
+  BubbleListRowSlotScope,
 } from '../types';
 import { contentFingerprint } from '../utils/contentFingerprint';
 import { slotHasContent } from '../utils/hasVNodeContent';
@@ -202,6 +207,21 @@ const props = withDefaults(defineProps<BubbleListProps>(), {
   typing: false,
 });
 const emit = defineEmits<BubbleListEmits>();
+
+defineSlots<{
+  /** 转发给每个 Bubble 的内容区，作用域补 item（完整 ChatMessage） */
+  content?: (props: BubbleListContentSlotScope) => unknown;
+  /** 气泡下方的操作条区，作用域 item 为该条消息 */
+  footer?: (props: { item: ChatMessage }) => unknown;
+  /** 消息级头部，作用域补 item */
+  header?: (props: BubbleListItemSlotScope) => unknown;
+  /** 头像区，作用域补 item */
+  avatar?: (props: BubbleListItemSlotScope) => unknown;
+  /** 出错态自定义 UI，作用域补 item 与 extra.error 里的原始错误 */
+  error?: (props: BubbleListErrorSlotScope) => unknown;
+  /** 气泡所在行之前、占满整行的区域（时间戳 / 日期分隔线）；产出空内容时不渲染包裹层 */
+  'row-before'?: (props: BubbleListRowSlotScope) => unknown;
+}>();
 
 // virtua/vue 的 index 未 re-export VirtualizerHandle 类型，
 // 用 InstanceType<typeof Virtualizer> 推导实例类型（含 scrollToIndex），避免引入 any

@@ -712,86 +712,7 @@ const width = ref(200);
 |------|------|------|
 | `resolveSelectedKey` | `(items, matcher) => string \| undefined` | 遍历叶子按 `matcher` 打分，返回分值最高者的 key，用于路由与选中项联动 |
 
-## 类型定义
-
-```typescript
-export type MenuTheme = 'gray' | 'white' | 'glass-light' | 'glass-dark' | (string & {});
-
-export type MenuPopupPlacement =
-  'right-start' | 'right' | 'right-end' | 'left-start' | 'left' | 'left-end';
-
-export type MenuItemType = 'item' | 'group' | 'divider';
-
-/** 图标来源：组件、图片地址或字体图标类名 */
-export type MenuIconSource = Component | string;
-
-/** flyout 弹层挂载目标，false 就地渲染 */
-export type MenuPopupTeleportTo = string | HTMLElement | false;
-
-/** 业务透传字段的默认形状；索引签名取 any，interface 与 type 声明的 meta 都能满足约束 */
-export type MenuItemMeta = Record<string, any>;
-
-export interface MenuItemData<M extends MenuItemMeta = MenuItemMeta> {
-  /** 唯一标识，作为 selectedKey / openKeys 的取值 */
-  key: string;
-  /** 显示文案；divider 不需要 */
-  label?: string;
-  /** 图标：组件、图片地址或字体图标类名 */
-  icon?: MenuIconSource;
-  /** 是否禁用 */
-  disabled?: boolean;
-  /** 节点类型，默认 'item'；有 children 时自动升级为 flyout 子菜单 */
-  type?: MenuItemType;
-  /** 子节点 */
-  children?: MenuItemData<M>[];
-  /** 分组是否可折叠，只对 group 节点生效；false 时始终展开、标题不可点击，默认 true */
-  collapsible?: boolean;
-  /** 追加到本节点 flyout 弹层根节点的 class，只对带 children 的非分组节点生效 */
-  popupClass?: string;
-  /** 业务透传字段（路由、权限码等），组件不解读，随 select 事件原样返回 */
-  meta?: M;
-}
-
-export interface MenuSelectPayload<M extends MenuItemMeta = MenuItemMeta> {
-  /** 被选中项的 key */
-  key: string;
-  /** 从最外层祖先到自身的 key 链 */
-  keyPath: string[];
-  /** 数据驱动模式下的原始节点；复合组件写法下为 undefined */
-  data?: MenuItemData<M>;
-}
-
-/** 根组件 item 作用域插槽参数 */
-export interface MenuItemSlotProps<M extends MenuItemMeta = MenuItemMeta> {
-  item: MenuItemData<M>;
-  /** 所在分组层级：0 根、1 一级分组内、2 二级分组内 */
-  groupLevel: number;
-  /** 是否渲染在 flyout 弹层里 */
-  inPopup: boolean;
-  active: boolean;
-}
-
-/** resolveSelectedKey 的匹配函数：true 记 1 分，正数按分值比较，其余不匹配 */
-export type MenuKeyMatcher<M extends MenuItemMeta = MenuItemMeta> = (
-  item: MenuItemData<M>,
-  keyPath: string[],
-) => boolean | number | undefined;
-
-export function resolveSelectedKey<M extends MenuItemMeta = MenuItemMeta>(
-  items: MenuItemData<M>[] | undefined,
-  match: MenuKeyMatcher<M>,
-): string | undefined;
-
-export interface MenuEmits<M extends MenuItemMeta = MenuItemMeta> {
-  (e: 'update:selectedKey', key: string): void;
-  (e: 'update:openKeys', keys: string[]): void;
-  (e: 'update:width', width: number): void;
-  (e: 'update:searchValue', value: string): void;
-  (e: 'search', keyword: string): void;
-  (e: 'select', payload: MenuSelectPayload<M>): void;
-  (e: 'open-change', keys: string[]): void;
-}
-```
+## 泛型推导
 
 `Menu` 是泛型组件，`meta` 的类型由传入的 `items` 推导，`@select` 等事件的载荷随之带上同一类型，无需断言；`interface` 声明的 meta 也能直接使用：
 
@@ -810,6 +731,115 @@ function onSelect(payload: MenuSelectPayload<RouteMeta>) {
 
 ```vue
 <Menu :items="items" @select="onSelect" />
+```
+
+## 类型定义
+
+::: warning 自动生成的 API 文档
+以下内容由 `pnpm docs:gen` 从组件源码生成，请勿手动编辑。
+
+需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
+:::
+
+```typescript
+/**
+ * 内置主题名。传入其他字符串时组件只追加 `aix-menu--<theme>` 修饰类，
+ * 由业务侧自行定义对应的 `--aix-menu-*` 变量。
+ */
+export type MenuTheme = 'gray' | 'white' | 'glass-light' | 'glass-dark' | (string & {});
+
+/** flyout 弹层相对触发项的位置 */
+export type MenuPopupPlacement =
+  'right-start' | 'right' | 'right-end' | 'left-start' | 'left' | 'left-end';
+
+/**
+ * 图标来源。
+ * - 组件：按 16×16 渲染
+ * - 含 `/` 或以 `data:` 开头的字符串：视为图片地址，渲染为 `<img>`
+ * - 其他字符串：视为字体图标类名，渲染为带该 class 的 `<i>`
+ */
+export type MenuIconSource = Component | string;
+
+/** flyout 弹层的挂载目标：选择器或元素传给 Teleport，`false` 就地渲染在触发项所在的 li 内 */
+export type MenuPopupTeleportTo = string | HTMLElement | false;
+
+/**
+ * 数据驱动节点类型。
+ * - `item`：叶子项（默认）；有 `children` 时自动升级为 flyout 子菜单
+ * - `group`：内联可折叠分组，`children` 直接展示在侧栏里
+ * - `divider`：分割线
+ *
+ * 分组建议只用一层：分组套分组时两层标题样式一致，层级读不出来，更深的层级用子菜单表达。
+ */
+export type MenuItemType = 'item' | 'group' | 'divider';
+
+/** 业务透传字段的默认形状；索引签名为 any，interface 与 type 声明的 meta 均满足约束 */
+export type MenuItemMeta = Record<string, any>;
+
+/**
+ * 数据驱动写法的菜单节点
+ * @typeParam M - `meta` 的类型，随 select 事件与作用域插槽一路透出
+ */
+export interface MenuItemData<M extends MenuItemMeta = MenuItemMeta> {
+  /** 唯一标识，作为 selectedKey / openKeys 的取值 */
+  key: string;
+  /** 显示文案；`divider` 不需要 */
+  label?: string;
+  /** 图标：组件、图片地址或字体图标类名；分组节点的图标渲染在标题前，需开启 showGroupIcon */
+  icon?: MenuIconSource;
+  /**
+   * 是否禁用
+   * @default false
+   */
+  disabled?: boolean;
+  /**
+   * 节点类型
+   * @default 'item'
+   */
+  type?: MenuItemType;
+  /** 子节点 */
+  children?: MenuItemData<M>[];
+  /**
+   * 分组是否可折叠，只对 `group` 节点生效。为 false 时始终展开，标题不可点击
+   * @default true
+   */
+  collapsible?: boolean;
+  /** 追加到本节点 flyout 弹层根节点的 class，只对带 `children` 的非分组节点生效 */
+  popupClass?: string;
+  /** 业务透传字段（路由、权限码等），组件不解读，随 select 事件原样返回 */
+  meta?: M;
+}
+
+/** select 事件的载荷 */
+export interface MenuSelectPayload<M extends MenuItemMeta = MenuItemMeta> {
+  /** 被选中项的 key */
+  key: string;
+  /** 从最外层祖先到自身的 key 链 */
+  keyPath: string[];
+  /** 数据驱动模式下的原始节点；复合组件写法下为 undefined */
+  data?: MenuItemData<M>;
+}
+
+/** 根组件 `item` 作用域插槽参数 */
+export interface MenuItemSlotProps<M extends MenuItemMeta = MenuItemMeta> {
+  /** 当前渲染的数据节点 */
+  item: MenuItemData<M>;
+  /** 所在分组的嵌套层级，0 表示不在任何分组内 */
+  groupLevel: number;
+  /** 是否渲染在 flyout 弹层里 */
+  inPopup: boolean;
+  /** 是否为当前选中项 */
+  active: boolean;
+}
+
+/**
+ * `resolveSelectedKey` 的匹配函数。
+ * 返回 `true` 记 1 分，返回正数按分值比较，其余视为不匹配；分值最高的叶子胜出，同分取先出现的。
+ */
+export type MenuKeyMatcher<M extends MenuItemMeta = MenuItemMeta> = (
+  item: MenuItemData<M>,
+  keyPath: string[],
+) => boolean | number | undefined;
 ```
 
 ## API

@@ -170,7 +170,8 @@ export interface BubbleProps {
   toolRenderers?: BlockRenderers;
   /**
    * 末尾静默呼吸：流式输出停顿时让末块文字做明暗呼吸，提示「仍在生成」而非已说完。
-   * `true` 用默认 3000ms 阈值；传 `{ idleMs }` 自定义。默认 `false`（不改变视觉）。
+   * `true` 用默认 3000ms 阈值；传 `{ idleMs }` 自定义；`false` 不改变视觉。
+   * @default false
    */
   tailBreathing?: boolean | { idleMs?: number };
   /** 是否处于内联编辑态（受控，由外部驱动进入/退出——见 BubbleList.startEdit） */
@@ -186,6 +187,54 @@ export interface BubbleProps {
    * 要不要透出、透出到什么程度由业务显式决定（见 AiChatProps.errorText）。
    */
   errorText?: string;
+}
+
+/** Bubble `content` 插槽的作用域：内容块列表与消息元信息 */
+export interface BubbleContentSlotScope {
+  /** 该消息的有序内容块 */
+  blocks: ContentBlock[];
+  /** 消息元信息（role / status / key） */
+  info: BubbleContentInfo;
+}
+
+/** Bubble `error` 插槽的作用域 */
+export interface BubbleErrorSlotScope {
+  /** 消息元信息（role / status / key） */
+  info: BubbleContentInfo;
+  /** 触发重试，等价点击内置错误条的重试按钮 */
+  retry: () => void;
+}
+
+/** BubbleList / AiChat 消息级插槽（header、avatar）的作用域：Bubble 的 info 之上补整条消息 */
+export interface BubbleListItemSlotScope {
+  /** 整条消息 */
+  item: ChatMessage;
+  /** 消息元信息（role / status / key） */
+  info: BubbleContentInfo;
+}
+
+/** BubbleList / AiChat `content` 插槽的作用域 */
+export interface BubbleListContentSlotScope extends BubbleContentSlotScope {
+  /** 整条消息 */
+  item: ChatMessage;
+}
+
+/** BubbleList / AiChat `error` 插槽的作用域 */
+export interface BubbleListErrorSlotScope extends BubbleErrorSlotScope {
+  /** 整条消息 */
+  item: ChatMessage;
+  /** `extra.error` 里的原始错误（request / parseChunk 抛出的原值，未必是 Error 实例） */
+  error: unknown;
+}
+
+/** BubbleList / AiChat `row-before` 插槽的作用域：气泡所在行之前的整行区域 */
+export interface BubbleListRowSlotScope {
+  /** 本行消息 */
+  item: ChatMessage;
+  /** 本行在列表中的下标 */
+  index: number;
+  /** 上一条消息；首条为 undefined */
+  prev?: ChatMessage;
 }
 
 /**
@@ -450,6 +499,7 @@ export interface QuoteAnchor {
   end?: number;
 }
 
+/** 一条划词引用：锚点定位被引文本，intent 记录用户选择的动作意图 */
 export interface Quote {
   id: string;
   anchor: QuoteAnchor;
@@ -702,6 +752,7 @@ export interface QuoteActionContext {
   close: () => void;
 }
 
+/** 划词浮层的自定义动作项：按 key 标识，点击时拿到 QuoteActionContext 自行处置 */
 export interface QuoteActionItem {
   /** 勿与内置 key（explain/ask/translate/copy）撞名 */
   key: string;
@@ -712,6 +763,7 @@ export interface QuoteActionItem {
   onClick: (ctx: QuoteActionContext) => void;
 }
 
+/** 划词浮层动作列表：内置动作 key 与自定义动作项可混排 */
 export type QuoteActionsItems = (QuoteActionKey | QuoteActionItem)[];
 
 /** L2 解析后的统一渲染形态：皮肤按此渲染按钮，不关心 key 是内置还是自定义 */
@@ -805,6 +857,7 @@ export interface SubmitMeta {
 
 // ============ 追问建议（Follow-up Suggestions） ============
 
+/** 一条追问建议：点击后按 text 发送或回填，label / icon 只影响展示 */
 export interface SuggestionItem {
   /** 点击后发送/回填的文本 */
   text: string;
@@ -830,6 +883,7 @@ export interface VoiceRecognizerCtx {
 /** 自定义识别器工厂：启动识别并返回停止句柄（对接讯飞/阿里云等 ASR SDK） */
 export type VoiceRecognizer = (ctx: VoiceRecognizerCtx) => { stop: () => void };
 
+/** 语音输入配置：识别器、识别语言与出错回调 */
 export interface VoiceConfig {
   /** 自定义识别器；缺省用浏览器 Web Speech API */
   recognizer?: VoiceRecognizer;
@@ -874,6 +928,7 @@ export interface SpeechSession {
 /** 自定义合成器工厂：启动一次会话并返回句柄（对接讯飞/阿里云等云端 TTS） */
 export type SpeechSynthesizer = (ctx: SpeechSynthesizerCtx) => SpeechSession;
 
+/** 语音播报配置：合成器、朗读参数、文本提取与自动播报开关 */
 export interface SpeechConfig {
   /** 自定义合成器；缺省用浏览器 speechSynthesis */
   synthesizer?: SpeechSynthesizer;

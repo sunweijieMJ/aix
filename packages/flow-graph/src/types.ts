@@ -1,15 +1,10 @@
-import type { Node, Edge, MouseTouchEvent } from '@vue-flow/core';
+import type { Node, Edge, MouseTouchEvent, ZoomInOut } from '@vue-flow/core';
 import type { Component, ComputedRef, InjectionKey, Ref } from 'vue';
 import type { FlowGraphLocale } from './locale';
 
 /** 面板位置类型 */
 export type PanelPositionType =
-  | 'top-left'
-  | 'top-center'
-  | 'top-right'
-  | 'bottom-left'
-  | 'bottom-center'
-  | 'bottom-right';
+  'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
 
 /** 圆形节点默认尺寸（px） */
 export const DEFAULT_CIRCLE_SIZE = 28;
@@ -196,10 +191,22 @@ export interface FlowGraphBottomBarSlotProps {
   closeSearch: () => void;
   /** 适应视图 */
   fitView: (params?: { nodes?: string[]; duration?: number; padding?: number }) => void;
-  /** 放大 */
-  zoomIn: () => void;
-  /** 缩小 */
-  zoomOut: () => void;
+  /** 放大，可传过渡时长；resolve 为是否发生了缩放 */
+  zoomIn: ZoomInOut;
+  /** 缩小，可传过渡时长；resolve 为是否发生了缩放 */
+  zoomOut: ZoomInOut;
+}
+
+/** BaseNode 默认插槽的作用域，由子类节点据此渲染形状 */
+export interface FlowBaseNodeSlotScope {
+  /** 节点尺寸（px），取 `data.size`，缺省回退 `defaultSize` */
+  size: number;
+  /** 节点交互状态 */
+  nodeState: NonNullable<NodeData['state']>;
+  /** 点击反馈动画是否正在播放 */
+  clicking: boolean;
+  /** 节点左击处理：切换 active 状态并按配置弹出菜单 */
+  onClick: (event: MouseEvent) => void;
 }
 
 /**
@@ -225,17 +232,32 @@ export interface FlowGraphProps {
   nodes?: FlowNode[];
   /** v-model:edges 绑定的边数组 */
   edges?: FlowEdge[];
-  /** 是否允许手动连线（拖拽节点 Handle 创建新边），默认 `false` */
+  /**
+   * 是否允许手动连线（拖拽节点 Handle 创建新边）
+   * @default false
+   */
   connectable?: boolean;
   /** 是否开启栅格吸附（拖拽节点结束时吸附到网格），默认 `true` */
   snapGrid?: boolean;
-  /** 栅格尺寸（px），同时作为背景线间距，默认 `40` */
+  /**
+   * 栅格尺寸（px），同时作为背景线间距
+   * @default 40
+   */
   gridSize?: number;
-  /** 默认圆形节点尺寸（px），默认 `28` */
+  /**
+   * 默认圆形节点尺寸（px）
+   * @default 28
+   */
   defaultNodeSize?: number;
-  /** 默认六边形节点尺寸（px），默认 `40` */
+  /**
+   * 默认六边形节点尺寸（px）
+   * @default 40
+   */
   defaultHexagonSize?: number;
-  /** 搜索联想列表最大高度（px），超出后滚动，默认 200 */
+  /**
+   * 搜索联想列表最大高度（px），超出后滚动
+   * @default 200
+   */
   suggestionsMaxHeight?: number;
   /** 自定义节点类型映射；会与内置 `default`/`hexagon` 合并，key 冲突时覆盖内置 */
   nodeTypes?: NodeTypesMap;
@@ -243,18 +265,21 @@ export interface FlowGraphProps {
   edgeTypes?: EdgeTypesMap;
   /** 是否允许删除边（右键菜单删除），默认 `true`；单条边可通过 `edge.deletable` 覆盖 */
   edgesDeletable?: boolean;
-  /** 底部工具栏位置，默认 `'bottom-center'`；支持字符串或带偏移的对象形式 */
+  /**
+   * 底部工具栏位置；支持字符串或带偏移的对象形式
+   * @default 'bottom-center'
+   */
   bottomBarPosition?:
-    | PanelPositionType
-    | { position?: PanelPositionType; offset?: { x?: number; y?: number } };
+    PanelPositionType | { position?: PanelPositionType; offset?: { x?: number; y?: number } };
   /**
    * 是否在节点上方常驻显示 `data.label` 文本气泡，默认 `true`。
    * 关闭后节点不再显示名称。
    */
   showNodeLabel?: boolean;
   /**
-   * 常驻 label 显示阈值：`viewport.zoom` 低于此值时整体隐藏，默认 `0.6`。
+   * 常驻 label 显示阈值：`viewport.zoom` 低于此值时整体隐藏。
    * 设为 `0` 表示任何缩放都显示。
+   * @default 0.6
    */
   labelZoomThreshold?: number;
   /**

@@ -3,6 +3,7 @@ import path from 'path';
 import { glob } from 'glob';
 import ts from 'typescript';
 import { parse } from 'vue-docgen-api';
+import { parse as parseSfc, type SFCDescriptor } from 'vue/compiler-sfc';
 import type {
   ApiComponent,
   ApiEvent,
@@ -12,11 +13,14 @@ import type {
   ApiSlot,
 } from './api-model';
 import type { DiscoveredComponent } from './component-files';
+import { readJsDocComment, readJsDocTag } from './jsdoc';
+import { collectTypeDeclarations } from './type-declarations';
 
 /**
  * 组件 API 提取：vue-docgen-api 负责 Props / Events / Slots 的基础解析（含 withDefaults 默认值），
  * TypeScript AST 在其上补齐 docgen 拿不到的信息：源码里的原始类型文本、本包类型别名的展开、
  * 字符串字面量可选值、带引号的插槽名、插槽与事件的参数声明、Expose 成员。
+ * SFC 的块切分与模板遍历交给 @vue/compiler-sfc。
  */
 
 /** 包内顶层类型声明索引，按名字查找 */
@@ -81,37 +85,51 @@ export async function extractPackageApi(
   const packageIndex = await buildPackageTypeIndex(packageDir);
   const components: ApiComponent[] = [];
   const unresolvedProps: string[] = [];
+  const consumedTypes = new Set<string>();
 
   for (const component of discovered) {
-    const { api, propsUnresolved } = await extractComponent(packageDir, component, packageIndex);
-    components.push(api);
-    if (propsUnresolved) unresolvedProps.push(api.file);
+    const extracted = await extractComponent(packageDir, component, packageIndex);
+    components.push(extracted.api);
+    if (extracted.propsUnresolved) unresolvedProps.push(extracted.api.file);
+    for (const typeName of extracted.consumedTypes) consumedTypes.add(typeName);
   }
 
   return {
-    api: { package: packageName, generatedBy: 'pnpm docs:gen', components },
+    api: {
+      package: packageName,
+      generatedBy: 'pnpm docs:gen',
+      components,
+      types: await collectTypeDeclarations(packageDir, consumedTypes),
+    },
     unresolvedProps,
   };
+}
+
+interface ExtractedComponent {
+  api: ApiComponent;
+  propsUnresolved: boolean;
+  /** 已渲染成 Props / Emits / Slots / Expose 表的具名类型 */
+  consumedTypes: string[];
 }
 
 async function extractComponent(
   packageDir: string,
   { name, file }: DiscoveredComponent,
   packageIndex: TypeIndex,
-): Promise<{ api: ApiComponent; propsUnresolved: boolean }> {
+): Promise<ExtractedComponent> {
   const absolutePath = path.join(packageDir, file);
   const doc: any = await parse(absolutePath);
-  const source = await fs.readFile(absolutePath, 'utf-8');
+  const descriptor = parseDescriptor(await fs.readFile(absolutePath, 'utf-8'), absolutePath);
 
   // 宏只在 setup 块里；类型声明可能写在同文件的另一个 <script lang="ts"> 块，索引要收全部块
   const sourceFile = ts.createSourceFile(
     `${file}.ts`,
-    extractScriptContent(source),
+    setupScriptContent(descriptor),
     ts.ScriptTarget.Latest,
     true,
   );
   let index = packageIndex;
-  for (const block of extractAllScriptBlocks(source)) {
+  for (const block of scriptBlocks(descriptor)) {
     const blockFile = ts.createSourceFile(`${file}.block.ts`, block, ts.ScriptTarget.Latest, true);
     index = mergeIndexes(index, collectTopLevelTypes(blockFile));
   }
@@ -124,6 +142,7 @@ async function extractComponent(
   addModelEvents(astEvents, macros.models);
 
   const props = mergeProps(doc.props ?? [], astProps);
+  const expose = exposeMembers(macros, name, index);
 
   return {
     api: {
@@ -132,11 +151,20 @@ async function extractComponent(
       description: doc.description || scriptDescription(sourceFile) || undefined,
       props,
       events: mergeEvents(doc.events ?? [], astEvents),
-      slots: mergeSlots(dropDynamicSlots(doc.slots ?? [], source), astSlots),
-      expose: exposeMembers(macros, name, index),
+      slots: mergeSlots(dropDynamicSlots(doc.slots ?? [], descriptor), astSlots),
+      expose: expose.members,
     },
     propsUnresolved: Boolean(macros.props) && props.length === 0,
+    consumedTypes: [macros.props, macros.emits, macros.slots, macros.exposeType]
+      .map((typeNode) => typeNode && referencedTypeName(typeNode))
+      .concat(expose.typeName)
+      .filter((typeName): typeName is string => Boolean(typeName)),
   };
+}
+
+/** 类型引用的名字；类型字面量等匿名写法返回 undefined */
+function referencedTypeName(typeNode: ts.TypeNode): string | undefined {
+  return ts.isTypeReferenceNode(typeNode) ? typeNode.typeName.getText() : undefined;
 }
 
 /**
@@ -199,20 +227,28 @@ function mergeInto(target: TypeIndex, source: TypeIndex, override: boolean): voi
 
 // ---------- SFC 脚本与宏 ----------
 
-/**
- * SFC 里 `<script>` 块的正文，`setup` 块优先
- */
-export function extractScriptContent(source: string): string {
-  const blocks = [...source.matchAll(SCRIPT_BLOCK_RE)];
-  const setupBlock = blocks.find((block) => /\bsetup\b/.test(block[1] ?? ''));
-  return (setupBlock ?? blocks[0])?.[2] ?? '';
+function parseDescriptor(source: string, filename: string): SFCDescriptor {
+  const { descriptor, errors } = parseSfc(source, { filename });
+  if (errors.length > 0) {
+    throw new Error(`${filename} 不是合法的 SFC：${errors.map((e) => e.message).join('；')}`);
+  }
+  return descriptor;
 }
 
-const SCRIPT_BLOCK_RE = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
+/** SFC 里 `<script>` 块的正文，`setup` 块优先 */
+export function extractScriptContent(source: string): string {
+  return setupScriptContent(parseDescriptor(source, 'inline.vue'));
+}
+
+function setupScriptContent(descriptor: SFCDescriptor): string {
+  return (descriptor.scriptSetup ?? descriptor.script)?.content ?? '';
+}
 
 /** SFC 里所有 `<script>` 块的正文 */
-function extractAllScriptBlocks(source: string): string[] {
-  return [...source.matchAll(SCRIPT_BLOCK_RE)].map((block) => block[2] ?? '');
+function scriptBlocks(descriptor: SFCDescriptor): string[] {
+  return [descriptor.script, descriptor.scriptSetup]
+    .filter((block) => block !== null)
+    .map((block) => block.content);
 }
 
 function findMacros(sourceFile: ts.SourceFile): Macros {
@@ -265,40 +301,11 @@ function findMacros(sourceFile: ts.SourceFile): Macros {
 
 // ---------- 成员读取 ----------
 
-/**
- * JSDoc 正文。按原文逐行取，而不是读 `doc.comment`：TypeScript 把行中间的 `@aix/popper`
- * 这类写法也当成标签起点，正文会在那里被悄悄截断。标签一律写在行首，故只在行首的
- * `@tag` 处收尾（`{@link X}` 不在行首，原样保留）。
- */
-function readJsDocComment(node: ts.Node): string {
-  const doc = (node as any).jsDoc?.at(-1) as ts.JSDoc | undefined;
-  if (!doc) return '';
-
-  const lines: string[] = [];
-  for (const raw of doc.getText().split('\n')) {
-    const line = raw
-      .replace(/^\s*\/\*\*+/, '')
-      .replace(/\*\/\s*$/, '')
-      .replace(/^\s*\*+ ?/, '');
-    if (/^\s*@\w/.test(line)) break;
-    lines.push(line);
-  }
-  return lines.join('\n').trim();
-}
-
 /** 节点所在的顶层语句，宏的 JSDoc 挂在它上面 */
 function outermostStatement(node: ts.Node): ts.Node {
   let current = node;
   while (current.parent && !ts.isSourceFile(current.parent)) current = current.parent;
   return current;
-}
-
-function readJsDocTag(node: ts.Node, tagName: string): string | undefined {
-  const tag = ts.getJSDocTags(node).find((t) => t.tagName.text === tagName);
-  if (!tag?.comment) return undefined;
-  const text =
-    typeof tag.comment === 'string' ? tag.comment : (ts.getTextOfJSDocComment(tag.comment) ?? '');
-  return text.trim() || undefined;
 }
 
 function memberName(name: ts.PropertyName): string | null {
@@ -773,19 +780,73 @@ function slotsFromType(typeNode: ts.TypeNode, index: TypeIndex): Map<string, Api
 }
 
 /**
+ * 没有 `defineSlots` 类型时，用 docgen 从模板 `<slot :a :b-c>` 收到的绑定名兜底，
+ * 只有名字没有类型。Vue 会把插槽 outlet 的属性名 camelize，这里保持一致
+ */
+function formatDocgenSlotBindings(slot: any): string | undefined {
+  const names: string[] = (slot.bindings ?? [])
+    .map((binding: any) => binding?.name)
+    .filter(
+      (name: unknown): name is string => typeof name === 'string' && name !== '' && name !== 'name',
+    )
+    .map(camelize);
+  return names.length > 0 ? `{ ${names.join(', ')} }` : undefined;
+}
+
+function camelize(name: string): string {
+  return name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase());
+}
+
+/**
  * `<slot :name="name">` 这种动态转发的插槽，docgen 会把表达式文本当成插槽名收进来。
  * 模板里没有同名静态 `name="x"` 声明的，一律视为动态转发丢弃。
  */
-function dropDynamicSlots(docSlots: any[], source: string): any[] {
-  const dynamicNames = new Set(
-    [...source.matchAll(/<slot\b[^>]*?(?::|v-bind:)name="([^"]+)"/g)].map((m) => m[1]!.trim()),
-  );
+function dropDynamicSlots(docSlots: any[], descriptor: SFCDescriptor): any[] {
+  const { dynamicNames, staticNames } = templateSlotNames(descriptor);
   if (dynamicNames.size === 0) return docSlots;
-
-  const staticNames = new Set(
-    [...source.matchAll(/<slot\b[^>]*?\sname="([^"]+)"/g)].map((m) => m[1]!),
-  );
   return docSlots.filter((slot) => !dynamicNames.has(slot.name) || staticNames.has(slot.name));
+}
+
+type TemplateNode = NonNullable<NonNullable<SFCDescriptor['template']>['ast']>['children'][number];
+type TemplateElement = Extract<TemplateNode, { tag: string }>;
+
+/** 模板 AST 节点类型值，与 @vue/compiler-core 的 NodeTypes 一致 */
+const NODE_ELEMENT = 1;
+const NODE_SIMPLE_EXPRESSION = 4;
+const PROP_ATTRIBUTE = 6;
+const PROP_DIRECTIVE = 7;
+
+/** 模板里 `<slot>` 的静态 `name` 取值与 `:name` 绑定的表达式文本 */
+function templateSlotNames(descriptor: SFCDescriptor): {
+  dynamicNames: Set<string>;
+  staticNames: Set<string>;
+} {
+  const dynamicNames = new Set<string>();
+  const staticNames = new Set<string>();
+
+  const visit = (node: TemplateNode) => {
+    if (node.type !== NODE_ELEMENT) return;
+    const element = node as TemplateElement;
+    if (element.tag === 'slot') {
+      for (const prop of element.props) {
+        if (prop.type === PROP_ATTRIBUTE && prop.name === 'name' && prop.value) {
+          staticNames.add(prop.value.content);
+        } else if (
+          prop.type === PROP_DIRECTIVE &&
+          prop.name === 'bind' &&
+          prop.arg?.type === NODE_SIMPLE_EXPRESSION &&
+          prop.arg.content === 'name' &&
+          prop.exp?.type === NODE_SIMPLE_EXPRESSION
+        ) {
+          dynamicNames.add(prop.exp.content.trim());
+        }
+      }
+    }
+    for (const child of element.children) visit(child);
+  };
+
+  for (const child of descriptor.template?.ast?.children ?? []) visit(child);
+  return { dynamicNames, staticNames };
 }
 
 function mergeSlots(docSlots: any[], astSlots: Map<string, ApiSlot>): ApiSlot[] {
@@ -796,10 +857,11 @@ function mergeSlots(docSlots: any[], astSlots: Map<string, ApiSlot>): ApiSlot[] 
     const name = slot.name || 'default';
     const ast = astSlots.get(name);
     covered.add(name);
+    // defineSlots 的 JSDoc 是插槽说明的事实来源，模板 `<!-- @slot -->` 注释只作兜底
     result.push({
       name,
-      params: ast?.params,
-      description: (slot.description || ast?.description || '').trim(),
+      params: ast?.params ?? formatDocgenSlotBindings(slot),
+      description: (ast?.description || slot.description || '').trim(),
     });
   }
 
@@ -817,13 +879,19 @@ function mergeSlots(docSlots: any[], astSlots: Map<string, ApiSlot>): ApiSlot[] 
  * 或包内名为 `<组件名>Expose` 的接口（对象字面量不能含展开元素，且每个键都必须是该接口的成员，否则不采用）。
  * 裸对象字面量只有名字没有类型，不进 API 表。
  */
-function exposeMembers(macros: Macros, componentName: string, index: TypeIndex): ApiExposeMember[] {
+function exposeMembers(
+  macros: Macros,
+  componentName: string,
+  index: TypeIndex,
+): { members: ApiExposeMember[]; typeName?: string } {
   let members: AstMember[] = [];
+  let typeName: string | undefined;
 
   if (macros.exposeType) {
     members = membersOfType(macros.exposeType, index);
   } else if (macros.exposeObject) {
-    const candidates = membersOfNamed(`${componentName}Expose`, index);
+    const candidate = `${componentName}Expose`;
+    const candidates = membersOfNamed(candidate, index);
     const memberNames = new Set(candidates.map((m) => m.name));
     const exposedKeys = macros.exposeObject.properties.map((property) =>
       property.name ? memberName(property.name) : null,
@@ -831,12 +899,18 @@ function exposeMembers(macros: Macros, componentName: string, index: TypeIndex):
     const allKnown =
       candidates.length > 0 &&
       exposedKeys.every((key): key is string => key !== null && memberNames.has(key));
-    if (allKnown) members = candidates;
+    if (allKnown) {
+      members = candidates;
+      typeName = candidate;
+    }
   }
 
-  return members.map((member) => ({
-    name: member.name,
-    type: member.typeNode ? normalizeTypeText(member.typeNode.getText()) : undefined,
-    description: member.description.trim(),
-  }));
+  return {
+    members: members.map((member) => ({
+      name: member.name,
+      type: member.typeNode ? normalizeTypeText(member.typeNode.getText()) : undefined,
+      description: member.description.trim(),
+    })),
+    typeName,
+  };
 }

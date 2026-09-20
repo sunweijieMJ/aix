@@ -15,11 +15,18 @@ Aix 提供了丰富的企业级 UI 组件，覆盖常见的业务场景。
 |------|------|------|
 | [Menu 菜单](/components/menu) | `@aix/menu` | 侧边导航，支持分组、flyout 子菜单、搜索与拖拽宽度 |
 
+## AI 组件
+
+| 组件 | 包名 | 说明 |
+|------|------|------|
+| [AiChat AI 对话](/components/ai-chat) | `@aix/ai-chat` | 流式对话、深度思考、附件与语音、会话列表 |
+
 ## 媒体组件
 
 | 组件 | 包名 | 说明 |
 |------|------|------|
 | [VideoPlayer 视频播放器](/components/video) | `@aix/video` | 支持 HLS/FLV/DASH/RTSP 等多协议 |
+| [Audio 语音](/components/audio) | `@aix/audio` | ASR / TTS / 录音 / 波形，含 AudioPlayer 与 WaveformCanvas |
 | [Subtitle 字幕](/components/subtitle) | `@aix/subtitle` | 支持 VTT/SRT/ASS 等多格式字幕 |
 | [PdfViewer PDF 预览器](/components/pdf-viewer) | `@aix/pdf-viewer` | PDF 预览、文本选择、图片提取 |
 
@@ -35,6 +42,12 @@ Aix 提供了丰富的企业级 UI 组件，覆盖常见的业务场景。
 | 组件 | 包名 | 说明 |
 |------|------|------|
 | [Popper 弹出层](/components/popper) | `@aix/popper` | Popper / Tooltip / Popover / Dropdown / ContextMenu |
+
+## 图形组件
+
+| 组件 | 包名 | 说明 |
+|------|------|------|
+| [FlowGraph 流程图](/components/flow-graph) | `@aix/flow-graph` | 基于 Vue Flow 的节点 / 边编辑，支持连线、搜索、多路径着色 |
 
 ## 工具包
 

@@ -30,7 +30,10 @@
 export interface SuggestionsProps {
   /** 建议项（已由上层归一化并截断） */
   items: SuggestionItem[];
-  /** 建议生成中：为 true 时渲染占位胶囊，忽略 items，默认 false */
+  /**
+   * 建议生成中：为 true 时渲染占位胶囊，忽略 items
+   * @default false
+   */
   loading?: boolean;
 }
 export interface SuggestionsEmits {

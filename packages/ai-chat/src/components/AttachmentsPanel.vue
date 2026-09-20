@@ -105,9 +105,15 @@ import type { PendingAttachment } from '../composables/useAttachments';
 import { resolveIcon } from '../utils/resolveIcon';
 import type { IconSource } from '../utils/resolveIcon';
 import AttachmentCard from './AttachmentCard.vue';
+import type { SenderAttachmentsPlaceholderSlotScope } from './Sender.vue';
 
 defineProps<AttachmentsPanelProps>();
 const emit = defineEmits<AttachmentsPanelEmits>();
+
+defineSlots<{
+  /** 上传占位区（点击 / 拖放触发区），作用域给出 pick 与 dragIn；拖放高亮与键盘可达性仍由面板负责 */
+  placeholder?: (props: SenderAttachmentsPlaceholderSlotScope) => unknown;
+}>();
 const ns = useNamespace('attachments-panel');
 const { t } = useAiChatLocale();
 

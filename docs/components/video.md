@@ -265,7 +265,7 @@ const videoSrc = '/videos/sample.mp4';
 
 | 插槽名 | 参数 | 说明 |
 |--------|------|------|
-| `controls` | - | 自定义控制栏，customControls 为 true 时渲染，作用域含 playerState 与 controls |
+| `controls` | `props: VideoPlayerControlsSlotScope` | 自定义控制栏，customControls 为 true 时渲染 |
 
 ### VideoPlayer Expose
 

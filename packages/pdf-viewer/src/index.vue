@@ -165,6 +165,7 @@ import type {
   PdfViewerProps,
   PdfViewerEmits,
   PdfViewerExpose,
+  PdfViewerToolbarSlotScope,
   ThumbnailInfo,
 } from './types';
 
@@ -180,6 +181,11 @@ const props = withDefaults(defineProps<PdfViewerProps>(), {
 });
 
 const emit = defineEmits<PdfViewerEmits>();
+
+defineSlots<{
+  /** 自定义工具栏，默认渲染内置 PdfToolbar */
+  toolbar?: (props: PdfViewerToolbarSlotScope) => unknown;
+}>();
 
 // 国际化
 const { t } = useLocale({ name: 'pdf-viewer', messages: locale });

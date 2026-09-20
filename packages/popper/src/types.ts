@@ -310,6 +310,7 @@ export interface PopoverExpose {
 
 // ==================== Dropdown ====================
 
+/** Dropdown `items` 里的一项，点击后以 `command` 触发 `command` 事件 */
 export interface DropdownMenuItem {
   /** 命令标识 */
   command: string | number;
@@ -434,7 +435,9 @@ export interface DropdownItemEmits {
 
 // ==================== Shared Context ====================
 
+/** Dropdown 通过 `DROPDOWN_INJECTION_KEY` 注入给 DropdownItem 的上下文 */
 export interface DropdownContext {
+  /** DropdownItem 被点击时回调，带上该项的 `command` */
   handleItemClick: (command?: string | number) => void;
 }
 

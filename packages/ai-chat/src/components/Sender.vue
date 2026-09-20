@@ -244,13 +244,9 @@ export interface SenderProps {
    */
   toolbarItems?: SenderToolbarItems;
   /**
-   * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，默认 true。
-   *
-   * 业务完全接管 `#toolbar`（`toolbarItems: []`，不使用任何内置 attach/voice 项）自绘全部
-   * 布局时，隐式 spacer 会插在 slot 内容与发送键之间，把业务自己的左右分组打乱；设为 `false`
-   * 即不再补，无需 `toolbarItems: ['spacer']` 占位 + `:deep(.aix-sender__toolbar-spacer)
-   * { display: none }` 那道 hack。不影响显式放置的 'spacer'（那始终按数组顺序渲染）。
-   * 回归用例：__test__/Sender.test.ts
+   * 未显式放置 'spacer' 时，是否在发送键前自动补一个隐式 spacer。
+   * 业务用 `toolbarItems: []` 接管整条 `#toolbar` 自绘布局时设为 `false`；不影响显式放置的 'spacer'
+   * @default true
    */
   autoSpacer?: boolean;
   /**
@@ -401,6 +397,14 @@ export interface SenderAttachmentsSlotScope {
   accept?: string;
   /** Sender 是否处于禁用态 */
   disabled: boolean;
+}
+
+/** `attachments-placeholder` 插槽的作用域：附件面板空态 */
+export interface SenderAttachmentsPlaceholderSlotScope {
+  /** 打开原生文件选择器 */
+  pick: () => void;
+  /** 是否有文件正拖入面板 */
+  dragIn: boolean;
 }
 
 // 触发菜单实例 id 自增计数器：置于模块顶层（非 setup 块），保证多实例 menuId 唯一，
@@ -1226,7 +1230,7 @@ defineSlots<{
    * 只替换**内置**附件面板里的上传占位区（比整块接管 `attachments-panel` 轻得多：
    * 拖放高亮、文件卡片列表、进度与重试全部保留）。仅在走内置面板时生效。
    */
-  'attachments-placeholder'?: (props: { pick: () => void; dragIn: boolean }) => unknown;
+  'attachments-placeholder'?: (props: SenderAttachmentsPlaceholderSlotScope) => unknown;
 }>();
 
 /** 命令式写入输入框（划词 ask 的 prompt 注入等）；与 onInput 全同路径（含高度自适应），受控/非受控一致 */

@@ -114,6 +114,11 @@ const props = withDefaults(defineProps<ThoughtChainProps>(), {
 const ns = useNamespace('thought-chain');
 const slots = useSlots();
 
+defineSlots<{
+  /** 单个步骤的正文，作用域 item / index；默认按 Markdown 渲染 item.content */
+  'item-content'?: (props: { item: ThoughtChainItem; index: number }) => unknown;
+}>();
+
 // 链级折叠：仅 collapsible+defaultCollapsed 时初始折叠。
 // title 必须参与判定：折叠入口挂在头部（`v-if="title"`），无 title 时头部整个不渲染，
 // 初始折叠会得到一个既无列表也无展开入口的空壳 div，用户没有任何办法把它打开。

@@ -38,25 +38,36 @@ metadata:
       │  vue-docgen-api + TypeScript AST（scripts/docs/extract-api.ts），结果只在内存里
       ├─ 渲染 → packages/<pkg>/README.md 的 ## API 段        ← 机器所有
       ├─ 渲染 → docs/components/<pkg>.md 的 ## API 段        ← 机器所有
+      ├─ 两处已有 ## 类型定义 段的，由 src/types.ts 的导出重写   ← 机器所有
+      ├─ 校验 docs/components/*.md、sidebar、组件总览三处登记一致
       └─ MCP Server extract 调用 scripts/docs/print-api.ts 拿同一份结果
 ```
 
 | 命令 | 做的事 |
 |------|--------|
-| **`pnpm docs:gen`** | **解析组件 → 覆写各包 README 与文档页的 `## API` 段 → 刷新 MCP 数据，日常用这个** |
+| **`pnpm docs:gen`** | **解析组件 → 覆写各包 README 与文档页的 `## API` / `## 类型定义` 段 → 校验站点登记 → 刷新 MCP 数据，日常用这个** |
 | `pnpm docs:check` | CI 同款：跑完 `docs:gen` 要求 README / 文档页零 diff |
 | `pnpm docs:dev` | 起 VitePress（`http://localhost:5173`） |
 
-三个重要约束：
+几个重要约束：
 
 - **参与生成的组件 = `src/index.ts` 导出的 .vue 组件**，不需要配置。内部子组件不导出就不进表；
   多组件包的表格以组件名为前缀（`### MenuItem Props`）。`icons` 的 580 个生成组件被硬编码排除
-  （`pipeline.ts` 的 `PACKAGES_WITHOUT_API_GENERATION`）。
+  （`exemptions.ts` 的 `PACKAGES_WITH_HANDWRITTEN_API`）。
 - **类型列取源码声明文本**，本包内的类型别名会展开一层；事件参数、插槽作用域参数、
   `defineExpose({...} satisfies XExpose)` 的成员都会进表。改表格内容等于改源码声明或 JSDoc。
-- **缺文档页会让命令失败**（退出码非 0），这是有意的。已登记豁免的包写在
-  `gen-docs.ts` 的 `PACKAGES_WITHOUT_COMPONENT_DOC`：`hooks` / `theme` 不是组件，
-  `ai-chat` / `audio` / `flow-graph` 是"文档待写"。新增组件包**要么补文档，要么显式加进这个集合**。
+  插槽参数以 `defineSlots<{...}>()` 为准；没有它时只能从模板 `<slot :a :b>` 拿到绑定名，
+  渲染成 `{ a, b }`、没有类型。默认值列来自 `withDefaults` 或 `@default` 标签，透传给子组件 /
+  composable 兜底的默认值必须写 `@default`；说明里写了「默认 40」却没有标签，`docs:gen` 会给出黄色提示。
+- **`## 类型定义` 段是可选的机器所有区**：README 或文档页里有这个二级标题，管线就用 `src/types.ts`
+  导出的 type / interface / enum（已渲染成 Props / Emits / Slots / Expose 表的接口除外）整段重写它；
+  没有该标题就不追加。有标题却没有可渲染类型会让命令失败。说明性散文不要写进这一段。
+- **缺文档页会让命令失败**（退出码非 0），这是有意的。所有豁免集中在 `scripts/docs/exemptions.ts`：
+  `NON_COMPONENT_PACKAGES`（`hooks` / `theme` 不是组件）、`COMPONENT_DOC_PENDING`
+  （文档页待写的组件包，当前为空；补上文档页后必须从集合移除，否则同样失败）、
+  `COMPONENTS_WITH_EXTERNAL_PROPS`（props 类型来自外部包的组件）。新增组件包**要么补文档，要么显式登记**。
+- **文档页要在三处登记**：`docs/components/<pkg>.md`、`docs/.vitepress/config.ts` 的 sidebar、
+  `docs/components/index.md` 的总览表。管线校验三处两两一致，漏任何一处都失败。
 
 ---
 
@@ -164,7 +175,8 @@ pnpm docs:dev      # http://localhost:5173/components/<pkg>
 | API 表格是空的 / 没有默认值列 | JSDoc 缺 `@default`，或 Props 没写在 `defineProps<T>()` 引用的接口里 |
 | 手写的 API 表格消失了 | 它在 `## API` 段内，被管线覆写了——这是预期行为 |
 | 出现两个 API 段 | README 的 API 标题不是以 `## API` 开头的二级标题，管线找不到就会在文件末尾追加一份 |
-| `pnpm docs:gen` 报某个包缺文档 | 补 `docs/components/<pkg>.md`，或加进 `gen-docs.ts` 的 `PACKAGES_WITHOUT_COMPONENT_DOC` |
+| `pnpm docs:gen` 报某个包缺文档 | 补 `docs/components/<pkg>.md`，或登记进 `exemptions.ts` 的 `COMPONENT_DOC_PENDING` |
+| `pnpm docs:gen` 报"站点登记" | 把文档页同时挂进 `docs/.vitepress/config.ts` 的 sidebar 与 `docs/components/index.md` |
 | 子组件的 Props 没进文档 | 它没从 `src/index.ts` 导出 |
 | Events / Slots 的说明是 `-` | Emits 接口的调用签名没有 JSDoc；插槽没有 `defineSlots` JSDoc 也没有模板 `<!-- @slot -->` |
 | Expose 表没出来 | `defineExpose` 的实参没用 `satisfies XExpose`，且包内找不到 `<组件名>Expose` 接口 |

@@ -1,6 +1,7 @@
 import videojs from 'video.js';
 import type { Ref } from 'vue';
 import type { NetworkStatus } from './composables/useNetworkStatus';
+import type { PlayerState } from './composables/usePlayerState';
 
 // 重新导出 composables 类型
 export type { ControlsOptions } from './composables/useControls';
@@ -253,6 +254,14 @@ export interface SdkLoaderConfig {
 // ========================
 // 自定义控制栏相关类型定义
 // ========================
+
+/** `controls` 插槽的作用域 */
+export interface VideoPlayerControlsSlotScope {
+  /** 播放器当前状态快照 */
+  playerState: PlayerState;
+  /** 播放器控制方法集合 */
+  controls: ControlMethods;
+}
 
 /**
  * 控制方法接口

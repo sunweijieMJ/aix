@@ -129,3 +129,12 @@ export function renderApiBody(pkg: ApiPackage): string {
 export function renderApiSection(pkg: ApiPackage): string {
   return '## API\n\n' + renderApiBody(pkg);
 }
+
+/**
+ * `## 类型定义` 段正文（不含标题）：全部声明连同 JSDoc 放进一个 typescript 代码块，
+ * 声明之间空一行。没有可渲染的声明时返回空串。
+ */
+export function renderTypesBody(pkg: ApiPackage): string {
+  if (pkg.types.length === 0) return '';
+  return '```typescript\n' + pkg.types.map((t) => t.text).join('\n\n') + '\n```\n';
+}

@@ -103,6 +103,20 @@ export interface SubtitleExpose {
   error: import('vue').Ref<Error | null>;
 }
 
+/** 默认插槽的作用域 */
+export interface SubtitleSlotScope {
+  /** 当前分段文本 */
+  text: string;
+  /** 当前字幕条目的完整文本 */
+  fullText: string;
+  /** 当前分段序号（从 1 开始） */
+  currentSegment: number;
+  /** 分段总数 */
+  totalSegments: number;
+  /** 当前字幕条目的扩展数据 */
+  data?: Record<string, unknown>;
+}
+
 /** 字幕解析器接口 */
 export interface SubtitleParser {
   /** 解析字幕内容 */

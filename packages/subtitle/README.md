@@ -92,7 +92,7 @@ const onTimeUpdate = () => {
 
 | 插槽名 | 参数 | 说明 |
 |--------|------|------|
-| `default` | - | 自定义字幕渲染，作用域含 text / fullText / currentSegment / totalSegments / data；默认渲染当前分段文本 |
+| `default` | `props: SubtitleSlotScope` | 自定义字幕渲染，默认渲染当前分段文本 |
 
 ### Expose
 
@@ -109,21 +109,46 @@ const onTimeUpdate = () => {
 ## 类型定义
 
 ```typescript
-// 字幕条目
-interface SubtitleCue {
+/** 字幕条目 */
+export interface SubtitleCue {
+  /** 唯一标识 (可选) */
   id?: string;
-  startTime: number;  // 开始时间（秒）
-  endTime: number;    // 结束时间（秒）
-  text: string;       // 字幕文本
-  data?: Record<string, unknown>;  // 扩展数据
+  /** 开始时间 (秒) */
+  startTime: number;
+  /** 结束时间 (秒) */
+  endTime: number;
+  /** 字幕文本 */
+  text: string;
+  /** 扩展数据 (用于存储 PPT 索引等业务数据) */
+  data?: Record<string, unknown>;
 }
 
-// 字幕格式
-type SubtitleFormat = 'vtt' | 'srt' | 'json' | 'sbv' | 'ass';
+/** 字幕文件格式 */
+export type SubtitleFormat = 'vtt' | 'srt' | 'json' | 'sbv' | 'ass';
 
-// 字幕来源
-type SubtitleSource =
+/** 字幕来源类型 */
+export type SubtitleSource =
   | { type: 'url'; url: string; format?: SubtitleFormat }
   | { type: 'text'; content: string; format: SubtitleFormat }
   | { type: 'cues'; cues: SubtitleCue[] };
+
+/** 默认插槽的作用域 */
+export interface SubtitleSlotScope {
+  /** 当前分段文本 */
+  text: string;
+  /** 当前字幕条目的完整文本 */
+  fullText: string;
+  /** 当前分段序号（从 1 开始） */
+  currentSegment: number;
+  /** 分段总数 */
+  totalSegments: number;
+  /** 当前字幕条目的扩展数据 */
+  data?: Record<string, unknown>;
+}
+
+/** 字幕解析器接口 */
+export interface SubtitleParser {
+  /** 解析字幕内容 */
+  parse: (content: string) => SubtitleCue[];
+}
 ```

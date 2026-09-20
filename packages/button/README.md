@@ -181,22 +181,3 @@ import type { ButtonLocale } from '@aix/button';
 | 插槽名 | 参数 | 说明 |
 |--------|------|------|
 | `default` | - | 按钮内容 |
-
-## 类型定义
-
-```typescript
-export interface ButtonProps {
-  /** 按钮类型 */
-  type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
-  /** 按钮尺寸 */
-  size?: 'small' | 'medium' | 'large';
-  /** 是否禁用 */
-  disabled?: boolean;
-  /** 是否加载中 */
-  loading?: boolean;
-}
-
-export interface ButtonEmits {
-  (e: 'click', event: MouseEvent): void;
-}
-```

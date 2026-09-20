@@ -207,6 +207,30 @@ export interface PdfViewerEmits {
   (e: 'contextMenu', context: ContextMenuContext): void;
 }
 
+// ==================== 组件 Slots ====================
+
+/** `toolbar` 插槽的作用域 */
+export interface PdfViewerToolbarSlotScope {
+  /** 当前页码（连续滚动模式下为视口内可见页） */
+  currentPage: number;
+  /** 总页数 */
+  totalPages: number;
+  /** 当前缩放比例 */
+  scale: number;
+  /** 跳转到指定页 */
+  gotoPage: (page: number) => Promise<void>;
+  /** 上一页 */
+  prevPage: () => Promise<void>;
+  /** 下一页 */
+  nextPage: () => Promise<void>;
+  /** 放大，step 缺省为 ZOOM_STEP */
+  zoomIn: (step?: number) => Promise<void>;
+  /** 缩小，step 缺省为 ZOOM_STEP */
+  zoomOut: (step?: number) => Promise<void>;
+  /** 适应页面 */
+  fitToPage: () => Promise<void>;
+}
+
 // ==================== 组件 Expose ====================
 
 /** PdfViewer 暴露的方法和状态 */

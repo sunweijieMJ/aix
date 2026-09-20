@@ -111,6 +111,7 @@ import {
   type FlowActiveWaypoint,
   type FlowConnection,
   type FlowEdge,
+  type FlowGraphBottomBarSlotProps,
   type FlowGraphEmits,
   type FlowGraphInstance,
   type FlowGraphProps,
@@ -133,10 +134,14 @@ const props = withDefaults(defineProps<FlowGraphProps>(), {
 });
 const emit = defineEmits<FlowGraphEmits>();
 
+defineSlots<{
+  /** 底部操作栏，默认渲染新建节点按钮、缩放控件与搜索入口 */
+  'bottom-bar'?: (props: FlowGraphBottomBarSlotProps) => unknown;
+}>();
+
 // v-model:nodes / v-model:edges。内部多处读 modelNodes.value（碰撞检测 / 搜索 / 复制）并经
 // <VueFlow v-model:nodes> 回写，属「内部写入 + 支持非受控」场景。Vue 3.3 的 useModel 为 emit-only，
-// 非受控下回写丢失会让这些读取拿到陈旧空数组，故用 useControllable。prop nodes/edges 须保持无默认值
-// （FlowGraphProps 已声明 nodes?/edges? 且未进 withDefaults 默认值，符合要求）。
+// 非受控下回写丢失会让这些读取拿到陈旧空数组，故用 useControllable。prop nodes/edges 须保持无默认值。
 const { state: modelNodes } = useControllable<FlowNode[]>({
   prop: () => props.nodes,
   defaultValue: [],

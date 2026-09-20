@@ -40,6 +40,7 @@ import { useTouchEvents, type TouchEventsOptions } from './composables/useTouchE
 import { useVideoPlayer, type VideoPlayerOptions } from './composables/useVideoPlayer';
 import type {
   ControlMethods,
+  VideoPlayerControlsSlotScope,
   VideoPlayerProps,
   VideoPlayerEmits,
   VideoPlayerExpose,
@@ -66,6 +67,11 @@ const props = withDefaults(defineProps<VideoPlayerProps>(), {
 });
 
 const emit = defineEmits<VideoPlayerEmits>();
+
+defineSlots<{
+  /** 自定义控制栏，customControls 为 true 时渲染 */
+  controls?: (props: VideoPlayerControlsSlotScope) => unknown;
+}>();
 
 const containerRef = ref<HTMLElement | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);

@@ -73,18 +73,18 @@ function onConnect(connection: FlowConnection) {
 |--------|------|--------|:----:|------|
 | `nodes` | `FlowNode[]` | - | - | v-model:nodes 绑定的节点数组 |
 | `edges` | `FlowEdge[]` | - | - | v-model:edges 绑定的边数组 |
-| `connectable` | `boolean` | - | - | 是否允许手动连线（拖拽节点 Handle 创建新边），默认 `false` |
+| `connectable` | `boolean` | `false` | - | 是否允许手动连线（拖拽节点 Handle 创建新边） |
 | `snapGrid` | `boolean` | `true` | - | 是否开启栅格吸附（拖拽节点结束时吸附到网格），默认 `true` |
-| `gridSize` | `number` | - | - | 栅格尺寸（px），同时作为背景线间距，默认 `40` |
-| `defaultNodeSize` | `number` | - | - | 默认圆形节点尺寸（px），默认 `28` |
-| `defaultHexagonSize` | `number` | - | - | 默认六边形节点尺寸（px），默认 `40` |
-| `suggestionsMaxHeight` | `number` | - | - | 搜索联想列表最大高度（px），超出后滚动，默认 200 |
+| `gridSize` | `number` | `40` | - | 栅格尺寸（px），同时作为背景线间距 |
+| `defaultNodeSize` | `number` | `28` | - | 默认圆形节点尺寸（px） |
+| `defaultHexagonSize` | `number` | `40` | - | 默认六边形节点尺寸（px） |
+| `suggestionsMaxHeight` | `number` | `200` | - | 搜索联想列表最大高度（px），超出后滚动 |
 | `nodeTypes` | `Record<string, Component>` | - | - | 自定义节点类型映射；会与内置 `default`/`hexagon` 合并，key 冲突时覆盖内置 |
 | `edgeTypes` | `Record<string, Component>` | - | - | 自定义边类型映射；会与内置 `default` 合并，key 冲突时覆盖内置 |
 | `edgesDeletable` | `boolean` | `true` | - | 是否允许删除边（右键菜单删除），默认 `true`；单条边可通过 `edge.deletable` 覆盖 |
-| `bottomBarPosition` | `PanelPositionType \| { position?: PanelPositionType; offset?: { x?: number; y?: number } }` | - | - | 底部工具栏位置，默认 `'bottom-center'`；支持字符串或带偏移的对象形式 |
+| `bottomBarPosition` | `PanelPositionType \| { position?: PanelPositionType; offset?: { x?: number; y?: number } }` | `'bottom-center'` | - | 底部工具栏位置；支持字符串或带偏移的对象形式 |
 | `showNodeLabel` | `boolean` | `true` | - | 是否在节点上方常驻显示 `data.label` 文本气泡，默认 `true`。关闭后节点不再显示名称。 |
-| `labelZoomThreshold` | `number` | - | - | 常驻 label 显示阈值：`viewport.zoom` 低于此值时整体隐藏，默认 `0.6`。设为 `0` 表示任何缩放都显示。 |
+| `labelZoomThreshold` | `number` | `0.6` | - | 常驻 label 显示阈值：`viewport.zoom` 低于此值时整体隐藏。设为 `0` 表示任何缩放都显示。 |
 | `nodeMenuOnClick` | `boolean` | `true` | - | 左击节点时是否弹出复制/删除菜单，默认 `true`。关闭后点击仍切换 active 高亮、仍触发 `node-click` 事件，仅不弹菜单。单节点可通过 `node.data.menuOnClick` 覆盖。 |
 | `nodeMenuOnHover` | `boolean` | `true` | - | hover 节点时是否弹出复制/删除菜单，默认 `true`。单节点可通过 `node.data.menuOnHover` 覆盖。 |
 
@@ -106,7 +106,7 @@ function onConnect(connection: FlowConnection) {
 
 | 插槽名 | 参数 | 说明 |
 |--------|------|------|
-| `bottom-bar` | - | 底部操作栏，作用域给出 addNode / openSearch / closeSearch / fitView / zoomIn / zoomOut；默认渲染新建节点按钮与缩放控件 |
+| `bottom-bar` | `props: FlowGraphBottomBarSlotProps` | 底部操作栏，默认渲染新建节点按钮、缩放控件与搜索入口 |
 
 ### FlowGraph Expose
 
@@ -141,7 +141,7 @@ function onConnect(connection: FlowConnection) {
 
 | 插槽名 | 参数 | 说明 |
 |--------|------|------|
-| `default` | - | 节点主体内容，作用域含 size / nodeState / clicking / onClick |
+| `default` | `props: FlowBaseNodeSlotScope` | 节点主体内容，由子类按 size / nodeState 渲染形状 |
 
 ---
 

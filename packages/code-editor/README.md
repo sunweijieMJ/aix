@@ -166,39 +166,38 @@ const insertText = () => {
 ## 类型定义
 
 ```typescript
+/** Lint 配置选项 */
+export interface CodeEditorLintConfig {
+  /**
+   * 检查延迟（毫秒），文档变更后等待多久执行 lint
+   * @default 750
+   */
+  delay?: number;
+}
+
 /** 支持的编程语言 */
 export type CodeLanguage =
-  | 'javascript' | 'typescript' | 'json' | 'html' | 'css'
-  | 'python' | 'java' | 'go' | 'rust' | 'cpp'
-  | 'php' | 'sql' | 'yaml' | 'xml' | 'markdown'
-  | 'sass' | 'vue' | 'angular' | 'liquid' | 'wast';
+  | 'javascript'
+  | 'typescript'
+  | 'json'
+  | 'html'
+  | 'css'
+  | 'python'
+  | 'java'
+  | 'go'
+  | 'rust'
+  | 'cpp'
+  | 'php'
+  | 'sql'
+  | 'yaml'
+  | 'xml'
+  | 'markdown'
+  | 'sass'
+  | 'vue'
+  | 'angular'
+  | 'liquid'
+  | 'wast';
 
 /** 编辑器主题 */
 export type CodeEditorTheme = 'light' | 'dark';
-
-export interface CodeEditorProps {
-  modelValue?: string;
-  language?: CodeLanguage;
-  theme?: CodeEditorTheme;
-  readonly?: boolean;
-  disabled?: boolean;
-  placeholder?: string;
-  lineNumbers?: boolean;
-  foldGutter?: boolean;
-  highlightActiveLine?: boolean;
-  bracketMatching?: boolean;
-  tabSize?: number;
-  height?: string;
-  minHeight?: string;
-  maxHeight?: string;
-  extensions?: Extension[];
-}
-
-export interface CodeEditorEmits {
-  (e: 'update:modelValue', value: string): void;
-  (e: 'change', value: string): void;
-  (e: 'focus', view: EditorView): void;
-  (e: 'blur', view: EditorView): void;
-  (e: 'ready', view: EditorView): void;
-}
 ```

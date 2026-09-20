@@ -167,6 +167,7 @@ export type {
   SenderEmits,
   SenderSlotScope,
   SenderAttachmentsSlotScope,
+  SenderAttachmentsPlaceholderSlotScope,
   SenderVariant,
   ToolbarBuiltinKey,
   ToolbarItem,
@@ -175,7 +176,13 @@ export type {
 } from './components/Sender.vue';
 export type { BubbleListProps, BubbleListEmits } from './components/BubbleList.vue';
 // BubbleFooterActions 是 #footer 作用域插槽回传的 `actions` 句柄集类型（自绘操作条据此标注）
-export type { AiChatProps, AiChatEmits, BubbleFooterActions } from './components/AiChat.vue';
+export type {
+  AiChatProps,
+  AiChatEmits,
+  BubbleFooterActions,
+  AiChatFooterSlotScope,
+  AiChatQuoteMenuSlotScope,
+} from './components/AiChat.vue';
 export type { WelcomeProps } from './components/Welcome.vue';
 export type { ThinkingProps } from './components/Thinking.vue';
 export type { ThoughtChainProps } from './components/ThoughtChain.vue';

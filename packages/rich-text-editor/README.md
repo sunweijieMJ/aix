@@ -199,26 +199,48 @@ const getContent = () => {
 ## 类型定义
 
 ```typescript
-/** 内容输出格式 */
-export type OutputFormat = 'html' | 'json' | 'text';
-
-/** 图片功能配置 */
-export interface ImageConfig extends BaseUploadConfig {
-  /** 是否允许 base64 内联 @default false */
-  allowBase64?: boolean;
+/** 上传/查询错误信息 */
+export interface UploadError {
+  /** 错误类型 */
+  type: 'size' | 'type' | 'network' | 'server' | 'custom';
+  /** 错误消息 */
+  message: string;
+  /** 原始错误对象 */
+  cause?: unknown;
 }
 
-/** 视频功能配置 */
-export interface VideoConfig extends BaseUploadConfig {}
+/** 请求头配置（对象或函数，函数形式支持动态 token） */
+export type HeadersConfig = Record<string, string> | (() => Record<string, string>);
 
-/** 上传公共配置 */
+/** 附加表单字段 */
+export type ExtraDataConfig =
+  Record<string, string | Blob> | ((file: File) => Record<string, string | Blob>);
+
+/** 编辑器内容输出格式 */
+export type OutputFormat = 'html' | 'json' | 'text';
+
+/** 表格功能配置 */
+export interface TableConfig {
+  /** 是否可调整列宽 @default true */
+  resizable?: boolean;
+}
+
+/** 图片/视频上传的公共配置基类型 */
 export interface BaseUploadConfig {
-  /** 自定义选择器（优先级最高） */
+  // ===== 选择/上传方式（三选一，customPicker > upload > server） =====
+
+  /**
+   * 自定义选择器：完全替代原生文件选择和上传流程（优先级最��）
+   * 由业务方控制 UI（如弹出资源库弹窗），返回资源 URL 或 null（取消）
+   */
   customPicker?: () => Promise<string | null>;
   /** 自定义上传回调，返回文件 URL */
   upload?: (file: File) => Promise<string>;
-  /** 服务端上传地址 */
+  /** 服务端上传地址（当 upload 未提供时生效） */
   server?: string;
+
+  // ===== server 模式配置 =====
+
   /** 自定义请求头 */
   headers?: HeadersConfig;
   /** 文件字段名 @default 'file' */
@@ -231,38 +253,43 @@ export interface BaseUploadConfig {
   timeout?: number;
   /** 从响应 JSON 中提取 URL 的点分路径 @default 'data.url' */
   responsePath?: string;
-  /** 上传前钩子 */
+
+  // ===== 生命周期钩子 =====
+
+  /** 上传前钩子：返回 false 阻止上传，返回 File 替换文件（可做压缩/重命名） */
   beforeUpload?: (file: File) => boolean | File | Promise<boolean | File>;
   /** 上传成功回调 */
   onSuccess?: (url: string, file: File) => void;
   /** 上传失败回调 */
   onError?: (error: UploadError, file: File) => void;
+
+  // ===== 文件校验 =====
+
   /** 允许的文件类型 */
   acceptedTypes?: string[];
   /** 最大文件大小（字节） */
   maxSize?: number;
 }
 
-/** @提及配置 */
-export interface MentionConfig {
-  /** 自定义查询回调（优先级最高） */
-  queryItems?: (query: string) => Promise<MentionItem[]> | MentionItem[];
-  /** 服务端查询地址 */
-  server?: string;
-  /** 自定义请求头 */
-  headers?: HeadersConfig;
-  /** 查询参数名 @default 'keyword' */
-  queryParamName?: string;
-  /** 从响应中提取列表的点分路径 @default 'data' */
-  responsePath?: string;
-  /** 映射后端返回数据为 MentionItem */
-  transformResponse?: (data: unknown[]) => MentionItem[];
-  /** 查询失败回调 */
-  onError?: (error: UploadError) => void;
-  /** 渲染提及项标签 */
-  renderLabel?: (item: MentionItem) => string;
-  /** 触发字符 @default '@' */
-  trigger?: string;
+/** 图片功能配置（timeout 默认 30000，maxSize 默认 5MB） */
+export interface ImageConfig extends BaseUploadConfig {
+  /** 是否允许 base64 内联 @default false */
+  allowBase64?: boolean;
+}
+
+/** 视频功能配置（timeout 默认 60000，maxSize 默认 100MB） */
+export interface VideoConfig extends BaseUploadConfig {}
+
+/** 字体大小配置 */
+export interface FontSizeConfig {
+  /** 可选字号列表 @default ['12px','14px','16px','18px','20px','24px','28px','32px'] */
+  sizes?: string[];
+}
+
+/** 字体族配置 */
+export interface FontFamilyConfig {
+  /** 可选字体列表 */
+  families?: Array<{ label: string; value: string }>;
 }
 
 /** @提及项 */
@@ -270,6 +297,36 @@ export interface MentionItem {
   id: string | number;
   label: string;
   [key: string]: unknown;
+}
+
+/** @提及配置 */
+export interface MentionConfig {
+  // ===== 查询方式（二选一，queryItems 优先） =====
+
+  /** 自定义查询回调（优先级最高） */
+  queryItems?: (query: string) => Promise<MentionItem[]> | MentionItem[];
+  /** 服务端查询地址（当 queryItems 未提供时生效，GET 请求） */
+  server?: string;
+
+  // ===== server 模式配置 =====
+
+  /** 自定义请求头 */
+  headers?: HeadersConfig;
+  /** 查询参数名 @default 'keyword' */
+  queryParamName?: string;
+  /** 从响应 JSON 中提取列表的点分路径 @default 'data' */
+  responsePath?: string;
+  /** 将后端返回数据映射为 MentionItem */
+  transformResponse?: (data: unknown[]) => MentionItem[];
+  /** 查询失败回调 */
+  onError?: (error: UploadError) => void;
+
+  // ===== 显示配置 =====
+
+  /** 渲染提及项的标签 */
+  renderLabel?: (item: MentionItem) => string;
+  /** 触发字符 @default '@' */
+  trigger?: string;
 }
 
 /** 字符统计配置 */

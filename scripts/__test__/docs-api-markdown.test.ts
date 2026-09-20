@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiComponent, ApiPackage } from '../docs/api-model';
-import { renderApiBody, sanitizeCell } from '../docs/api-markdown';
+import { renderApiBody, renderTypesBody, sanitizeCell } from '../docs/api-markdown';
 
 function component(overrides: Partial<ApiComponent> = {}): ApiComponent {
   return {
@@ -14,8 +14,8 @@ function component(overrides: Partial<ApiComponent> = {}): ApiComponent {
   };
 }
 
-function pkg(components: ApiComponent[]): ApiPackage {
-  return { package: '@aix/demo', generatedBy: 'pnpm docs:gen', components };
+function pkg(components: ApiComponent[], types: ApiPackage['types'] = []): ApiPackage {
+  return { package: '@aix/demo', generatedBy: 'pnpm docs:gen', components, types };
 }
 
 describe('sanitizeCell', () => {
@@ -148,5 +148,30 @@ describe('renderApiBody', () => {
     );
     expect(body).toContain("`'gray' \\| 'white'`");
     expect(body).not.toContain('`MenuTheme`');
+  });
+});
+
+describe('renderTypesBody', () => {
+  it('全部声明放进一个 typescript 代码块，声明之间空一行', () => {
+    const body = renderTypesBody(
+      pkg(
+        [],
+        [
+          { name: 'Size', kind: 'type', text: "export type Size = 'sm' | 'lg';" },
+          {
+            name: 'Item',
+            kind: 'interface',
+            text: '/** 条目 */\nexport interface Item {\n  key: string;\n}',
+          },
+        ],
+      ),
+    );
+    expect(body).toBe(
+      "```typescript\nexport type Size = 'sm' | 'lg';\n\n/** 条目 */\nexport interface Item {\n  key: string;\n}\n```\n",
+    );
+  });
+
+  it('没有声明时返回空串', () => {
+    expect(renderTypesBody(pkg([]))).toBe('');
   });
 });
