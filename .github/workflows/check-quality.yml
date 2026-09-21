@@ -396,3 +396,57 @@ jobs:
 
       - name: Docs match source (pnpm docs:gen 后须零 diff)
         run: pnpm docs:check
+
+  # ============================
+  # Docs Smoke - 活演示是否真的挂载
+  #
+  # 构建通过不代表演示能跑：`<ClientOnly>` 里的内容不进 SSR 产物，组件在浏览器里
+  # 初始化失败时页面照样是空的。这里起一份 preview，用 Chromium 逐页断言
+  # 「源码里写了几个 demo-block，页面上就要渲染出几个」，并收集页面报错与站内 404。
+  # ============================
+  docs-smoke:
+    name: Docs Smoke
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Restore build cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            packages/icons/src
+            internal/*/dist
+            internal/*/data
+            kit/*/dist
+          key: build-${{ github.sha }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages (fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build docs site
+        run: pnpm docs:build
+
+      - name: Smoke demos (每个 demo-block 都要挂载)
+        run: pnpm docs:smoke

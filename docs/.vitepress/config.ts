@@ -74,6 +74,8 @@ export default withMermaid(
             items: [
               { text: '架构设计', link: '/guide/architecture' },
               { text: '编码规范', link: '/guide/development-standards' },
+              { text: '组件文档规范', link: '/guide/component-docs-standard' },
+              { text: '组件 JSDoc 注释规范', link: '/guide/component-jsdoc' },
               { text: '贡献指南', link: '/guide/contributing' },
             ],
           },
@@ -243,6 +245,18 @@ export default withMermaid(
       },
       optimizeDeps: {
         include: ['mermaid'],
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            // CodeMirror 必须整体落在同一个 chunk：VitePress 给每个页面生成
+            // 完整与 lean 两份 chunk，各自内联一份 @codemirror/state 时
+            // 扩展的 instanceof 校验会失败，编辑器初始化直接抛错
+            manualChunks(id: string) {
+              if (id.includes('/@codemirror/') || id.includes('/@lezer/')) return 'codemirror';
+            },
+          },
+        },
       },
       css: {
         preprocessorOptions: {

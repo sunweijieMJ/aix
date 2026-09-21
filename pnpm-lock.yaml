@@ -279,6 +279,9 @@ importers:
       mermaid:
         specifier: ^11.17.0
         version: 11.17.2
+      playwright:
+        specifier: 'catalog:'
+        version: 1.63.0
       postcss:
         specifier: 'catalog:'
         version: 8.5.28

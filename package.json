@@ -39,6 +39,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
+    "docs:smoke": "tsx scripts/docs/smoke-cli.ts",
     "build:docs-all": "pnpm storybook:build && pnpm docs:build",
     "pre": "tsx scripts/publish/index.ts",
     "postinstall": "npx husky"
@@ -120,6 +121,7 @@
     "markdownlint-cli2": "^0.23.2",
     "mermaid": "^11.17.0",
     "postcss": "catalog:",
+    "playwright": "catalog:",
     "prettier": "catalog:",
     "publint": "^0.3.24",
     "rimraf": "catalog:",
