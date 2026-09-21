@@ -83,7 +83,7 @@ const onError = (error: Error) => {
 | `textSelect` | `text: string` | 文本选中，返回选中的文本内容 |
 | `imageClick` | `image: PdfImageInfo, event: MouseEvent` | 图片点击，返回图片信息和鼠标事件 |
 | `imageSelect` | `images: PdfImageInfo[]` | 图片选中（多选），返回所有选中的图片 |
-| `contextMenu` | `context: ContextMenuContext` | 右键菜单触发，返回菜单上下文信息 |
+| `contextMenu` | `context: ContextMenuContext, item: ContextMenuItem` | 点击右键菜单项时触发，返回选区上下文与被点击的菜单项。组件只负责弹出与关闭菜单，具体动作（复制、下载等）由业务侧按 `item.id` 实现。 |
 
 ### PdfViewer Slots
 
@@ -205,6 +205,12 @@ export interface PdfViewerConfig {
   scrollMode: ScrollMode;
   /** 连续模式下页面间距 (像素) */
   pageGap: number;
+  /**
+   * pdf.js worker 地址，缺省取 jsDelivr CDN 上与 pdfjs-dist 同版本的 worker。
+   * 内网部署可指向自托管副本。pdf.js 库在页面内只初始化一次，因此以首个渲染的
+   * PdfViewer 传入的值为准，之后再改无效。
+   */
+  workerSrc?: string;
 }
 
 /** 图片高亮样式 */

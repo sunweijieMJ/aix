@@ -6,6 +6,16 @@ outline: deep
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { Subtitle } from '@aix/subtitle'
+import { VideoPlayer } from '@aix/video'
+
+// 演示用的公开测试源：video.js 官方示例视频与配套英文字幕
+const MP4 = 'https://vjs.zencdn.net/v/oceans.mp4'
+const VTT = 'https://vjs.zencdn.net/v/oceans.vtt'
+
+const nativeRef = ref()
+const nativeTime = ref(0)
+const playerTime = ref(0)
+const showSubtitle = ref(true)
 
 // 演示用的字幕数据
 const subtitleCues = [
@@ -39,18 +49,80 @@ const reset = () => {
   clearInterval(timer)
 }
 
+// 供后续演示自走的时钟，0～12 秒循环
+const loopTime = ref(0)
+let loopTimer = null
+
+onMounted(() => {
+  loopTimer = setInterval(() => {
+    loopTime.value = Number(((loopTime.value + 0.1) % 12).toFixed(1))
+  }, 100)
+})
+
+const arrayCues = [
+  { startTime: 0, endTime: 4, text: '数组是最直接的来源：自己拼 cues' },
+  { startTime: 4, endTime: 8, text: 'startTime / endTime 单位是秒' },
+  { startTime: 8, endTime: 12, text: 'text 就是这一条要显示的文字' },
+]
+
+const srtText = `
+1
+00:00:00,500 --> 00:00:04,000
+SRT 文本可以直接喂给组件
+
+2
+00:00:04,000 --> 00:00:08,000
+时间戳按 时:分:秒,毫秒 解析
+
+3
+00:00:08,000 --> 00:00:12,000
+换成 vtt / ass / sbv 只需改 format
+`
+
+const longCues = [
+  {
+    startTime: 0,
+    endTime: 12,
+    text: '这是一条很长的字幕：启用 autoSegment 之后，它会按 fixedHeight 计算能放下多少字，再拆成若干段轮流显示，而不是把整块文字堆在画面上挡住内容。',
+  },
+]
+
 onUnmounted(() => {
   clearInterval(timer)
+  clearInterval(loopTimer)
 })
 </script>
 
-字幕组件，支持多种字幕格式（VTT、SRT、JSON、SBV、ASS），可与视频播放器配合使用。
+<style>
+.subtitle-demo {
+  position: relative;
+  display: block;
+  min-height: 140px;
+  padding: 24px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.subtitle-demo--video {
+  min-height: 0;
+  padding: 0;
+  background: none;
+}
+</style>
+
+# Subtitle 字幕
+
+字幕渲染组件：按外部给的播放时间挑出当前该显示的 cue 并叠加渲染，来源支持 VTT / SRT / ASS / SBV / JSON
+五种格式，也可以直接喂数组。
 
 ## 何时使用
 
-- 需要在视频上显示字幕
-- 需要支持多种字幕格式
-- 需要自定义字幕样式或位置
+- 视频、音频播放时要在画面上叠字幕，且字幕文件格式不止一种
+- 需要控制字幕的位置、字号、底色，或在窄容器里做单行分段轮播
+- 已有自己的播放器，只缺一个"按时间显示文字"的渲染层
+
+组件不解析视频、也不自己走时间轴——`currentTime` 必须由播放器驱动。要的是完整播放器请用
+[VideoPlayer 视频播放器](/components/video)，两者配合的写法见下方演示。
 
 ## 安装
 
@@ -101,17 +173,28 @@ import '@aix/subtitle/style';
 
 ### 基础用法
 
-配合视频元素使用，通过 `currentTime` 同步字幕。
+组件不碰视频，只按 `currentTime` 决定显示哪条 cue——把播放器的时间接过来即可。
+下面用一个原生 `<video>` 驱动，字幕绝对定位叠在视频上。
+
+<ClientOnly>
+<div class="demo-block subtitle-demo subtitle-demo--video">
+  <video
+    ref="nativeRef"
+    :src="MP4"
+    controls
+    preload="metadata"
+    style="width: 100%; border-radius: 6px;"
+    @timeupdate="nativeTime = nativeRef?.currentTime ?? 0"
+  ></video>
+  <Subtitle :source="{ type: 'url', url: VTT }" :currentTime="nativeTime" position="bottom" />
+</div>
+</ClientOnly>
 
 ```vue
 <template>
   <div class="video-container">
-    <video ref="videoRef" src="/video.mp4" @timeupdate="onTimeUpdate" />
-    <Subtitle
-      :source="subtitleSource"
-      :currentTime="currentTime"
-      position="bottom"
-    />
+    <video ref="videoRef" :src="videoSrc" controls @timeupdate="onTimeUpdate" />
+    <Subtitle :source="subtitleSource" :currentTime="currentTime" position="bottom" />
   </div>
 </template>
 
@@ -122,34 +205,47 @@ import '@aix/subtitle/style';
 
 const videoRef = ref<HTMLVideoElement>();
 const currentTime = ref(0);
-
-const subtitleSource = {
-  type: 'url' as const,
-  url: '/subtitles/video.vtt',
-};
+const videoSrc = 'https://vjs.zencdn.net/v/oceans.mp4';
+const subtitleSource = { type: 'url' as const, url: 'https://vjs.zencdn.net/v/oceans.vtt' };
 
 const onTimeUpdate = () => {
   currentTime.value = videoRef.value?.currentTime ?? 0;
 };
 </script>
+
+<style scoped>
+.video-container {
+  position: relative;
+}
+</style>
 ```
 
 ### 从 URL 加载
 
-从远程 URL 加载字幕文件，格式会根据文件扩展名自动推断。
+格式按文件扩展名推断，跨域时字幕服务需要回 CORS 头。下面这块用页面里的定时器驱动时间，
+加载的是 video.js 官方示例视频配套的英文字幕。
+
+<div class="demo-block subtitle-demo">
+  <Subtitle :source="{ type: 'url', url: VTT }" :currentTime="loopTime" />
+</div>
 
 ```vue
 <template>
-  <Subtitle
-    :source="{ type: 'url', url: '/subtitles/video.vtt' }"
-    :currentTime="currentTime"
-  />
+  <Subtitle :source="{ type: 'url', url: subtitleUrl }" :currentTime="currentTime" />
 </template>
+
+<script setup lang="ts">
+const subtitleUrl = 'https://vjs.zencdn.net/v/oceans.vtt';
+</script>
 ```
 
 ### 从文本加载
 
-直接从字幕文本内容加载，需要指定格式。
+已经拿到字幕文本时用 `type: 'text'`，必须显式给 `format`——文本里没有扩展名可供推断。
+
+<div class="demo-block subtitle-demo">
+  <Subtitle :source="{ type: 'text', content: srtText, format: 'srt' }" :currentTime="loopTime" />
+</div>
 
 ```vue
 <template>
@@ -174,7 +270,11 @@ const srtContent = `
 
 ### 从数组加载
 
-直接传入字幕条目数组。
+直接传入字幕条目数组。下面这块的 `currentTime` 由页面里的一个定时器驱动，0～12 秒循环。
+
+<div class="demo-block subtitle-demo">
+  <Subtitle :source="{ type: 'cues', cues: arrayCues }" :currentTime="loopTime" />
+</div>
 
 ```vue
 <template>
@@ -196,16 +296,28 @@ const subtitleCues: SubtitleCue[] = [
 
 ### 自定义样式
 
-可以自定义字幕的位置、字体大小、背景样式等。
+`position` / `fontSize` / `background` / `maxWidth` 控制字幕的位置与观感，`background` 三种取值分别是
+毛玻璃、渐变底、全透明。
+
+<div class="demo-block subtitle-demo">
+  <Subtitle
+    :source="{ type: 'cues', cues: arrayCues }"
+    :currentTime="loopTime"
+    position="top"
+    fontSize="18px"
+    background="solid"
+    maxWidth="80%"
+  />
+</div>
 
 ```vue
 <template>
   <Subtitle
     :source="subtitleSource"
     :currentTime="currentTime"
-    position="bottom"
+    position="top"
     fontSize="18px"
-    background="blur"
+    background="solid"
     maxWidth="80%"
   />
 </template>
@@ -213,7 +325,19 @@ const subtitleCues: SubtitleCue[] = [
 
 ### 自动分段
 
-当字幕文本过长时，启用自动分段可以分多段轮播显示。
+一条 cue 的文字放不下时，`autoSegment` 会按 `fixedHeight` 能容纳的字数把它拆成几段，每段显示
+`segmentDuration` 毫秒后轮换，而不是让文字溢出或压住画面。
+
+<div class="demo-block subtitle-demo">
+  <Subtitle
+    :source="{ type: 'cues', cues: longCues }"
+    :currentTime="loopTime"
+    singleLine
+    autoSegment
+    :segmentDuration="3000"
+    :fixedHeight="40"
+  />
+</div>
 
 ```vue
 <template>
@@ -230,16 +354,23 @@ const subtitleCues: SubtitleCue[] = [
 
 ### 配合 VideoPlayer 使用
 
-与 `@aix/video` 配合使用的完整示例。
+和 [VideoPlayer](/components/video) 搭配时，把播放器的 `timeupdate` 时间接到字幕的 `currentTime`，
+再用 `visible` 控制字幕开关。两者各自渲染，字幕层叠在播放器之上。
+
+<ClientOnly>
+<div class="demo-block subtitle-demo subtitle-demo--video">
+  <VideoPlayer :src="MP4" preload="metadata" @timeupdate="playerTime = $event" />
+  <Subtitle :source="{ type: 'url', url: VTT }" :currentTime="playerTime" :visible="showSubtitle" />
+  <button style="position: relative; z-index: 2; margin-top: 12px;" @click="showSubtitle = !showSubtitle">
+    {{ showSubtitle ? '隐藏字幕' : '显示字幕' }}
+  </button>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
   <div class="player-container">
-    <VideoPlayer
-      :src="videoSrc"
-      @ready="onPlayerReady"
-      @timeupdate="onTimeUpdate"
-    />
+    <VideoPlayer :src="videoSrc" @timeupdate="onTimeUpdate" />
     <Subtitle
       :source="subtitleSource"
       :currentTime="currentTime"
@@ -262,17 +393,10 @@ import '@aix/subtitle/style';
 
 const currentTime = ref(0);
 const showSubtitle = ref(true);
-const videoSrc = '/videos/sample.mp4';
+const videoSrc = 'https://vjs.zencdn.net/v/oceans.mp4';
+const subtitleSource = { type: 'url' as const, url: 'https://vjs.zencdn.net/v/oceans.vtt' };
 
-const subtitleSource = {
-  type: 'url' as const,
-  url: '/subtitles/video.vtt',
-};
-
-const onPlayerReady = () => {
-  console.log('播放器就绪');
-};
-
+// VideoPlayer 的 timeupdate 第一个参数是当前时间（秒），第二个是总时长
 const onTimeUpdate = (time: number) => {
   currentTime.value = time;
 };
@@ -285,6 +409,12 @@ const onSubtitleChange = (cue: SubtitleCue | null, index: number) => {
   console.log('当前字幕:', cue?.text, '索引:', index);
 };
 </script>
+
+<style scoped>
+.player-container {
+  position: relative;
+}
+</style>
 ```
 
 ## API

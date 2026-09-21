@@ -2,6 +2,8 @@
 
 Vue 3 AI 对话组件库。提供可组合、可扩展的 AI 对话 UI：**原子组件** + **组合预设** + **逻辑 hooks**，逻辑与 UI 解耦。
 
+## 特性
+
 - **原子组件**：`Bubble` / `BubbleList` / `Sender` / `Welcome` / `Prompts` / `Thinking` / `MarkdownRenderer`
 - **组合预设**：`AiChat`（开箱即用的整套对话界面）
 - **逻辑 hooks**：`useChat` / `useXStream` / `useTypewriter` / `useAutoScroll` / `useConversations` / `useAttachments` / `useVoiceInput`（ASR 语音输入）/ `useSpeech`（TTS 语音播报）/ `useAiChatConfig`
@@ -1292,7 +1294,7 @@ const markdownRenderers: MarkdownRenderers = {
 
 ## 多语言与文案定制
 
-内置中英文语言包（约 90 条，见导出的 `zhCN` / `enUS` / `AiChatLocale` 类型），跟随
+内置中英文语言包（约 90 条，见导出的 `aiChatZhCN` / `aiChatEnUS` / `AiChatLocale` 类型），跟随
 `@aix/hooks` 的全局 locale（`createLocale`）切换。所有文案均可覆盖，三种方式按作用域选用：
 
 ```typescript
@@ -1316,7 +1318,7 @@ provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
 
 合并优先级（低 → 高）：内置语言包 → 应用级 `messages['ai-chat']` → 实例级
 （`locale-messages` prop / `provideAiChatLocaleMessages`，内层注入整体遮蔽外层）。
-覆盖是 **Partial 浅合并**，只写要改的 key；整包替换可基于导出的 `zhCN` / `enUS` 派生。
+覆盖是 **Partial 浅合并**，只写要改的 key；整包替换可基于导出的 `aiChatZhCN` / `aiChatEnUS` 派生。
 运行时增量合入（如异步拉取文案）用 `localeContext.mergeMessages()`。
 
 > 注意：模板类 key（`thoughtDurationSuffix` 的 `{s}`、`contextWindowUsage` 的

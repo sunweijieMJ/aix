@@ -41,7 +41,7 @@ import '@aix/menu/style';
 import '@aix/theme/style';
 ```
 
-## 使用
+## 快速开始
 
 ### 数据驱动
 
@@ -588,33 +588,6 @@ app.use(
 | `title` | - | 自定义触发项文案，替代 label prop |
 | `default` | - | 弹层内的子项 |
 
-## 工具函数
-
-| 函数 | 签名 | 说明 |
-|------|------|------|
-| `resolveSelectedKey` | `(items, matcher) => string \| undefined` | 遍历叶子按 `matcher` 打分，返回分值最高者的 key，见「路由联动」 |
-
-## 泛型推导
-
-`Menu` 是泛型组件，`meta` 的类型由传入的 `items` 推导，`@select` 等事件的载荷随之带上同一类型，无需断言；`interface` 声明的 meta 也能直接使用：
-
-```ts
-interface RouteMeta {
-  path: string;
-  menuType: 'internal' | 'qiankun' | 'redirect';
-}
-
-const items: MenuItemData<RouteMeta>[] = [...];
-
-function onSelect(payload: MenuSelectPayload<RouteMeta>) {
-  payload.data?.meta?.path; // string | undefined
-}
-```
-
-```vue
-<Menu :items="items" @select="onSelect" />
-```
-
 ## 类型定义
 
 ```typescript
@@ -716,4 +689,31 @@ export type MenuKeyMatcher<M extends MenuItemMeta = MenuItemMeta> = (
   item: MenuItemData<M>,
   keyPath: string[],
 ) => boolean | number | undefined;
+```
+
+## 工具函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `resolveSelectedKey` | `(items, matcher) => string \| undefined` | 遍历叶子按 `matcher` 打分，返回分值最高者的 key，见「路由联动」 |
+
+## 泛型推导
+
+`Menu` 是泛型组件，`meta` 的类型由传入的 `items` 推导，`@select` 等事件的载荷随之带上同一类型，无需断言；`interface` 声明的 meta 也能直接使用：
+
+```ts
+interface RouteMeta {
+  path: string;
+  menuType: 'internal' | 'qiankun' | 'redirect';
+}
+
+const items: MenuItemData<RouteMeta>[] = [...];
+
+function onSelect(payload: MenuSelectPayload<RouteMeta>) {
+  payload.data?.meta?.path; // string | undefined
+}
+```
+
+```vue
+<Menu :items="items" @select="onSelect" />
 ```

@@ -3,19 +3,66 @@ title: Popper 弹出层
 outline: deep
 ---
 
+<script setup>
+import { ref } from 'vue'
+import { Tooltip, Popover, Dropdown, DropdownItem, ContextMenu } from '@aix/popper'
+
+const dropdownOptions = [
+  { command: 'edit', label: '编辑' },
+  { command: 'duplicate', label: '创建副本' },
+  { command: 'archive', label: '归档', disabled: true },
+  { command: 'delete', label: '删除', divided: true },
+]
+const lastCommand = ref('')
+const menuCommand = ref('')
+const controlled = ref(false)
+</script>
+
+<style>
+.popper-demo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.popper-demo > * + * {
+  margin-left: 0;
+}
+
+.popper-demo__zone {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 240px;
+  height: 120px;
+  border: 1px dashed var(--vp-c-divider);
+  border-radius: 8px;
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+}
+</style>
+
 # Popper 弹出层
 
-基于 [Floating UI](https://floating-ui.com/) 的弹出层工具包，提供一系列弹出层组件，包括 **Tooltip**（文字提示）、**Popover**（气泡卡片）、**Dropdown**（下拉菜单）和 **ContextMenu**（右键菜单）。
+基于 [Floating UI](https://floating-ui.com/) 的弹出层工具包：底层 `Popper` 负责定位、翻转、箭头与 Teleport，
+上层封装出 **Tooltip**（文字提示）、**Popover**（气泡卡片）、**Dropdown**（下拉菜单）、**ContextMenu**（右键菜单）。
 
-## 特性
+## 何时使用
 
-- 底层 Popper 组件提供位置计算、翻转/平移、箭头、Teleport 等完整能力
-- Tooltip：轻量文字提示，hover 触发
-- Popover：富内容气泡卡片，支持 click / hover / focus / manual 四种触发方式
-- Dropdown：下拉菜单，支持数据驱动和插槽两种用法
-- ContextMenu：右键菜单，跟随鼠标位置弹出
-- 支持 `v-model:open` 受控模式
-- 统一的过渡动画和主题变量
+按承载的内容和触发方式选组件，不要都用 Popover 硬凑：
+
+| 要做的事 | 用 |
+|---------|----|
+| 悬停解释一个图标、一段截断文字 | `Tooltip` |
+| 需要标题、正文、按钮的富内容卡片 | `Popover` |
+| 一组命令，选完就关 | `Dropdown` |
+| 右键唤出的命令菜单 | `ContextMenu` |
+| 以上都不合适，要自己定义显示时机与内容 | `Popper` |
+
+整页级的浮层（对话框、抽屉、全局通知）不归这里；侧边导航的层级菜单用
+[Menu 菜单](/components/menu)，它的 flyout 子菜单已经内建了定位逻辑。
 
 ## 安装
 
@@ -30,31 +77,173 @@ import '@aix/popper/style';
 import '@aix/theme/style';
 ```
 
-## 组件列表
+组件自身只有一条文案：`ContextMenu` 浮层的 `aria-label`（上下文菜单 / Context menu），
+需要改用 `createLocale(locale, { messages: { popper: { contextMenu: '…' } } })` 覆盖。
 
-| 组件 | 说明 | 导入方式 |
-|------|------|---------|
-| `Popper` | 底层定位组件，上层组件都基于它构建；仅在需要完全自定义行为时直接用它 | `import { Popper } from '@aix/popper'` |
-| `Tooltip` | 鼠标悬停时显示的简单文字提示 | `import { Tooltip } from '@aix/popper'` |
-| `Popover` | 点击或悬停触发的富内容气泡卡片，比 Tooltip 能承载更多内容 | `import { Popover } from '@aix/popper'` |
-| `Dropdown` | 点击或悬停触发的下拉菜单，`options` 数据驱动与 `DropdownItem` 插槽二选一 | `import { Dropdown } from '@aix/popper'` |
-| `DropdownItem` | 配合 `Dropdown` 使用的菜单项 | `import { DropdownItem } from '@aix/popper'` |
-| `ContextMenu` | 监听右键点击，在鼠标位置弹出菜单 | `import { ContextMenu } from '@aix/popper'` |
+## 代码演示
 
-各组件的 Props / Events / Slots / Expose 见下方 [API](#api)。
+### Tooltip 文字提示
 
----
+hover 触发，`content` 给纯文本、`content` 插槽给富内容。`placement` 共 12 个方位。
 
-## DropdownMenuItem 数据结构
+<ClientOnly>
+<div class="demo-block popper-demo">
+  <Tooltip content="顶部提示"><button>top</button></Tooltip>
+  <Tooltip content="右侧提示" placement="right"><button>right</button></Tooltip>
+  <Tooltip content="底部提示" placement="bottom"><button>bottom</button></Tooltip>
+  <Tooltip placement="left">
+    <button>自定义内容</button>
+    <template #content><strong>支持</strong> 任意节点</template>
+  </Tooltip>
+</div>
+</ClientOnly>
 
-`Dropdown` 的 `options` 项：
+```vue
+<template>
+  <Tooltip content="顶部提示">
+    <button>top</button>
+  </Tooltip>
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `command` | `string \| number` | - | 命令标识（必填） |
-| `label` | `string` | - | 显示文本（必填） |
-| `disabled` | `boolean` | `false` | 是否禁用 |
-| `divided` | `boolean` | `false` | 是否在此项前显示分割线 |
+  <Tooltip placement="left">
+    <button>自定义内容</button>
+    <template #content><strong>支持</strong> 任意节点</template>
+  </Tooltip>
+</template>
+
+<script setup lang="ts">
+import { Tooltip } from '@aix/popper';
+</script>
+```
+
+### Popover 气泡卡片
+
+触发元素放 `reference` 插槽，卡片内容放默认插槽。`trigger` 可选 click / hover / focus / manual，
+`v-model:open` 做受控。
+
+<ClientOnly>
+<div class="demo-block popper-demo">
+  <Popover title="删除确认" width="220">
+    <template #reference><button>点击弹出</button></template>
+    <div>删除后不可恢复，确定继续？</div>
+  </Popover>
+  <Popover title="悬停查看" trigger="hover" placement="right" width="220">
+    <template #reference><button>悬停弹出</button></template>
+    <div>trigger="hover" 时用 showDelay / hideDelay 控制延迟。</div>
+  </Popover>
+  <Popover v-model:open="controlled" trigger="manual" placement="bottom" width="200">
+    <template #reference><button @click="controlled = !controlled">受控：{{ controlled ? '关闭' : '打开' }}</button></template>
+    <div>manual 模式下只由 v-model:open 决定显隐。</div>
+  </Popover>
+</div>
+</ClientOnly>
+
+```vue
+<template>
+  <Popover title="删除确认" width="220">
+    <template #reference><button>点击弹出</button></template>
+    <div>删除后不可恢复，确定继续？</div>
+  </Popover>
+
+  <Popover v-model:open="open" trigger="manual">
+    <template #reference><button @click="open = !open">受控</button></template>
+    <div>只由 v-model:open 决定显隐。</div>
+  </Popover>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue';
+import { Popover } from '@aix/popper';
+
+const open = ref(false);
+</script>
+```
+
+### Dropdown 下拉菜单
+
+`options` 数据驱动与 `dropdown` 插槽两种写法二选一，点击菜单项抛 `command` 事件。
+`divided` 在项前加分割线，`disabled` 置灰且不可点。
+
+<ClientOnly>
+<div class="demo-block popper-demo">
+  <Dropdown :options="dropdownOptions" @command="lastCommand = $event">
+    <template #reference><button>数据驱动</button></template>
+  </Dropdown>
+  <Dropdown trigger="hover" placement="bottom-end" @command="lastCommand = $event">
+    <template #reference><button>插槽写法（hover）</button></template>
+    <template #dropdown>
+      <DropdownItem command="rename">重命名</DropdownItem>
+      <DropdownItem command="move">移动到…</DropdownItem>
+      <DropdownItem command="remove" divided>删除</DropdownItem>
+    </template>
+  </Dropdown>
+  <span style="font-size: 13px; color: var(--vp-c-text-2);">最近命令：{{ lastCommand || '（无）' }}</span>
+</div>
+</ClientOnly>
+
+```vue
+<template>
+  <Dropdown :options="options" @command="onCommand">
+    <template #reference><button>数据驱动</button></template>
+  </Dropdown>
+
+  <Dropdown trigger="hover" @command="onCommand">
+    <template #reference><button>插槽写法</button></template>
+    <template #dropdown>
+      <DropdownItem command="rename">重命名</DropdownItem>
+      <DropdownItem command="remove" divided>删除</DropdownItem>
+    </template>
+  </Dropdown>
+</template>
+
+<script setup lang="ts">
+import { Dropdown, DropdownItem } from '@aix/popper';
+import type { DropdownMenuItem } from '@aix/popper';
+
+const options: DropdownMenuItem[] = [
+  { command: 'edit', label: '编辑' },
+  { command: 'delete', label: '删除', divided: true },
+];
+
+function onCommand(command: string | number) {
+  console.log(command);
+}
+</script>
+```
+
+### ContextMenu 右键菜单
+
+默认在 `default` 插槽的区域内监听右键，按鼠标坐标弹出。`trigger="manual"` 时改由实例的
+`show(eventOrElement)` 触发：传 `MouseEvent` 按坐标固定，传 `HTMLElement` 则跟随元素位移。
+
+<ClientOnly>
+<div class="demo-block popper-demo">
+  <ContextMenu @command="menuCommand = $event">
+    <div class="popper-demo__zone">在这块区域内点右键</div>
+    <template #menu>
+      <DropdownItem command="open">打开</DropdownItem>
+      <DropdownItem command="rename">重命名</DropdownItem>
+      <DropdownItem command="delete" divided>删除</DropdownItem>
+    </template>
+  </ContextMenu>
+  <span style="font-size: 13px; color: var(--vp-c-text-2);">最近命令：{{ menuCommand || '（无）' }}</span>
+</div>
+</ClientOnly>
+
+```vue
+<template>
+  <ContextMenu @command="onCommand">
+    <div class="canvas">在这块区域内点右键</div>
+    <template #menu>
+      <DropdownItem command="open">打开</DropdownItem>
+      <DropdownItem command="delete" divided>删除</DropdownItem>
+    </template>
+  </ContextMenu>
+</template>
+
+<script setup lang="ts">
+import { ContextMenu, DropdownItem } from '@aix/popper';
+</script>
+```
 
 ## API
 
@@ -312,3 +501,66 @@ import '@aix/theme/style';
 |------|------|------|
 | `show` | `(target: MouseEvent \| HTMLElement) => void` | 弹出菜单：<br>- 传 `MouseEvent`：按 `clientX/clientY` 定位（虚拟元素，位置固定）。<br>- 传 `HTMLElement`：以该元素为锚定参考，菜单会跟随其位移（autoUpdate）。 |
 | `hide` | `() => void` | 隐藏菜单 |
+
+## 类型定义
+
+::: warning 自动生成的 API 文档
+以下内容由 `pnpm docs:gen` 从组件源码生成，请勿手动编辑。
+
+需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
+:::
+
+```typescript
+/** 触发器类型 */
+export type TriggerType = 'hover' | 'click' | 'focus' | 'contextmenu' | 'manual';
+
+/** Dropdown `items` 里的一项，点击后以 `command` 触发 `command` 事件 */
+export interface DropdownMenuItem {
+  /** 命令标识 */
+  command: string | number;
+  /** 显示文本 */
+  label: string;
+  /**
+   * 是否禁用
+   * @default false
+   */
+  disabled?: boolean;
+  /**
+   * 是否在此项前显示分割线
+   * @default false
+   */
+  divided?: boolean;
+}
+
+/** Dropdown 通过 `DROPDOWN_INJECTION_KEY` 注入给 DropdownItem 的上下文 */
+export interface DropdownContext {
+  /** DropdownItem 被点击时回调，带上该项的 `command` */
+  handleItemClick: (command?: string | number) => void;
+}
+```
+
+## 组件列表
+
+| 组件 | 说明 | 导入方式 |
+|------|------|---------|
+| `Popper` | 底层定位组件，上层组件都基于它构建；仅在需要完全自定义行为时直接用它 | `import { Popper } from '@aix/popper'` |
+| `Tooltip` | 鼠标悬停时显示的简单文字提示 | `import { Tooltip } from '@aix/popper'` |
+| `Popover` | 点击或悬停触发的富内容气泡卡片，比 Tooltip 能承载更多内容 | `import { Popover } from '@aix/popper'` |
+| `Dropdown` | 点击或悬停触发的下拉菜单，`options` 数据驱动与 `DropdownItem` 插槽二选一 | `import { Dropdown } from '@aix/popper'` |
+| `DropdownItem` | 配合 `Dropdown` 使用的菜单项 | `import { DropdownItem } from '@aix/popper'` |
+| `ContextMenu` | 监听右键点击，在鼠标位置弹出菜单 | `import { ContextMenu } from '@aix/popper'` |
+
+各组件的 Props / Events / Slots / Expose 见下方 [API](#api)。
+
+---
+
+## DropdownMenuItem 数据结构
+
+`Dropdown` 的 `options` 项：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `command` | `string \| number` | - | 命令标识（必填） |
+| `label` | `string` | - | 显示文本（必填） |
+| `disabled` | `boolean` | `false` | 是否禁用 |
+| `divided` | `boolean` | `false` | 是否在此项前显示分割线 |

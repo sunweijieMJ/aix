@@ -17,6 +17,41 @@ AIX 组件库的通用 Composition API Hooks 集合：国际化、DOM 生命周�
 pnpm add @aix/hooks
 ```
 
+## 快速开始
+
+按需导入，直接在 `setup` 里调用；DOM 类 hook 会在组件卸载时自动清理。
+
+```vue
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { useNamespace, useEventListener, useClickOutside } from '@aix/hooks';
+
+const ns = useNamespace('demo');
+const panelRef = ref<HTMLElement | null>(null);
+const open = ref(false);
+
+// 点击面板之外关闭；excludeRefs 支持 ref / getter，enabled 也可以是响应式的
+useClickOutside({
+  excludeRefs: computed(() => [panelRef.value]),
+  handler: () => (open.value = false),
+  enabled: open,
+});
+
+// 组件卸载时自动解绑，无需手写 removeEventListener
+useEventListener(window, 'keydown', (event) => {
+  if (event.key === 'Escape') open.value = false;
+});
+</script>
+
+<template>
+  <div ref="panelRef" :class="[ns.b(), ns.is('open', open)]">
+    <span :class="ns.e('title')">标题</span>
+  </div>
+</template>
+```
+
+组件文案走国际化时用 `useLocale`，应用入口用 `createLocale` 设置全局语言，详见下方「国际化」。
+
 ## Hooks 一览
 
 | Hook | 分类 | 说明 |

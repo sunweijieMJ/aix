@@ -5,7 +5,7 @@ outline: deep
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { AudioPlayer, WaveformCanvas, Recorder, useWaveform } from '@aix/audio'
+import { AudioPlayer, WaveformCanvas, Recorder, useWaveform, useTTS } from '@aix/audio'
 
 const SAMPLE_RATE = 22050
 const NOTES = [261.63, 329.63, 392.0, 523.25]
@@ -92,6 +92,10 @@ async function startRecord() {
 }
 
 onUnmounted(() => recorder.value?.destroy())
+
+// 语音合成演示：走浏览器原生 SpeechSynthesis，不需要后端
+const ttsText = ref('你好，这是 AIX 语音 SDK 的浏览器原生朗读。')
+const tts = useTTS({ provider: 'browser' })
 </script>
 
 <style>
@@ -287,6 +291,36 @@ const { displayText, isRecording, asrError, asrDidFallback, startRecording, stop
 ### 语音合成 TTS
 
 `speak(text, options)` 返回的 Promise 在播放结束时 resolve；`isPlaying` / `state` 反映播放状态。三种供应商：`browser` 走 `SpeechSynthesis` 无需后端；`aliyun` 走后端 WebSocket 代理（`wsEndpoint` 必填），后端下发可独立解码的音频分片并以 `{ type: 'end' }` 收尾；`proxy` 走 HTTP REST（`endpoint`），后端直接返回音频流。在 `useSpeech` 里同时配置 `tts` 与 `fallback.tts: 'browser'`，供应商失败时自动降级到浏览器原生朗读，`ttsDidFallback` 置为 `true`。
+
+下面这块走 `provider: 'browser'`，不需要后端，但依赖系统装了中文语音包——没有声音多半是这个原因，
+换成英文文本可以验证。云端供应商（aliyun / proxy）要后端参与，只能看代码。
+
+<ClientOnly>
+<div class="demo-block audio-demo" style="flex-direction: column; align-items: stretch; gap: 12px;">
+  <input v-model="ttsText" style="padding: 6px 10px; border: 1px solid var(--vp-c-divider); border-radius: 6px;" />
+  <div style="display: flex; gap: 8px; align-items: center;">
+    <button :disabled="tts.isPlaying.value" @click="tts.speak(ttsText, { rate: 1, volume: 1 })">朗读</button>
+    <button @click="tts.stop()">停止</button>
+    <span style="font-size: 13px; color: var(--vp-c-text-2);">state: {{ tts.state.value }}</span>
+  </div>
+</div>
+</ClientOnly>
+
+```vue
+<template>
+  <button :disabled="isPlaying" @click="speak(text, { rate: 1 })">朗读</button>
+  <button @click="stop">停止</button>
+</template>
+
+<script setup lang="ts">
+import { useTTS } from '@aix/audio';
+
+const text = '你好，欢迎使用语音 SDK。';
+const { isPlaying, state, speak, stop } = useTTS({ provider: 'browser' });
+</script>
+```
+
+云端供应商换成对应配置即可，调用方式完全一样：
 
 ```vue
 <template>

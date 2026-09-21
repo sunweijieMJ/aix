@@ -3,14 +3,91 @@ title: PdfViewer PDF 预览器
 outline: deep
 ---
 
-基于 pdf.js 的 PDF 预览组件，支持文字选择、图片选择、缩略图生成等功能。
+<script setup>
+import { ref } from 'vue'
+import { PdfViewer } from '@aix/pdf-viewer'
+
+// 演示用的公开 PDF：pdf.js 官方示例文档（14 页）
+const PDF = 'https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf'
+
+const viewerRef = ref()
+const page = ref(1)
+const total = ref(0)
+const selectedText = ref('')
+const pickedImages = ref(0)
+const menuInfo = ref('')
+
+const thumbRef = ref()
+const thumbnails = ref([])
+const thumbLoading = ref(false)
+
+async function makeThumbnails() {
+  if (!thumbRef.value) return
+  thumbLoading.value = true
+  try {
+    thumbnails.value = await thumbRef.value.generateAllThumbnails(120)
+  } finally {
+    thumbLoading.value = false
+  }
+}
+</script>
+
+<style>
+.pdf-demo {
+  display: block;
+  padding: 0;
+}
+
+.pdf-demo__frame {
+  height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
+
+.pdf-demo__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.pdf-demo__thumbs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.pdf-demo__thumbs img {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+}
+
+.pdf-demo__toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  font-size: 13px;
+}
+</style>
+
+# PdfViewer PDF 预览器
+
+基于 [pdf.js](https://mozilla.github.io/pdf.js/) 的 PDF 预览组件：连续滚动翻页、缩放、全文搜索、
+文字选择与框选取图，工具栏可替换。
 
 ## 何时使用
 
-- 需要在网页中预览 PDF 文档
-- 需要选择和复制 PDF 中的文字
-- 需要提取 PDF 中的图片
-- 需要生成 PDF 缩略图
+- 在业务页面里内嵌 PDF 预览，不想把用户甩到浏览器自带阅读器
+- 需要从 PDF 里取内容：复制选中文字、框选区域导出图片、生成页面缩略图
+- 需要自定义工具栏，或用右键菜单接业务动作
+
+只是让用户下载 PDF，给个链接即可。要预览 Word / Excel 等格式本组件不支持——它只认 PDF。
 
 ## 安装
 
@@ -27,13 +104,26 @@ import '@aix/theme/style';
 
 ## 代码演示
 
+本节的活演示用 [pdf.js 官方示例文档](https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf)（14 页）。
+渲染依赖网络：PDF 本身，以及 pdf.js 的 worker（默认取 jsDelivr CDN）都要能访问。
+内网部署把 worker 换成自托管副本即可：`:config="{ workerSrc: '/pdfjs/pdf.worker.min.mjs' }"`。
+pdf.js 在一个页面里只初始化一次，以首个渲染的 PdfViewer 传入的值为准。
+
 ### 基础用法
 
-最简单的用法，传入 PDF 地址即可预览。
+传入 PDF 地址即可预览，内置工具栏提供翻页、跳页、缩放与适应页面。外层容器必须有确定高度。
+
+<ClientOnly>
+<div class="demo-block pdf-demo">
+  <div class="pdf-demo__frame">
+    <PdfViewer :source="PDF" />
+  </div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
-  <div style="height: 600px">
+  <div style="height: 420px">
     <PdfViewer :source="pdfUrl" />
   </div>
 </template>
@@ -42,33 +132,50 @@ import '@aix/theme/style';
 import { PdfViewer } from '@aix/pdf-viewer';
 import '@aix/pdf-viewer/style';
 
-const pdfUrl = '/documents/sample.pdf';
+const pdfUrl = 'https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf';
 </script>
 ```
 
 ### 使用 ref 控制
 
-通过 ref 获取组件实例，可以调用组件方法进行控制。
+实例上的翻页、缩放、适应方法都是异步的；页码与总页数既能从 `pageChange` / `ready` 事件拿，
+也能直接读实例上的 `currentPage` / `totalPages`。
+
+<ClientOnly>
+<div class="demo-block pdf-demo">
+  <div class="pdf-demo__frame">
+    <PdfViewer
+      ref="viewerRef"
+      :source="PDF"
+      :config="{ showToolbar: false }"
+      @ready="total = $event"
+      @page-change="page = $event"
+    />
+  </div>
+  <div class="pdf-demo__bar">
+    <button @click="viewerRef?.prevPage()">上一页</button>
+    <span>{{ page }} / {{ total }}</span>
+    <button @click="viewerRef?.nextPage()">下一页</button>
+    <button @click="viewerRef?.zoomIn()">放大</button>
+    <button @click="viewerRef?.zoomOut()">缩小</button>
+    <button @click="viewerRef?.fitToPage()">适应页面</button>
+    <button @click="viewerRef?.gotoPage(5)">跳到第 5 页</button>
+  </div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
-  <div>
-    <div class="toolbar">
-      <button @click="pdfRef?.prevPage()">上一页</button>
-      <span>{{ currentPage }} / {{ totalPages }}</span>
-      <button @click="pdfRef?.nextPage()">下一页</button>
-      <button @click="pdfRef?.zoomIn()">放大</button>
-      <button @click="pdfRef?.zoomOut()">缩小</button>
-      <button @click="pdfRef?.fitToWidth()">适应宽度</button>
-      <button @click="pdfRef?.fitToPage()">适应页面</button>
-    </div>
-    <PdfViewer
-      ref="pdfRef"
-      :source="pdfUrl"
-      @pageChange="onPageChange"
-      @ready="onReady"
-    />
-  </div>
+  <PdfViewer
+    ref="pdfRef"
+    :source="pdfUrl"
+    :config="{ showToolbar: false }"
+    @ready="totalPages = $event"
+    @page-change="currentPage = $event"
+  />
+  <button @click="pdfRef?.prevPage()">上一页</button>
+  <span>{{ currentPage }} / {{ totalPages }}</span>
+  <button @click="pdfRef?.nextPage()">下一页</button>
 </template>
 
 <script setup lang="ts">
@@ -77,23 +184,24 @@ import { PdfViewer, type PdfViewerExpose } from '@aix/pdf-viewer';
 import '@aix/pdf-viewer/style';
 
 const pdfRef = ref<PdfViewerExpose>();
-const pdfUrl = '/documents/sample.pdf';
+const pdfUrl = 'https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf';
 const currentPage = ref(1);
 const totalPages = ref(0);
-
-const onReady = (pages: number) => {
-  totalPages.value = pages;
-};
-
-const onPageChange = (page: number) => {
-  currentPage.value = page;
-};
 </script>
 ```
 
 ### 文字选择
 
-启用文字层后，可以选择和复制 PDF 中的文字。
+文字层默认开启（`config.enableTextLayer`），鼠标划选正文就会抛出 `textSelect`。
+
+<ClientOnly>
+<div class="demo-block pdf-demo">
+  <div class="pdf-demo__frame">
+    <PdfViewer :source="PDF" :config="{ enableTextLayer: true }" @text-select="selectedText = $event" />
+  </div>
+  <div class="pdf-demo__bar">选中的文字：{{ selectedText || '（用鼠标在上面划一段试试）' }}</div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
@@ -118,7 +226,22 @@ const onTextSelect = (text: string) => {
 
 ### 图片选择
 
-启用图片层后，可以选择和提取 PDF 中的图片。
+开启图片层后，页面里的图片区域可 hover、点选，`multiSelect` 下按住 Ctrl 多选。
+选中的图片可以用实例方法 `extractImageAsBase64` 导出。示例文档第 3、5 页有插图。
+
+<ClientOnly>
+<div class="demo-block pdf-demo">
+  <div class="pdf-demo__frame">
+    <PdfViewer
+      :source="PDF"
+      :config="{ enableImageLayer: true }"
+      :image-layer-config="{ multiSelect: true }"
+      @image-select="pickedImages = $event.length"
+    />
+  </div>
+  <div class="pdf-demo__bar">已选中 {{ pickedImages }} 张图片</div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
@@ -149,7 +272,32 @@ const onImageSelect = (images: PdfImageInfo[]) => {
 
 ### 生成缩略图
 
-可以生成 PDF 各页的缩略图。
+`generateAllThumbnails(width)` 一次渲染全部页面并返回 Data URL 列表，页数多时开销不小，
+按需触发比在 `ready` 里直接跑更稳妥；单页用 `generateThumbnail(page, width)`。
+
+<ClientOnly>
+<div class="demo-block pdf-demo">
+  <div class="pdf-demo__frame">
+    <PdfViewer ref="thumbRef" :source="PDF" />
+  </div>
+  <div class="pdf-demo__bar">
+    <button :disabled="thumbLoading" @click="makeThumbnails">
+      {{ thumbLoading ? '生成中…' : '生成全部缩略图' }}
+    </button>
+    <span v-if="thumbnails.length">共 {{ thumbnails.length }} 页，点缩略图跳页</span>
+  </div>
+  <div v-if="thumbnails.length" class="pdf-demo__thumbs">
+    <img
+      v-for="t in thumbnails"
+      :key="t.pageNumber"
+      :src="t.dataUrl"
+      :alt="`第 ${t.pageNumber} 页`"
+      :width="t.width / 2"
+      @click="thumbRef?.gotoPage(t.pageNumber)"
+    />
+  </div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
@@ -210,49 +358,97 @@ const generateThumbnails = async () => {
 
 ### 右键菜单
 
-自定义右键菜单。
+右键菜单按选区类型切换菜单项：选中文字用 `textMenuItems`，选中图片用 `imageMenuItems`，
+两者都有用 `mixedMenuItems`，空白处用 `emptyMenuItems`（默认为空，即空白处不弹菜单）。
+
+点击菜单项抛 `contextMenu` 事件，两个参数：选区上下文（类型、选中文字、选中图片、页码、鼠标位置）
+与被点击的菜单项。组件只负责弹出与关闭菜单，**具体动作要业务侧按 `item.id` 自己实现**——
+内置的「复制」也一样不会自动执行。
+
+<ClientOnly>
+<div class="demo-block pdf-demo">
+  <div class="pdf-demo__frame">
+    <PdfViewer
+      :source="PDF"
+      :context-menu-config="{
+        enabled: true,
+        textMenuItems: [
+          { id: 'copy', label: '复制' },
+          { id: 'translate', label: '翻译这段' },
+          { id: 'note', label: '记笔记', divider: true },
+        ],
+      }"
+      @context-menu="(ctx, item) => (menuInfo = `${item.label} / ${ctx.type} / 第 ${ctx.pageNumber} 页 / 「${ctx.selectedText.slice(0, 20)}」`)"
+    />
+  </div>
+  <div class="pdf-demo__bar">最近一次菜单点击：{{ menuInfo || '（先划选一段文字，再点右键）' }}</div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
   <PdfViewer
     :source="pdfUrl"
-    :contextMenuConfig="{
+    :context-menu-config="{
       enabled: true,
-      items: ['copy', 'download', 'print']
+      textMenuItems: [
+        { id: 'copy', label: '复制' },
+        { id: 'translate', label: '翻译这段' },
+      ],
     }"
-    @contextMenu="onContextMenu"
+    @context-menu="onContextMenu"
   />
 </template>
 
 <script setup lang="ts">
-import { PdfViewer, type ContextMenuContext } from '@aix/pdf-viewer';
+import { PdfViewer, type ContextMenuContext, type ContextMenuItem } from '@aix/pdf-viewer';
 import '@aix/pdf-viewer/style';
 
-const pdfUrl = '/documents/sample.pdf';
+const pdfUrl = 'https://mozilla.github.io/pdf.js/web/compressed.tracemonkey-pldi-09.pdf';
 
-const onContextMenu = (context: ContextMenuContext) => {
-  console.log('右键菜单:', context.type);
-  console.log('选中文字:', context.selectedText);
-  console.log('选中图片:', context.selectedImages.length);
-};
+function onContextMenu(context: ContextMenuContext, item: ContextMenuItem) {
+  // context.type: 'text' | 'image' | 'mixed' | 'empty'
+  if (item.id === 'copy') navigator.clipboard.writeText(context.selectedText);
+}
 </script>
 ```
 
 ### 自定义工具栏
 
-通过 `toolbar` 插槽自定义工具栏。
+`toolbar` 插槽整体替换内置工具栏，作用域是扁平的一组状态与方法（`currentPage` / `totalPages` /
+`scale` 与 `gotoPage` / `prevPage` / `nextPage` / `zoomIn` / `zoomOut` / `fitToPage`），没有 `actions` 这层包装。
+
+<ClientOnly>
+<div class="demo-block pdf-demo">
+  <div class="pdf-demo__frame">
+    <PdfViewer :source="PDF">
+      <template #toolbar="{ currentPage, totalPages, scale, prevPage, nextPage, zoomIn, zoomOut, fitToPage }">
+        <div class="pdf-demo__toolbar">
+          <button @click="prevPage()">←</button>
+          <span>{{ currentPage }} / {{ totalPages }}</span>
+          <button @click="nextPage()">→</button>
+          <span>{{ Math.round(scale * 100) }}%</span>
+          <button @click="zoomOut()">-</button>
+          <button @click="zoomIn()">+</button>
+          <button @click="fitToPage()">适应页面</button>
+        </div>
+      </template>
+    </PdfViewer>
+  </div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
   <PdfViewer :source="pdfUrl">
-    <template #toolbar="{ currentPage, totalPages, scale, actions }">
+    <template #toolbar="{ currentPage, totalPages, scale, prevPage, nextPage, zoomIn, zoomOut }">
       <div class="custom-toolbar">
-        <button @click="actions.prevPage">上一页</button>
+        <button @click="prevPage()">上一页</button>
         <span>{{ currentPage }} / {{ totalPages }}</span>
-        <button @click="actions.nextPage">下一页</button>
+        <button @click="nextPage()">下一页</button>
         <span>缩放: {{ Math.round(scale * 100) }}%</span>
-        <button @click="actions.zoomIn">+</button>
-        <button @click="actions.zoomOut">-</button>
+        <button @click="zoomIn()">+</button>
+        <button @click="zoomOut()">-</button>
       </div>
     </template>
   </PdfViewer>
@@ -262,6 +458,60 @@ const onContextMenu = (context: ContextMenuContext) => {
 ::: tip 提示
 PDF 预览需要一定高度的容器，建议设置容器高度或使用 `height: 100%` 配合父容器。
 :::
+
+## 主题变量定制
+
+组件的配色收敛在 12 个 `--aix-pdf-*` 变量上，每个都回退到 `@aix/theme` 的语义 token，不覆盖任何东西时跟随主题明暗切换。
+
+| 变量 | 回退到 | 用途 |
+|------|--------|------|
+| `--aix-pdf-bg` | `--aix-colorBgLayout` | 阅读区背景 |
+| `--aix-pdf-border` | `--aix-colorBorder` | 页面与分隔线边框 |
+| `--aix-pdf-text` | `--aix-colorText` | 主文字（页码、工具栏文案） |
+| `--aix-pdf-text-secondary` | `--aix-colorTextSecondary` | 次要文字 |
+| `--aix-pdf-primary` | `--aix-colorPrimary` | 主色：选中框、激活态 |
+| `--aix-pdf-primary-light` | `--aix-colorPrimaryBg` | 主色浅底：搜索命中高亮 |
+| `--aix-pdf-spinner-color` | `--aix-colorPrimary` | 加载指示器 |
+| `--aix-pdf-toolbar-bg` | `--aix-colorBgContainer` | 工具栏背景 |
+| `--aix-pdf-toolbar-border` | `--aix-colorBorderSecondary` | 工具栏边框 |
+| `--aix-pdf-menu-bg` | `--aix-colorBgElevated` | 右键菜单背景 |
+| `--aix-pdf-menu-hover` | `--aix-controlItemBgHover` | 右键菜单悬停底色 |
+| `--aix-pdf-menu-shadow` | `--aix-shadowMD` | 右键菜单阴影 |
+
+单独换色时优先指向另一个语义 token，不要写死色值：
+
+```css
+.my-viewer {
+  --aix-pdf-primary: var(--aix-colorInfo);
+  --aix-pdf-bg: var(--aix-colorBgContainer);
+}
+```
+
+## 多语言
+
+组件自己渲染的文案共 15 条，都在工具栏、搜索栏与右键菜单里：
+
+| key | 中文 | English |
+|-----|------|---------|
+| `prev` / `next` | 上一页 / 下一页 | Previous / Next |
+| `zoomIn` / `zoomOut` / `fitPage` | 放大 / 缩小 / 适应页面 | Zoom in / Zoom out / Fit to page |
+| `searchPlaceholder` | 搜索文档... | Search document... |
+| `prevMatch` / `nextMatch` | 上一个 (Shift+Enter) / 下一个 (Enter) | Previous (Shift+Enter) / Next (Enter) |
+| `noResults` | 无结果 | No results |
+| `closeSearch` / `clearSearch` | 关闭 (Esc) / 清除 | Close (Esc) / Clear |
+| `copy` | 复制 | Copy |
+| `copyImage` / `saveImage` | 复制图片 / 保存图片 | Copy image / Save image |
+
+默认跟随 `@aix/hooks` 的全局语言，切片名是 `pdf-viewer`：
+
+```ts
+import { createLocale } from '@aix/hooks';
+
+createLocale('en-US');
+createLocale('zh-CN', { messages: { 'pdf-viewer': { copy: '拷贝' } } });
+```
+
+语言包也可以单独导入：`pdfViewerLocale` / `pdfViewerZhCN` / `pdfViewerEnUS`。
 
 ## API
 
@@ -296,7 +546,7 @@ PDF 预览需要一定高度的容器，建议设置容器高度或使用 `heigh
 | `textSelect` | `text: string` | 文本选中，返回选中的文本内容 |
 | `imageClick` | `image: PdfImageInfo, event: MouseEvent` | 图片点击，返回图片信息和鼠标事件 |
 | `imageSelect` | `images: PdfImageInfo[]` | 图片选中（多选），返回所有选中的图片 |
-| `contextMenu` | `context: ContextMenuContext` | 右键菜单触发，返回菜单上下文信息 |
+| `contextMenu` | `context: ContextMenuContext, item: ContextMenuItem` | 点击右键菜单项时触发，返回选区上下文与被点击的菜单项。组件只负责弹出与关闭菜单，具体动作（复制、下载等）由业务侧按 `item.id` 实现。 |
 
 ### PdfViewer Slots
 
@@ -424,6 +674,12 @@ export interface PdfViewerConfig {
   scrollMode: ScrollMode;
   /** 连续模式下页面间距 (像素) */
   pageGap: number;
+  /**
+   * pdf.js worker 地址，缺省取 jsDelivr CDN 上与 pdfjs-dist 同版本的 worker。
+   * 内网部署可指向自托管副本。pdf.js 库在页面内只初始化一次，因此以首个渲染的
+   * PdfViewer 传入的值为准，之后再改无效。
+   */
+  workerSrc?: string;
 }
 
 /** 图片高亮样式 */

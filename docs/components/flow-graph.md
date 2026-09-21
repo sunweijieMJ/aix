@@ -82,6 +82,17 @@ const menuEdges = ref([
   { id: 'e-n2-n3', source: 'n2', target: 'n3', data: { deletable: false } },
 ])
 const blockedTip = ref('')
+
+const labelNodes = ref([
+  { id: '1', type: 'hexagon', position: { x: 60, y: 120 }, data: { label: '开始' } },
+  { id: '2', position: { x: 260, y: 60 }, data: { label: '活动 1.1 认识人工智能与它的边界' } },
+  { id: '3', position: { x: 260, y: 200 }, data: { label: '活动 1.2 机器学习入门' } },
+])
+const labelEdges = ref([
+  { id: 'e1-2', source: '1', target: '2' },
+  { id: 'e1-3', source: '1', target: '3' },
+])
+const showNodeLabel = ref(true)
 let blockedTimer = null
 function onBlocked(ids) {
   blockedTip.value = `已拦截删除：${ids.join(', ')}`
@@ -372,6 +383,78 @@ function onNodeRemove(ids: string[]) {
 ### 常驻名称与缩放阈值
 
 `data.label` 以气泡形式常驻在节点上方，超长单行省略、hover 展开多行。`:show-node-label="false"` 整体隐藏；`labelZoomThreshold`（默认 `0.6`）指定视口缩放低于多少时隐藏全部气泡，避免缩小到全貌时文字堆叠，`:label-zoom-threshold="0"` 表示任何缩放都显示。
+
+下面这块把阈值设成 `0`（缩到多小都显示），可以用按钮切换名称气泡的开关，再用工具栏或滚轮缩放对比默认阈值下的表现。
+
+<ClientOnly>
+<div class="demo-block flow-graph-demo">
+  <div class="flow-graph-demo__canvas">
+    <FlowGraph
+      v-model:nodes="labelNodes"
+      v-model:edges="labelEdges"
+      :show-node-label="showNodeLabel"
+      :label-zoom-threshold="0"
+    />
+  </div>
+  <div style="margin-top: 12px;">
+    <button @click="showNodeLabel = !showNodeLabel">
+      {{ showNodeLabel ? '隐藏名称气泡' : '显示名称气泡' }}
+    </button>
+  </div>
+</div>
+</ClientOnly>
+
+```vue
+<template>
+  <FlowGraph
+    v-model:nodes="nodes"
+    v-model:edges="edges"
+    :show-node-label="showLabel"
+    :label-zoom-threshold="0"
+  />
+</template>
+```
+
+## 主题变量定制
+
+画布的品牌色与节点、边的默认配色收敛在 9 个组件级变量上，在画布容器或任意祖先元素上设值即可。
+节点、边自身带 `color` / `activeColor` 数据时以数据为准，这些变量只决定没给颜色时的落点。
+
+| 变量 | 默认值 | 作用 |
+|------|--------|------|
+| `--aix-flowGraphBrand` | `#1546f2` | 品牌主色：连线手柄、选中态、工具栏激活项 |
+| `--aix-flowGraphBrandHover` | `#1240e0` | 品牌主色的悬停态 |
+| `--aix-flowGraphNodeColor` | `#86909c` | 普通节点的默认描边色 |
+| `--aix-flowGraphNodeSelectedColor` | `#4e5969` | 节点选中态描边色 |
+| `--aix-flowGraphHexagonColor` | `#963096` | 六边形（起止）节点的默认色 |
+| `--aix-flowGraphEdgeColor` | `#86909c` | 边的默认颜色 |
+| `--aix-flowGraphDimmedOpacity` | `0.4` | 路径高亮时，非命中元素的透明度 |
+| `--aix-flowGraphDimmedBlur` | `blur(10px)` | 路径高亮时，非命中元素的模糊量 |
+| `--aix-flow-node-label-border-color` | `--aix-colorPrimary` → `#1546f2` | 常驻名称标签的边框色 |
+
+```css
+.my-flow {
+  --aix-flowGraphBrand: var(--aix-colorPrimary);
+  --aix-flowGraphDimmedOpacity: 0.15;
+}
+```
+
+## 多语言
+
+组件自己渲染的文案共 8 条，在工具栏与右键菜单里：`addNode`（添加节点）、`search`（搜索）、
+`searchNode`（搜索节点）、`zoomIn` / `zoomOut`（放大 / 缩小）、`fitView`（适应视图）、
+`copy`（复制）、`delete`（删除）。节点与边上的业务文案由 `data` 提供，不走语言包。
+
+默认跟随 `@aix/hooks` 的全局语言，切片名是 `flow-graph`：
+
+```ts
+import { createLocale } from '@aix/hooks';
+
+createLocale('en-US');
+createLocale('zh-CN', { messages: { 'flow-graph': { addNode: '新增节点' } } });
+```
+
+语言包可单独导入：`flowGraphLocale` / `flowGraphZhCN` / `flowGraphEnUS`。
 
 ## API
 

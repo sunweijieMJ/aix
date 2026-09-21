@@ -3,13 +3,68 @@ title: VideoPlayer 视频播放器
 outline: deep
 ---
 
-基于 video.js 的视频播放器组件，支持 HLS、FLV、DASH、RTSP、WebRTC 等多种流媒体协议。
+<script setup>
+import { ref } from 'vue'
+import { VideoPlayer } from '@aix/video'
+
+// 演示用的公开测试源
+const MP4 = 'https://vjs.zencdn.net/v/oceans.mp4'
+const HLS = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
+
+const playerRef = ref()
+const muted = ref(false)
+
+function call(method) {
+  playerRef.value?.[method]()
+  if (method === 'toggleMute') muted.value = !muted.value
+}
+
+function fmt(seconds) {
+  const s = Math.floor(seconds || 0)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+</script>
+
+<style>
+.video-demo {
+  display: block;
+  max-width: 640px;
+  padding: 0;
+}
+
+.video-demo__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.video-demo__custom {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 0 0 6px 6px;
+  background: var(--vp-c-bg-alt);
+  font-size: 13px;
+}
+</style>
+
+# VideoPlayer 视频播放器
+
+基于 [video.js](https://videojs.com/) 的播放器，按 URL 自动识别 MP4 / HLS / DASH / FLV / RTSP / WebRTC 并加载对应内核，
+控制栏分点播与直播两套，可整体替换。
 
 ## 何时使用
 
-- 需要在网页中嵌入视频播放功能
-- 需要支持多种流媒体协议（HLS、DASH、RTSP 等）
-- 需要自定义控制栏或移动端优化
+- 页面里要播一段点播视频或一路直播流，且来源不止 MP4（`.m3u8`、`.flv`、`.mpd` 都要能放）
+- 需要接管控制栏：换按钮、加业务操作、做移动端手势
+- 需要监听网络与播放状态做降级或埋点
+
+只放一段本地 MP4、不需要控制栏定制时，原生 `<video>` 更省事——本组件会把 video.js 与对应流媒体内核一起打进产物。
+要展示的是音频波形或语音，用 [Audio 语音](/components/audio)；需要字幕轨道叠加，配合
+[Subtitle 字幕](/components/subtitle) 使用。
 
 ## 安装
 
@@ -26,14 +81,23 @@ import '@aix/theme/style';
 
 ## 代码演示
 
+本节的活演示用两个公开测试源：MP4 取自 [video.js 官方示例](https://vjs.zencdn.net/v/oceans.mp4)，
+HLS 取自 [Mux 公共测试流](https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8)。都需要联网才能播放。
+
 ### 基础用法
 
-最简单的用法，传入视频地址即可播放。
+传入视频地址即可播放，`sourceType` 不传时按 URL 自动推断。
+
+<ClientOnly>
+<div class="demo-block video-demo">
+  <VideoPlayer :src="MP4" preload="metadata" />
+</div>
+</ClientOnly>
 
 ```vue
 <template>
-  <div style="width: 800px; height: 450px">
-    <VideoPlayer :src="videoSrc" />
+  <div style="max-width: 640px">
+    <VideoPlayer :src="videoSrc" preload="metadata" />
   </div>
 </template>
 
@@ -41,47 +105,58 @@ import '@aix/theme/style';
 import { VideoPlayer } from '@aix/video';
 import '@aix/video/style';
 
-const videoSrc = '/videos/sample.mp4';
+const videoSrc = 'https://vjs.zencdn.net/v/oceans.mp4';
 </script>
 ```
 
 ### 播放 HLS 流
 
-支持 HLS 协议的直播流或点播流。
+`.m3u8` 会自动走 hls.js；也可以用 `sourceType` 显式指定，跳过推断。直播流常配 `autoplay` + `muted`，
+因为浏览器不允许带声音的自动播放。
+
+<ClientOnly>
+<div class="demo-block video-demo">
+  <VideoPlayer :src="HLS" source-type="hls" muted preload="metadata" />
+</div>
+</ClientOnly>
 
 ```vue
 <template>
-  <VideoPlayer
-    :src="hlsUrl"
-    source-type="hls"
-    :autoplay="true"
-    :muted="true"
-  />
+  <VideoPlayer :src="hlsUrl" source-type="hls" muted autoplay />
 </template>
 
 <script setup lang="ts">
 import { VideoPlayer } from '@aix/video';
 import '@aix/video/style';
 
-const hlsUrl = 'https://example.com/stream.m3u8';
+const hlsUrl = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
 </script>
 ```
 
 ### 使用 ref 控制
 
-通过 ref 获取组件实例，可以调用组件方法进行控制。
+组件实例暴露了播放、跳转、音量、全屏、画中画、变速等方法，完整清单见下方 Expose 表。
+
+<ClientOnly>
+<div class="demo-block video-demo">
+  <VideoPlayer ref="playerRef" :src="MP4" preload="metadata" />
+  <div class="video-demo__bar">
+    <button @click="call('play')">播放</button>
+    <button @click="call('pause')">暂停</button>
+    <button @click="call('toggleMute')">{{ muted ? '取消静音' : '静音' }}</button>
+    <button @click="playerRef?.seek(30)">跳到 0:30</button>
+    <button @click="playerRef?.setPlaybackRate(1.5)">1.5 倍速</button>
+    <button @click="call('toggleFullscreen')">全屏</button>
+  </div>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
-  <div>
-    <div class="toolbar">
-      <button @click="playerRef?.play()">播放</button>
-      <button @click="playerRef?.pause()">暂停</button>
-      <button @click="playerRef?.toggleMute()">静音</button>
-      <button @click="playerRef?.toggleFullscreen()">全屏</button>
-    </div>
-    <VideoPlayer ref="playerRef" :src="videoSrc" />
-  </div>
+  <VideoPlayer ref="playerRef" :src="videoSrc" />
+  <button @click="playerRef?.play()">播放</button>
+  <button @click="playerRef?.seek(30)">跳到 0:30</button>
+  <button @click="playerRef?.setPlaybackRate(1.5)">1.5 倍速</button>
 </template>
 
 <script setup lang="ts">
@@ -90,13 +165,36 @@ import { VideoPlayer, type VideoPlayerExpose } from '@aix/video';
 import '@aix/video/style';
 
 const playerRef = ref<VideoPlayerExpose>();
-const videoSrc = '/videos/sample.mp4';
+const videoSrc = 'https://vjs.zencdn.net/v/oceans.mp4';
 </script>
 ```
 
 ### 自定义控制栏
 
-通过 `controls` 插槽可以完全自定义控制栏。
+`customControls` 为 `true` 时渲染 `controls` 插槽，作用域给出 `playerState` 快照与 `controls` 方法集；
+同时把原生 `controls` 关掉，避免两套控制栏叠在一起。
+
+<ClientOnly>
+<div class="demo-block video-demo">
+  <VideoPlayer :src="MP4" preload="metadata" custom-controls :controls="false">
+    <template #controls="{ playerState, controls }">
+      <div class="video-demo__custom">
+        <button v-if="!playerState.isPlaying" @click="controls.play()">播放</button>
+        <button v-else @click="controls.pause()">暂停</button>
+        <span>{{ fmt(playerState.currentTime) }} / {{ fmt(playerState.duration) }}</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          :value="playerState.volume * 100"
+          @input="controls.setVolume($event.target.value / 100)"
+        />
+        <button @click="controls.toggleFullscreen()">全屏</button>
+      </div>
+    </template>
+  </VideoPlayer>
+</div>
+</ClientOnly>
 
 ```vue
 <template>
@@ -143,7 +241,7 @@ const formatTime = (seconds: number) => {
 
 ### 网络状态监听
 
-监听网络状态变化，自动处理断网重连。
+网络事件要真的断网、限速才会触发，文档站里演示不出来，这节只给代码。
 
 ```vue
 <template>
@@ -177,7 +275,7 @@ const onNetworkSlow = (status: NetworkStatus) => {
 
 ### 移动端优化
 
-启用触摸手势和横屏自动全屏。
+触摸手势与横屏全屏只在真机上有效果，桌面浏览器看不出差别，这节只给代码。
 
 ```vue
 <template>
@@ -335,6 +433,105 @@ const videoSrc = '/videos/sample.mp4';
 | `playbackRates` | `number[]` | `[0.5, 0.75, 1, 1.25, 1.5, 2]` | - | 可用的倍速选项 |
 | `showPlaybackRate` | `boolean` | `true` | - | 是否显示倍速按钮 |
 | `showTime` | `boolean` | `true` | - | 是否显示时间 |
+
+## 类型定义
+
+::: warning 自动生成的 API 文档
+以下内容由 `pnpm docs:gen` 从组件源码生成，请勿手动编辑。
+
+需要修改时：改组件源码里的类型声明与 JSDoc，然后运行 `pnpm docs:gen`。
+:::
+
+```typescript
+/**
+ * video.js Player 实例类型
+ */
+export type VideoJsPlayer = ReturnType<typeof videojs>;
+
+/**
+ * video.js 播放器配置选项
+ */
+export interface VideoJsOptions {
+  autoplay?: boolean | string;
+  controls?: boolean;
+  width?: number;
+  height?: number;
+  loop?: boolean;
+  muted?: boolean;
+  preload?: 'auto' | 'metadata' | 'none';
+  src?: string;
+  poster?: string;
+  aspectRatio?: string;
+  fluid?: boolean;
+  responsive?: boolean;
+  playsinline?: boolean;
+  techOrder?: string[];
+  sources?: Array<{ src: string; type: string }>;
+  language?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * SDK 加载配置
+ */
+export interface SdkLoaderConfig {
+  /** SDK 名称 */
+  name: string;
+  /** 全局变量名 */
+  globalName?: string;
+  /** CDN 地址 */
+  cdnUrl?: string;
+  /** ES 模块导入函数 */
+  importFn?: () => Promise<unknown>;
+  /** 是否必须加载成功 */
+  required?: boolean;
+  /** 加载前的钩子 (用于加载 CSS 等前置依赖) */
+  beforeLoad?: () => Promise<void>;
+}
+
+/** `controls` 插槽的作用域 */
+export interface VideoPlayerControlsSlotScope {
+  /** 播放器当前状态快照 */
+  playerState: PlayerState;
+  /** 播放器控制方法集合 */
+  controls: ControlMethods;
+}
+
+/**
+ * 控制方法接口
+ * 暴露给自定义控制栏的播放器控制方法
+ */
+export interface ControlMethods {
+  /** 播放 */
+  play: () => Promise<void>;
+  /** 暂停 */
+  pause: () => void;
+  /** 跳转到指定时间 (秒) */
+  seek: (time: number) => void;
+  /** 设置音量 (0-1) */
+  setVolume: (volume: number) => void;
+  /** 获取音量 (0-1) */
+  getVolume: () => number;
+  /** 切换静音 */
+  toggleMute: () => void;
+  /** 进入/退出全屏 */
+  toggleFullscreen: () => void;
+  /** 进入浏览器原生全屏 */
+  enterNativeFullscreen: () => void;
+  /** 退出浏览器原生全屏 */
+  exitNativeFullscreen: () => void;
+  /** 进入/退出画中画 */
+  togglePictureInPicture: () => Promise<void>;
+  /** 设置播放速率 (0.25-4) */
+  setPlaybackRate: (rate: number) => void;
+  /** 获取播放速率 */
+  getPlaybackRate: () => number;
+  /** 重新加载视频 */
+  reload: () => void;
+  /** 强制重载播放器 */
+  forceReload: (shouldPlay?: boolean) => void;
+}
+```
 
 ## 支持的视频源类型
 

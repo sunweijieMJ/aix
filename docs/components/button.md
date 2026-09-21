@@ -28,6 +28,10 @@ import '@aix/button/style';
 import '@aix/theme/style';
 ```
 
+组件自己渲染的文案只有一条：加载态给读屏软件用的 `loadingText`（加载中 / Loading），
+需要改用 `createLocale(locale, { messages: { button: { loadingText: '处理中' } } })` 覆盖，
+语言包也可单独导入 `buttonLocale` / `buttonZhCN` / `buttonEnUS`。
+
 ## 代码演示
 
 ### 按钮类型

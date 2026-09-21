@@ -630,6 +630,49 @@ AudioPlayer 暴露以下 CSS 变量。默认值是一条回退链——先读组
 
 ---
 
+## API
+
+**WaveformCanvas** — WaveformCanvas - 波形可视化组件
+接收归一化波形数据点（0-1），用 Canvas 绘制条形波形
+样式通过 CSS Variables 完全暴露，消费方可覆盖
+
+### WaveformCanvas Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `data` | `number[]` | `[]` | - | 波形数据点（0-1 归一化） |
+| `progress` | `number` | `0` | - | 播放进度（0-1） |
+| `width` | `number` | `0` | - | 画布宽度，0 表示自适应父容器 |
+| `height` | `number` | `32` | - | 画布高度（px） |
+| `barGap` | `number` | `4` | - | 柱间间距（px） |
+| `barWidth` | `number` | `2` | - | 柱宽（px） |
+| `inactiveColor` | `string` | `'var(--aix-waveform-inactive, var(--aix-colorTextQuaternary, #c9cdd4))'` | - | 未激活颜色（支持 CSS 变量语法） |
+| `activeColor` | `string` | `'var(--aix-waveform-active, var(--aix-colorPrimary, #1677ff))'` | - | 激活颜色（支持 CSS 变量语法） |
+
+---
+
+**AudioPlayer** — AudioPlayer - 轻量音频播放器组件
+支持波形可视化和进度控制，样式通过 CSS Variables 完全暴露
+
+### AudioPlayer Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `src` | `string \| Blob` | - | ✅ | 音频 URL 或 Blob |
+| `waveform` | `number[]` | `[]` | - | 波形数据点（0-1 归一化），为空则不画波形 |
+| `showWaveform` | `boolean` | `true` | - | 是否显示波形，默认 true |
+| `autoplay` | `boolean` | `false` | - | 是否自动播放，默认 false |
+
+### AudioPlayer Events
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `play` | - | 开始播放 |
+| `pause` | - | 暂停 |
+| `ended` | - | 播放结束 |
+| `timeupdate` | `time: number` | 播放进度更新，参数为当前时间（秒） |
+| `error` | `error: Error` | 加载或播放失败（含自动播放被浏览器拦截） |
+
 ## 类型定义
 
 ```typescript
@@ -813,46 +856,3 @@ export interface SpeechConfig {
   };
 }
 ```
-
-## API
-
-**WaveformCanvas** — WaveformCanvas - 波形可视化组件
-接收归一化波形数据点（0-1），用 Canvas 绘制条形波形
-样式通过 CSS Variables 完全暴露，消费方可覆盖
-
-### WaveformCanvas Props
-
-| 属性名 | 类型 | 默认值 | 必填 | 说明 |
-|--------|------|--------|:----:|------|
-| `data` | `number[]` | `[]` | - | 波形数据点（0-1 归一化） |
-| `progress` | `number` | `0` | - | 播放进度（0-1） |
-| `width` | `number` | `0` | - | 画布宽度，0 表示自适应父容器 |
-| `height` | `number` | `32` | - | 画布高度（px） |
-| `barGap` | `number` | `4` | - | 柱间间距（px） |
-| `barWidth` | `number` | `2` | - | 柱宽（px） |
-| `inactiveColor` | `string` | `'var(--aix-waveform-inactive, var(--aix-colorTextQuaternary, #c9cdd4))'` | - | 未激活颜色（支持 CSS 变量语法） |
-| `activeColor` | `string` | `'var(--aix-waveform-active, var(--aix-colorPrimary, #1677ff))'` | - | 激活颜色（支持 CSS 变量语法） |
-
----
-
-**AudioPlayer** — AudioPlayer - 轻量音频播放器组件
-支持波形可视化和进度控制，样式通过 CSS Variables 完全暴露
-
-### AudioPlayer Props
-
-| 属性名 | 类型 | 默认值 | 必填 | 说明 |
-|--------|------|--------|:----:|------|
-| `src` | `string \| Blob` | - | ✅ | 音频 URL 或 Blob |
-| `waveform` | `number[]` | `[]` | - | 波形数据点（0-1 归一化），为空则不画波形 |
-| `showWaveform` | `boolean` | `true` | - | 是否显示波形，默认 true |
-| `autoplay` | `boolean` | `false` | - | 是否自动播放，默认 false |
-
-### AudioPlayer Events
-
-| 事件名 | 参数 | 说明 |
-|--------|------|------|
-| `play` | - | 开始播放 |
-| `pause` | - | 暂停 |
-| `ended` | - | 播放结束 |
-| `timeupdate` | `time: number` | 播放进度更新，参数为当前时间（秒） |
-| `error` | `error: Error` | 加载或播放失败（含自动播放被浏览器拦截） |

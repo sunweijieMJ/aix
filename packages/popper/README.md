@@ -30,7 +30,7 @@ import '@aix/popper/style';
 import '@aix/theme/style';
 ```
 
-## 使用
+## 快速开始
 
 ### Tooltip 提示
 

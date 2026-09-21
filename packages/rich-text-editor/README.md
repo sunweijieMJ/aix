@@ -32,7 +32,7 @@ import '@aix/rich-text-editor/style';
 import '@aix/theme/style';
 ```
 
-## 使用
+## 快速开始
 
 ### 基础用法
 

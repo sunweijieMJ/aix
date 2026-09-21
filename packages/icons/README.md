@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 📦 丰富的图标库，包含 580+ 个精美图标
+- 📦 丰富的图标库，包含 580 个精美图标
 - 🎨 支持自定义颜色、大小和样式
 - 🔧 Vue 3 Composition API 支持
 - 📱 响应式设计，支持任意尺寸缩放
@@ -14,13 +14,13 @@
 - 📂 图标按类别分组，便于查找和使用
 - 🌳 Tree-shaking 友好，按需导入
 
-## 快速开始
-
-### 安装
+## 安装
 
 ```bash
 pnpm add @aix/icons
 ```
+
+## 快速开始
 
 ### 基础用法
 
@@ -428,9 +428,9 @@ import { Loading, Refresh } from '@aix/icons';
 | `width` | `string \| number` | `'1em'` | - | 图标宽度 |
 | `height` | `string \| number` | `'1em'` | - | 图标高度 |
 | `color` | `string` | `'currentColor'` | - | 图标颜色 |
-| `style` | `CSSProperties` | - | - | 自定义样式对象（支持所有 CSS 属性） |
-| `class` | `string` | - | - | CSS 类名 |
 
+> `class` / `style` 不是声明的 prop，走 `$attrs` 落到根 `<svg>` 上，用法与普通元素一致。
+>
 > 没有 `title` 属性。透传上去只会变成 `<svg title="…">`，SVG 不认这个属性、不会有提示气泡；
 > 需要无障碍名称请用 `aria-label`，需要悬浮提示请在外层包一个带 `title` 的元素。
 
