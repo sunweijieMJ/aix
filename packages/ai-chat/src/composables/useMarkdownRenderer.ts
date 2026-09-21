@@ -177,10 +177,13 @@ async function loadMathRenderers(katexEnabled: boolean): Promise<MarkdownRendere
       // mhchem 不可用：\ce{} / \pu{} 降级为 KaTeX 提示；普通公式不受影响
     }
     const renderers = createMathRenderers(katex);
-    // 自动注入 KaTeX 样式（副作用式 import）：装了 katex 即获得正确排版，无需手动引入。
-    // 打包器不支持 CSS import / SSR 等场景失败时忽略——回退为手动 `import 'katex/dist/katex.min.css'`。
+    // 自动注入 KaTeX 样式：装了 katex 即获得正确排版，无需手动引入。
+    // 走 styles/katex 这层 JS 壳而非直接 import CSS——打包器对动态导入的纯 CSS 只会产出
+    // 指向空 chunk 的引用，运行时 404、样式静默丢失。
+    // SSR 等拿不到 CSS 的场景失败时忽略，回退为手动 `import 'katex/dist/katex.min.css'`。
     try {
-      await import('katex/dist/katex.min.css');
+      // 读取导出值：不引用的话模块会被摇成空 chunk，又回到 404 的老路
+      void (await import('../styles/katex')).stylesLoaded;
     } catch {
       // CSS 自动注入失败：请在应用入口手动引入 katex/dist/katex.min.css
     }
@@ -220,14 +223,14 @@ async function loadCodeRenderers(): Promise<MarkdownRenderers> {
     const hljsMod = await import('highlight.js');
     const hljs = (hljsMod.default ?? hljsMod) as unknown as HljsLike;
     const renderers = createHighlightRenderers(hljs);
-    // 自动注入主题样式（副作用式 import）：装了 highlight.js 即获得配色，无需手动引入。
+    // 自动注入主题样式：装了 highlight.js 即获得配色，无需手动引入。
+    // 同 KaTeX，经 styles/hljs-* 这层 JS 壳加载，直接动态 import CSS 会拿到空 chunk。
     // 失败时忽略——可在应用入口手动引入任一 `highlight.js/styles/*.css` 覆盖。
     try {
-      if (isDarkMode()) {
-        await import('highlight.js/styles/github-dark.css');
-      } else {
-        await import('highlight.js/styles/github.css');
-      }
+      // 读取导出值的原因同 KaTeX
+      void (isDarkMode()
+        ? (await import('../styles/hljs-dark')).stylesLoaded
+        : (await import('../styles/hljs-light')).stylesLoaded);
     } catch {
       // CSS 自动注入失败：请在应用入口手动引入 highlight.js 主题样式
     }

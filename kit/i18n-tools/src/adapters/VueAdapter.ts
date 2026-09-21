@@ -4,7 +4,6 @@ import type {
   ITransformer,
   IRestoreTransformer,
   IComponentInjector,
-  IImportManager,
 } from './FrameworkAdapter';
 import {
   VueTextExtractor,
@@ -45,13 +44,20 @@ export class VueAdapter extends FrameworkAdapter {
 
     super({
       type: 'vue',
-      extensions: ['.vue', '.ts', '.js'],
+      // 含 .tsx/.jsx：Vue 3 支持 tsx 渲染函数组件，且 DEFAULT_IO.include 默认就扫这两类。
+      // 扩展名列表同时决定目录扫描范围与 `--path` 单文件校验，两处口径必须一致。
+      extensions: ['.vue', '.tsx', '.jsx', '.ts', '.js'],
       i18nLibrary: library.packageName,
       usesDoubleBracePlaceholders: library.usesDoubleBracePlaceholders,
     });
 
     this.library = library;
-    this.textExtractor = new VueTextExtractor(library, options.filterPatterns ?? []);
+    // 透传 i18n 模块白名单：提取端据此判断模块顶层的同名 t 是工具注入的还是用户自己的
+    // （后者要整处跳过，见 VueTextExtractor.detectConflictingLocalT）。
+    this.textExtractor = new VueTextExtractor(options.filterPatterns ?? [], [
+      tImport,
+      library.packageName,
+    ]);
     this.importManager = new VueImportManager(tImport, library);
     this.componentInjector = new VueComponentInjector(library, this.importManager);
     this.transformer = new VueTransformer(library, this.importManager, this.componentInjector);
@@ -72,10 +78,6 @@ export class VueAdapter extends FrameworkAdapter {
 
   getComponentInjector(): IComponentInjector {
     return this.componentInjector;
-  }
-
-  getImportManager(): IImportManager {
-    return this.importManager;
   }
 
   getLibrary() {

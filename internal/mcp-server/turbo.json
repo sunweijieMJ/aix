@@ -9,6 +9,7 @@
         "../../tsdown.config.ts",
         "../../packages/*/package.json",
         "../../packages/*/README.md",
+        "../../scripts/docs/**",
         "../../packages/*/src/**"
       ]
     }

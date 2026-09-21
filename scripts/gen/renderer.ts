@@ -1,6 +1,6 @@
 /**
  * 模板渲染器 - 使用 Eta 模板引擎
- * 支持目录结构映射：模板目录结构 = 输出目录结构
+ * 支持目录结构映射：模板目录结构 = 输出目录结构；`__repo__/` 下的模板输出到仓库根
  */
 
 import fs from 'node:fs';
@@ -53,10 +53,16 @@ export interface FileGeneratorOptions {
  * 生成的文件信息
  */
 export interface GeneratedFileInfo {
+  /** 相对输出根的路径 */
   path: string;
   content: string;
   type: 'config' | 'source' | 'test' | 'story' | 'docs' | 'style';
+  /** 输出根：包目录，或仓库根（模板放在 `__repo__/` 下） */
+  root: 'package' | 'repo';
 }
+
+/** 模板目录下映射到仓库根而非包目录的前缀 */
+const REPO_ROOT_PREFIX = '__repo__/';
 
 /**
  * 条件配置：哪些模板文件需要满足什么条件才生成
@@ -128,7 +134,13 @@ function scanTemplates(dir: string, baseDir: string = dir): string[] {
  * [pascalName] -> 实际的 PascalCase 名称
  */
 function resolveOutputPath(templatePath: string, context: TemplateContext): string {
-  return templatePath.replace(/\[pascalName\]/g, context.pascalName).replace(/\.eta$/, ''); // 移除 .eta 扩展名
+  const relativePath = templatePath.startsWith(REPO_ROOT_PREFIX)
+    ? templatePath.slice(REPO_ROOT_PREFIX.length)
+    : templatePath;
+  return relativePath
+    .replace(/\[pascalName\]/g, context.pascalName)
+    .replace(/\[componentName\]/g, context.componentName)
+    .replace(/\.eta$/, '');
 }
 
 /**
@@ -173,6 +185,7 @@ export function renderTemplates(
       path: outputPath,
       content,
       type: getFileType(outputPath),
+      root: templatePath.startsWith(REPO_ROOT_PREFIX) ? 'repo' : 'package',
     });
   }
 

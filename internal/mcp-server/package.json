@@ -1,6 +1,6 @@
 {
   "name": "@aix/mcp-server",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "MCP server for component library",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
@@ -30,23 +30,22 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "chalk": "^6.0.0",
-    "commander": "^15.0.0",
-    "glob": "^13.0.6",
-    "gray-matter": "^4.0.3",
-    "typescript": "catalog:",
-    "ws": "^8.21.3"
+    "chalk": "catalog:",
+    "commander": "catalog:",
+    "glob": "catalog:",
+    "gray-matter": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/node": "catalog:",
-    "@types/ws": "^8.18.1",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",
+    "typescript": "catalog:",
     "vitest": "catalog:"
   }
 }

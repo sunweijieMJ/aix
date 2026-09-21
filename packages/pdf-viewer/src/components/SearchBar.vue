@@ -56,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+/** PDF 搜索栏：关键字输入与命中项的上一个 / 下一个跳转。 */
 import { useLocale } from '@aix/hooks';
 import { ArrowDropDown, ArrowDropUp, Close, IconSearch as Search } from '@aix/icons';
 import { ref, watch, nextTick } from 'vue';
@@ -64,17 +65,26 @@ import { locale } from '../locale';
 const { t } = useLocale({ name: 'pdf-viewer', messages: locale });
 
 const props = defineProps<{
+  /** 是否显示搜索栏 */
   visible: boolean;
+  /** 是否正在搜索 */
   searching: boolean;
+  /** 匹配总数 */
   totalMatches: number;
+  /** 当前匹配序号，与 totalMatches 一起显示为「n / 总数」 */
   currentIndex: number;
 }>();
 
 const emit = defineEmits<{
+  /** 提交关键字搜索 */
   (e: 'search', keyword: string): void;
+  /** 上一个匹配 */
   (e: 'prev'): void;
+  /** 下一个匹配 */
   (e: 'next'): void;
+  /** 清空关键字与结果 */
   (e: 'clear'): void;
+  /** 关闭搜索栏 */
   (e: 'close'): void;
 }>();
 

@@ -41,17 +41,25 @@ description: 组件测试清单，覆盖 Props/Emits/Slots
 - [ ] 无内存泄漏
 - [ ] 防抖/节流正确实现
 
-## 覆盖率目标
+## 覆盖率
 
-- [ ] Statements / Branches / Functions / Lines 均 ≥ 80%
+- [ ] `pnpm test:coverage` 通过（校验 `vitest.config.ts` 的 `thresholds`）
+- [ ] 若水位涨了，**同步上调 `vitest.config.ts` 的阈值**——不上调，棘轮就不往前走
+
+> ℹ️ **CI 门禁不是 80%**，而是根 `vitest.config.ts` 里「当前水位 - 1 个点」的**防退化棘轮**
+> （作用是不许再掉）。80% 是长期目标，不是当前门禁。机制与当前阈值见
+> [testing.md](../agents/testing.md) 的「CI 门禁是『防退化棘轮』」章节。
 
 ## 快速命令
 
 ```bash
-pnpm test                # 运行单元测试
+pnpm test                # 包级单测（turbo 编排）
+pnpm test:unit           # 根口径单测（排除 storybook project）
+pnpm test:stories        # story 的 play 交互测试
 pnpm test:coverage       # 覆盖率
-pnpm test:watch          # 监听模式
 pnpm test:ui             # UI 模式
+
+cd packages/<pkg> && npx vitest   # 监听模式（没有 pnpm test:watch）
 ```
 
 ## 相关工具

@@ -64,6 +64,7 @@ export interface ModelSelectorEmits {
 </script>
 
 <script setup lang="ts">
+/** 模型选择下拉框：受控的 modelValue + options 列表。 */
 import { useNamespace, useClickOutside, useControllable } from '@aix/hooks';
 import { ArrowDropDown } from '@aix/icons';
 import { ref, computed, nextTick } from 'vue';

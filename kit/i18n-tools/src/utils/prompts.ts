@@ -1,20 +1,21 @@
 import type { ResolvedConfig, ResolvedLLMTaskConfig } from '../config';
+import { LoggerUtils } from './logger';
 
 /**
  * 用字面量填充自定义 prompt 模板中的 `{token}` 占位符。
  *
- * Why split/join 而非 String.prototype.replace：
- *  - replace 的字符串 replacement 会解析 `$&`/`$1`/`` $` ``/`$'`/`$$` 特殊序列，
- *    待翻译文案里的 `$100`、`a$b` 等会被静默改写/丢字 → 模型收到错误文本。
- *  - replace(string, string) 只替换首个匹配，模板里重复占位符时第二个不生效。
- * split(token).join(value) 两个问题都规避：替换全部出现、value 按字面量插入。
+ * 单遍扫描（一次正则、命中即查表），而非逐 token 依次替换整串：后者第二轮会扫到第一轮
+ * 刚插入的内容，`{jsonText}` 填进去的待翻译文案里若含 `{targetLocale}` 这类字面量
+ * （单花括号库下完全合法），会被当占位符二次替换，模型收到被改写过的原文。
+ *
+ * 替换值按字面量插入、不走 replace 的字符串 replacement 通道，`$&`/`$1`/`$$` 等序列
+ * 不被解析——待翻译文案里的 `$100`、`a$b` 原样保留。未知 token 原样保留（模板作者可能
+ * 就是想写字面花括号），不静默清空。
  */
 function fillTemplate(template: string, vars: Record<string, string>): string {
-  let out = template;
-  for (const [key, value] of Object.entries(vars)) {
-    out = out.split(`{${key}}`).join(value);
-  }
-  return out;
+  return template.replace(/\{(\w+)\}/g, (match, token: string) =>
+    Object.prototype.hasOwnProperty.call(vars, token) ? vars[token]! : match,
+  );
 }
 
 // =============================================================================
@@ -59,6 +60,26 @@ const BUILTIN_LOCALE_NAMES: Record<string, string> = {
   'th-TH': 'Thai',
   'vi-VN': 'Vietnamese',
 };
+
+/** 已就「缺 {jsonText}」告警过的模板；翻译按 batch × target 循环调用，不去重会刷屏。 */
+const warnedUserTemplates = new Set<string>();
+
+/**
+ * 自定义翻译 user prompt 缺 `{jsonText}` 占位符时告警。
+ *
+ * 不抛错也不回退内置模板（用户可能有意只在 system 里给数据），但必须提示：
+ * 待翻译 JSON 无处可插 → 模型收到一段没有数据的指令，整批译文静默为空。
+ */
+function warnIfMissingJsonTextToken(template: string): void {
+  if (template.includes('{jsonText}')) return;
+  if (warnedUserTemplates.has(template)) return;
+  warnedUserTemplates.add(template);
+  LoggerUtils.warn(
+    '⚠️ 自定义翻译 user prompt 未包含 {jsonText} 占位符，待翻译数据不会被注入 prompt。\n' +
+      '   影响：模型收不到任何待翻译条目，本轮译文可能整批为空。\n' +
+      '   建议：在 llm.translation.prompt.user 模板中加入 {jsonText}。',
+  );
+}
 
 /**
  * 解析语言代码到展示名。优先 locales.names，回退内置表，再回退 code 本身。
@@ -121,10 +142,9 @@ export function getIdGenerationUserPrompt(
  *   同源（均取自 library.usesDoubleBracePlaceholders），两处必须保持一致：
  *   prompt 告诉模型"什么是占位符、什么可以正常翻译"，validator 用同一套
  *   标准校验译文，标准不一致会导致 validator 拒绝模型认为正确的输出，
- *   或放行模型未受保护、错误处理的文本（后者正是本参数要修复的问题——
- *   双花括号库下，模型此前把源文里恰好出现的单花括号内容当占位符原样保留，
- *   validator 用同一套 ASCII 标识符规则也判断不出，中文/非标识符内容就
- *   混进了目标语言的 locale 文件）。
+ *   或放行模型未受保护、错误处理的文本（双花括号库下若不传本参数，模型会把源文里
+ *   恰好出现的单花括号内容当占位符原样保留，validator 用同一套 ASCII 标识符规则也
+ *   判断不出，中文/非标识符内容就混进了目标语言的 locale 文件）。
  */
 export function getTranslationSystemPrompt(
   locales: ResolvedConfig['locales'],
@@ -132,13 +152,20 @@ export function getTranslationSystemPrompt(
   targetLocale: string,
   usesDoubleBracePlaceholders: boolean = false,
 ): string {
-  if (task.prompt.system) {
-    return task.prompt.system;
-  }
-
   const sourceCode = locales.source;
   const sourceName = getLocaleName(sourceCode, locales);
   const targetName = getLocaleName(targetLocale, locales);
+
+  // 自定义 system prompt 同样做模板填充：翻译是 per-target 循环调用的，原样返回意味着
+  // 所有语种收到字面完全相同的 system prompt，用户无法在自定义模板里指明目标语种。
+  if (task.prompt.system) {
+    return fillTemplate(task.prompt.system, {
+      sourceLocale: sourceCode,
+      sourceName,
+      targetLocale,
+      targetName,
+    });
+  }
 
   const placeholderRules = usesDoubleBracePlaceholders
     ? `5. CRITICAL — interpolation placeholders use DOUBLE curly braces \`{{name}}\`. The text inside \`{{...}}\` is a variable identifier that must be preserved EXACTLY:
@@ -200,11 +227,19 @@ export function getTranslationUserPrompt(
   task: ResolvedLLMTaskConfig,
   targetLocale: string,
 ): string {
-  if (task.prompt.user) {
-    return fillTemplate(task.prompt.user, { jsonText });
-  }
-
   const sourceName = getLocaleName(locales.source, locales);
   const targetName = getLocaleName(targetLocale, locales);
+
+  if (task.prompt.user) {
+    warnIfMissingJsonTextToken(task.prompt.user);
+    return fillTemplate(task.prompt.user, {
+      jsonText,
+      sourceLocale: locales.source,
+      sourceName,
+      targetLocale,
+      targetName,
+    });
+  }
+
   return `Translate the following i18n entries from ${sourceName} to ${targetName}:\n${jsonText}`;
 }

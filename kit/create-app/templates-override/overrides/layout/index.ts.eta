@@ -1,0 +1,27 @@
+import type { CustomLayoutConfig } from '@/plugins/override';
+
+/**
+ * <%= it.project %> - Layout 覆盖
+ *
+ * 支持能力：
+ * - components: 替换 Layout 内部区域（header / menu / main；header 仅在路由
+ *   meta.layout.layoutVisible.header 为真时渲染）
+ * - defaultConfig: 覆盖默认配置值（layoutVisible / headerVisible / logoConfig 的默认基线，
+ *   路由 meta.layout 的优先级高于它）
+ *
+ * 类型里的 layout（整体替换 Layout 组件）在标准产品中没有消费点，配了不生效
+ *
+ * @example
+ * ```ts
+ * return {
+ *   components: { menu: () => import('../views/CustomMenu.vue') },
+ *   defaultConfig: { headerVisible: { themeSwitch: false } },
+ * };
+ * ```
+ */
+export function getCustomLayout(): CustomLayoutConfig {
+  return {
+    // components: {},
+    // defaultConfig: {},
+  };
+}

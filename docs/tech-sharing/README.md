@@ -97,11 +97,11 @@ pnpm docs:preview
 ## 相关命令
 
 ```bash
-# 自动生成组件 API 文档
+# 从组件源码生成 README 与文档站的 API 段
 pnpm docs:gen
 
-# 同步文档
-pnpm sync:docs
+# 生成后校验零 diff（CI 同款）
+pnpm docs:check
 ```
 
 ---

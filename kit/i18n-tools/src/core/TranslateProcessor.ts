@@ -1,13 +1,14 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
-import { LLMClient } from '../utils/llm-client';
+import { LLMClient, LLMConnectionAbortError } from '../utils/llm-client';
 import { FileUtils } from '../utils/file-utils';
 import { Glossary, type GlossaryMap } from '../utils/glossary';
 import { LoggerUtils } from '../utils/logger';
-import { extractPlaceholderNames } from '../utils/placeholder-utils';
+import { extractPlaceholderNames, placeholderNamesEqual } from '../utils/placeholder-utils';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 import { resolveUsesDoubleBracePlaceholders } from '../adapters';
+import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 /**
  * 翻译处理器
@@ -19,7 +20,7 @@ import { resolveUsesDoubleBracePlaceholders } from '../adapters';
  */
 export class TranslateProcessor extends FileProcessor {
   private llmClient: LLMClient;
-  private batchConfig: { size: number; delay: number };
+  private batchConfig: { size: number };
   /** 当前 i18n 库插值语法是否为双花括号，占位符校验与 LLM prompt 共用同一份判定 */
   private usesDoubleBracePlaceholders: boolean;
 
@@ -34,7 +35,6 @@ export class TranslateProcessor extends FileProcessor {
     );
     this.batchConfig = {
       size: config.llm.translation.batchSize,
-      delay: config.llm.translation.throttleMs,
     };
   }
 
@@ -44,6 +44,36 @@ export class TranslateProcessor extends FileProcessor {
 
   async execute(filePath?: string): Promise<void> {
     return this.executeWithLifecycle(() => this._execute(filePath));
+  }
+
+  /**
+   * 批次循环启动前对本次要用的 llm.translation 配置做 pre-flight。
+   *
+   * 只校验「静态配置缺失」这类重试也不会变好的错误：apiKey 为空时每个批次都会在
+   * chatCompletion 入口抛同一个错，N 个批次就刷 N 条一模一样的失败（还各自带 maxRetries
+   * 次退避），用户要从满屏噪声里翻出根因。网络/超时/限流仍留给批次级容错与断点续翻。
+   */
+  private assertLLMConfigReady(): void {
+    const task = this.config.llm.translation;
+    const missing: string[] = [];
+    if (!task.apiKey.trim()) {
+      missing.push(
+        'llm.translation.apiKey（或 llm.shared.apiKey；通常在 i18n.config 里取自环境变量，请确认该变量已定义且 .env 已被加载）',
+      );
+    }
+    if (!task.model.trim()) {
+      missing.push('llm.translation.model（或 llm.shared.model）');
+    }
+    // baseURL 允许不配（走 OpenAI 官方地址），但配成空串/非法 URL 属于写错，同样不可重试
+    if (task.baseURL !== undefined && !URL.canParse(task.baseURL)) {
+      missing.push(`llm.translation.baseURL（或 llm.shared.baseURL）不是合法 URL: ${task.baseURL}`);
+    }
+    if (missing.length > 0) {
+      throw new Error(
+        `翻译所需的 LLM 配置不完整，已在发起请求前中止（避免逐批重复失败）：\n` +
+          missing.map((item) => `   - ${item}`).join('\n'),
+      );
+    }
   }
 
   private async _execute(filePath?: string): Promise<void> {
@@ -56,7 +86,7 @@ export class TranslateProcessor extends FileProcessor {
     // 必须区分「损坏」与「空」：损坏时若降级为 {}，会让损坏的 untranslated.json 被当成空文件
     // → 打印「文件为空」→ exit 0 伪报成功（CI 误判已全部翻译）。loadJsonDictOrThrow 对「有内容
     // 却解析失败」抛错中止。
-    const data = FileUtils.loadJsonDictOrThrow<Translations>(
+    const data = loadJsonDictOrThrow<Translations>(
       targetPath,
       (p) =>
         `待翻译文件解析失败（JSON 格式错误）: ${p}\n` +
@@ -77,8 +107,8 @@ export class TranslateProcessor extends FileProcessor {
     let allTotalBatches = 0;
     const allFailedBatches: string[] = [];
 
-    // 词表语言无关，循环外加载一次即可（per-target lookup 仍按 target 取译文）。
-    // 旧实现在每个 target 迭代内 Glossary.load()，对 N 个目标重复读盘+解析同一词表。
+    // 词表语言无关，必须在循环外加载一次（per-target lookup 仍按 target 取译文）：
+    // 放进 target 迭代内等于对 N 个目标重复读盘 + 解析同一份词表。
     const glossary = Glossary.load(this.config);
 
     for (const target of targets) {
@@ -88,7 +118,7 @@ export class TranslateProcessor extends FileProcessor {
       const glossaryFilled = this.applyGlossary(data, target, glossary);
       if (glossaryFilled > 0) {
         LoggerUtils.info(`📚 [${target}] 词表预填 ${glossaryFilled} 条，剩余条目走 LLM`);
-        FileUtils.writeTranslationsFile(targetPath, data);
+        writeTranslationsFile(targetPath, data, this.config.io.indent);
       }
 
       const toTranslate = this.filterUntranslatedItems(data, target);
@@ -99,9 +129,13 @@ export class TranslateProcessor extends FileProcessor {
         continue;
       }
 
+      // 确认本轮真有条目要送 LLM 之后再做 pre-flight：全部被词表覆盖 / 已翻完的运行
+      // 压根不碰 LLM，不该因为没配 apiKey 就失败。
+      this.assertLLMConfigReady();
+
       LoggerUtils.info(`📋 [${target}] 需翻译: ${needsTranslation}`);
       LoggerUtils.info(
-        `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.batchConfig.delay}ms 延时`,
+        `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.config.llm.translation.throttleMs}ms 延时`,
       );
 
       const result = await this.performBatchTranslation(toTranslate, data, targetPath, target);
@@ -114,6 +148,9 @@ export class TranslateProcessor extends FileProcessor {
 
       this.logTargetResult(target, result);
     }
+
+    // 有失败批次即置位：即便仍有成功（断点续翻不抛错），收尾也不能打 SUCCESS。
+    if (allFailedBatches.length > 0) this.partiallyFailed = true;
 
     this.logTranslationSummary({
       totalTranslated: totalNewlyTranslated,
@@ -148,7 +185,8 @@ export class TranslateProcessor extends FileProcessor {
     const { normalize } = this.config.glossary;
     let filled = 0;
 
-    for (const item of Object.values(data)) {
+    for (const [key, item] of Object.entries(data)) {
+      if (!TranslateProcessor.isEntryObject(key, item)) continue;
       // 用 isValidTranslation 与 pick/merge 统一口径：纯标点/符号等「非空但无效」值应视为
       // 未翻译（否则 trim() 真值判定会把它当已译跳过，该条目永远不会被 glossary/LLM 处理）。
       if (FileUtils.isValidTranslation(item[targetLocale])) continue;
@@ -167,10 +205,14 @@ export class TranslateProcessor extends FileProcessor {
   private filterUntranslatedItems(data: Translations, targetLocale: string): Translations {
     const toTranslate: Translations = {};
     for (const [key, item] of Object.entries(data)) {
+      if (!TranslateProcessor.isEntryObject(key, item)) continue;
       // 与 pick/merge 统一用 isValidTranslation：非空但无效（纯标点/符号）的目标值
       // 应继续进入翻译，而非被 trim() 真值判定误当已译跳过。
       if (!FileUtils.isValidTranslation(item[targetLocale])) {
-        toTranslate[key] = item;
+        // 浅拷贝并置空目标值：prompt 规则「目标已有值则原样保留」会让模型把 `---`
+        // 这类无效值原样返回，mergeTranslations 再拒收，该 key 永不收敛。
+        // 拷贝只作 LLM 载荷与 originalBatch，落盘走 data 本体，不影响断点续翻语义。
+        toTranslate[key] = { ...item, [targetLocale]: '' };
       }
     }
     return toTranslate;
@@ -195,15 +237,26 @@ export class TranslateProcessor extends FileProcessor {
     LoggerUtils.info(`📦 [${targetLocale}] 共 ${batches.length} 个批次，使用并发处理`);
     LoggerUtils.info(`🔄 最大并发数: ${this.llmClient.getConcurrencyStatus().maxConcurrency}`);
 
-    const translatedBatches = await this.llmClient.batchTranslate(
-      batches,
-      targetLocale,
-      (current, total) => {
-        LoggerUtils.info(
-          `📈 [${targetLocale}] 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
-        );
-      },
-    );
+    // 连接类故障不逐批重试：batchTranslate 首批命中即中止剩余批次并把已完成结果带出来。
+    // 这里照常处理这批结果并落盘（断点续翻语义不变），处理完再把中止错误抛出去——
+    // 让整次运行以非零退出，而不是继续对下一个 target 空转。
+    let connectionAbort: LLMConnectionAbortError | undefined;
+    let translatedBatches: Array<Translations | undefined>;
+    try {
+      translatedBatches = await this.llmClient.batchTranslate(
+        batches,
+        targetLocale,
+        (current, total) => {
+          LoggerUtils.info(
+            `📈 [${targetLocale}] 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
+          );
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof LLMConnectionAbortError)) throw error;
+      connectionAbort = error;
+      translatedBatches = error.partialResults;
+    }
 
     for (let i = 0; i < translatedBatches.length; i++) {
       const translatedBatch = translatedBatches[i];
@@ -213,7 +266,11 @@ export class TranslateProcessor extends FileProcessor {
           stage: 'translate',
           batchIndex: i + 1,
           keys: Object.keys(batches[i] ?? {}),
-          error: new Error(`LLM 返回空批次（null/undefined）[${targetLocale}]`),
+          error: new Error(
+            connectionAbort
+              ? `批次 ${i + 1} 因 LLM 连接中止未完成 [${targetLocale}]`
+              : `LLM 返回空批次（null/undefined）[${targetLocale}]`,
+          ),
         });
         continue;
       }
@@ -261,7 +318,14 @@ export class TranslateProcessor extends FileProcessor {
     }
 
     // 写入文件（每个 target 完成后落盘一次，便于断点续翻）
-    FileUtils.writeTranslationsFile(filePath, currentData);
+    writeTranslationsFile(filePath, currentData, this.config.io.indent);
+
+    if (connectionAbort) {
+      // 只入 report、不在此打日志：抛出后 executeWithLifecycle 与 CLI 各会打一次，
+      // 这里再打就是同一条文案刷三遍。
+      this.report.addFailure({ stage: 'translate', error: connectionAbort });
+      throw connectionAbort;
+    }
 
     return { totalTranslated, successBatches, totalBatches: batches.length, failedBatches };
   }
@@ -317,11 +381,26 @@ export class TranslateProcessor extends FileProcessor {
   ): number {
     let translatedCount = 0;
     let placeholderMismatches = 0;
+    let invalidValues = 0;
     const sourceLocale = this.config.locales.source;
 
     for (const [key, originalItem] of Object.entries(originalBatch)) {
       const newValue = translatedBatch[key]?.[targetLocale];
       if (!newValue?.trim()) continue;
+
+      // 与 pick/merge 统一用 isValidTranslation 把关：`trim()` 真值判定会放行纯标点/符号
+      // （如 "..."、"--"）这类「非空但无效」的返回值，写回后 MergeProcessor 又会拒收，
+      // warn-only 策略下该 key 永远合不进 locale，translate 却已计成功——统计全绿、译文永缺。
+      // 拒收后条目仍留在 untranslated.json，重跑 translate 可断点续翻。
+      if (!FileUtils.isValidTranslation(newValue)) {
+        invalidValues++;
+        LoggerUtils.warn(
+          `⚠️ [${targetLocale}] 译文无效（非空但无文字/数字），丢弃 [${key}]:\n` +
+            `   源文: ${originalItem[sourceLocale] ?? ''}\n` +
+            `   译文: ${newValue}`,
+        );
+        continue;
+      }
 
       const sourceText = originalItem[sourceLocale];
       if (typeof sourceText === 'string' && sourceText) {
@@ -331,7 +410,7 @@ export class TranslateProcessor extends FileProcessor {
         // 导致所有 plural/select 文案被永久丢弃、无法翻译。
         const expected = extractPlaceholderNames(sourceText, this.usesDoubleBracePlaceholders);
         const actual = extractPlaceholderNames(newValue, this.usesDoubleBracePlaceholders);
-        if (!TranslateProcessor.placeholdersMatch(expected, actual)) {
+        if (!placeholderNamesEqual(expected, actual)) {
           placeholderMismatches++;
           LoggerUtils.warn(
             `⚠️ [${targetLocale}] 占位符不匹配，丢弃翻译 [${key}]:\n` +
@@ -357,15 +436,17 @@ export class TranslateProcessor extends FileProcessor {
       );
     }
 
-    return translatedCount;
-  }
-
-  private static placeholdersMatch(a: Set<string>, b: Set<string>): boolean {
-    if (a.size !== b.size) return false;
-    for (const k of a) {
-      if (!b.has(k)) return false;
+    if (invalidValues > 0) {
+      const msg =
+        `[${targetLocale}] 共丢弃 ${invalidValues} 条无效译文（非空但不含任何文字/数字，` +
+        `merge 侧同样会拒收），可重新运行 translate 续翻。`;
+      LoggerUtils.warn(`   ${msg}`);
+      // 落 RunReport：批次整体仍可能有成功条目、不进失败明细，但这类静默丢弃必须留痕，
+      // 否则用户只能从终端滚屏里发现「翻了却没落」。
+      this.report.addWarning(msg);
     }
-    return true;
+
+    return translatedCount;
   }
 
   private logTargetResult(
@@ -400,6 +481,8 @@ export class TranslateProcessor extends FileProcessor {
     LoggerUtils.info(`   - 总批次数: ${result.totalBatches}`);
     LoggerUtils.info(`   - 成功批次数: ${result.successBatches}`);
     LoggerUtils.info(`   - 新翻译条目（跨 target 总和）: ${result.totalTranslated}`);
+    // SUCCESS 只在零失败批次时打：部分失败仍会正常返回（断点续翻设计），若这里无条件
+    // 打「✅ 翻译操作完成」，grep SUCCESS 的 CI 会把「翻了一半、剩下全挂」判成绿。
     if (result.failedBatches.length > 0) {
       LoggerUtils.warn(
         `   - ⚠️ 失败批次（${result.failedBatches.length} 个，含 target 标识）: [${result.failedBatches.join(', ')}]`,
@@ -407,6 +490,10 @@ export class TranslateProcessor extends FileProcessor {
       LoggerUtils.warn(
         `   提示: 已成功的翻译已写入文件；重新运行 translate 可对剩余条目断点续翻。`,
       );
+      LoggerUtils.warn(
+        `\n⚠️ 翻译未全部完成：${result.failedBatches.length}/${result.totalBatches} 个批次失败`,
+      );
+      return;
     }
     LoggerUtils.success(`\n✅ 翻译操作完成`);
   }

@@ -11,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+/** 三点跳动的加载指示。 */
 import { useNamespace } from '@aix/hooks';
 
 const ns = useNamespace('loading-dots');

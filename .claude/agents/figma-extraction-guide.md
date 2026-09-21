@@ -1,7 +1,7 @@
 ---
 name: figma-extraction-guide
 description: Figma MCP 技术专家，负责从 Figma 设计稿提取设计数据和下载资源，不负责组件实现
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, mcp__figma__get_figma_data, mcp__figma__download_figma_images
 model: inherit
 ---
 
@@ -21,6 +21,22 @@ model: inherit
 - ❌ Vue 组件实现（详见 [component-design.md](component-design.md)）
 - ❌ CSS 变量定义和映射（详见 [coding-standards.md#css-变量使用规范](coding-standards.md#css-变量使用规范)）
 - ❌ 代码规范检查（详见 [coding-standards.md#编码规范概览](coding-standards.md#编码规范概览)）
+
+---
+
+## ⚠️ 前置条件：figma MCP 必须先配置
+
+本 Agent 的 `tools` 已声明 `mcp__figma__get_figma_data` 与 `mcp__figma__download_figma_images`，
+但 **figma 是用户级 MCP，不在仓库的 `.mcp.json` 里**（见 [.claude/README.md](../README.md) 「常用用户级 MCP」）。
+未配置时这两个工具不存在，本 Agent 只能读代码、给不出任何设计数据。
+
+```bash
+# 需先自行配置（需 FIGMA_API_KEY），参考 figma-developer-mcp
+claude mcp add figma -- npx -y figma-developer-mcp --figma-api-key=$FIGMA_API_KEY --stdio
+```
+
+调用本 Agent 前请确认 `/mcp` 中 figma 已连接；若未连接，应直接告知调用方缺少前置条件，
+而不是编造设计数据。
 
 ---
 

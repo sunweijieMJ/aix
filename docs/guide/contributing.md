@@ -96,8 +96,8 @@
 
 ### 前置要求
 
-- **Node.js**: >= 22
-- **pnpm**: >= 10.14.0
+- **Node.js**: >= 22.13
+- **pnpm**: 11.23.0（与根目录 `package.json` 的 `packageManager` 保持一致）
 - **Git**: 最新版本
 
 ### 克隆仓库
@@ -361,41 +361,44 @@ export const Large: Story = {
 
 ### 5. 更新文档
 
-创建或更新组件文档：
+API 表格不手写。给 `types.ts` 与组件源码补全 JSDoc（规范见 [组件 JSDoc 注释规范](/guide/component-jsdoc)），然后运行：
+
+```bash
+pnpm docs:gen
+```
+
+它会覆写包 README 的 `## API` 段，并注入 `docs/components/<pkg>.md`；`src/index.ts` 导出的每个 .vue 组件都会有自己的表。
+两处若已有 `## 类型定义` 二级标题，该段也会由 `src/types.ts` 导出的类型整段重写（已进 API 表的 Props / Emits / Slots / Expose 接口除外）。
+最后它会校验文档页、`docs/.vitepress/config.ts` 的 sidebar、`docs/components/index.md` 三处登记一致。
+CI 会重跑一遍并要求零 diff，所以生成结果要一起提交。
+
+两份手写文档的分工：
+
+| 位置 | 内容 | 读者 |
+|------|------|------|
+| `packages/<pkg>/README.md` | 一句话介绍、安装、最小示例、`## API`（生成）、`## 类型定义`（可选，生成） | npm 页面 |
+| `docs/components/<pkg>.md` | 何时使用、可交互演示、主题变量、最佳实践、`## API`（生成）、`## 类型定义`（可选，生成） | 文档站 |
+
+同一段说明只写一处，不要把教程复制进 README；类型定义段只放标题，内容由管线填。
+新建文档页照 `docs/components/button.md` 的结构：
 
 ```markdown
-<!-- docs/components/component.md -->
+---
+title: Component 组件名
+outline: deep
+---
+
+<script setup>
+import { Component } from '@aix/component'
+</script>
+
 # Component 组件名
 
-组件简介和使用场景。
+## 何时使用
 
-## 基础用法
-
-\`\`\`vue
-<template>
-  <Component size="medium">内容</Component>
-</template>
-\`\`\`
+## 代码演示
 
 ## API
-
-### Props
-
-| 属性 | 说明 | 类型 | 默认值 |
-|------|------|------|--------|
-| size | 尺寸 | `'small' \| 'medium' \| 'large'` | `'medium'` |
-
-### Events
-
-| 事件名 | 说明 | 参数 |
-|--------|------|------|
-| change | 值改变时触发 | `(value: string) => void` |
-
-### Slots
-
-| 插槽名 | 说明 |
-|--------|------|
-| default | 默认内容 |
 ```
 
 ### 6. 提交代码

@@ -1,5 +1,11 @@
 # @aix/mcp-server
 
+## 0.0.6
+
+### Patch Changes
+
+- 重新提取组件与工具包索引
+
 ## 0.0.5
 
 ### Patch Changes

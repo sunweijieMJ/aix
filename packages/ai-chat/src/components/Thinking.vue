@@ -48,6 +48,7 @@ export interface ThinkingProps {
 </script>
 
 <script setup lang="ts">
+/** 深度思考折叠面板：承载模型的推理过程文本，标题 / 图标 / 箭头 / 正文均可替换。 */
 import { useNamespace } from '@aix/hooks';
 import { ref, watch } from 'vue';
 import { useAiChatLocale } from '../composables/useAiChatLocale';

@@ -142,29 +142,57 @@ export function validateConfigLogic(config: VisualTestConfig): void {
     warnings.push(`⚠️  No test targets defined. Add targets to 'targets' array.`);
   }
 
-  // 5. 多视口 + 本地基准图冲突检测
-  if (config.screenshot.viewports.length > 0 && config.baseline.provider === 'local') {
-    const localBaselineTargets = config.targets.filter((t) =>
-      t.variants.some((v) => typeof v.baseline === 'string'),
+  // 5. 多视口 + Figma 结构化基线未按 viewport 区分
+  if (config.screenshot.viewports.length > 0) {
+    const sharedFigmaVariants = config.targets.flatMap((t) =>
+      t.variants.filter(
+        (v) =>
+          typeof v.baseline === 'object' && v.baseline.type !== 'local' && !v.baseline.perViewport,
+      ),
     );
-    if (localBaselineTargets.length > 0) {
+    if (sharedFigmaVariants.length > 0) {
       warnings.push(
-        `⚠️  Global viewports (${config.screenshot.viewports.length}) configured with local baselines.\n` +
-          `   Each viewport variant will share the same baseline source, which may cause size mismatches.\n` +
-          `   Consider providing viewport-specific baselines or using 'figma-mcp' provider.`,
+        `⚠️  ${sharedFigmaVariants.length} Figma baseline(s) are shared across ${config.screenshot.viewports.length} viewports.\n` +
+          `   A desktop frame compared against a mobile screenshot will always fail.\n` +
+          `   Set 'baseline.perViewport: { <viewportName>: <nodeId> }' on those variants.`,
       );
     }
   }
 
+  // 6. 已废弃的 figma-mcp provider
+  const usesMcp =
+    config.baseline.provider === 'figma-mcp' ||
+    config.targets.some((t) =>
+      t.variants.some((v) => typeof v.baseline === 'object' && v.baseline.type === 'figma-mcp'),
+    );
+  if (usesMcp) {
+    warnings.push(
+      `⚠️  'figma-mcp' baseline provider is deprecated. Switch to 'figma-api' (Figma REST API).`,
+    );
+  }
+
   // 7. 基准图提供器与目标配置冲突
   const figmaVariants = config.targets.flatMap((t) =>
-    t.variants.filter((v) => typeof v.baseline === 'object' && v.baseline.type === 'figma-mcp'),
+    t.variants.filter((v) => typeof v.baseline === 'object' && v.baseline.type.startsWith('figma')),
   );
 
   if (figmaVariants.length > 0 && config.baseline.provider === 'local') {
     warnings.push(
       `⚠️  Found ${figmaVariants.length} Figma baseline(s) but global provider is 'local'.\n` +
-        `   Consider setting 'baseline.provider' to 'figma-mcp'.`,
+        `   Consider setting 'baseline.provider' to 'figma-api'.`,
+    );
+  }
+
+  // 8. Figma provider 缺少 token 提示（不阻断：环境变量可能在运行时注入）
+  if (
+    (config.baseline.provider === 'figma-api' || figmaVariants.length > 0) &&
+    !config.baseline.figma?.accessToken &&
+    !process.env.FIGMA_TOKEN &&
+    !process.env.FIGMA_ACCESS_TOKEN
+  ) {
+    warnings.push(
+      `⚠️  Figma baselines configured but no access token found.\n` +
+        `   Set FIGMA_TOKEN env or 'baseline.figma.accessToken'.`,
     );
   }
 

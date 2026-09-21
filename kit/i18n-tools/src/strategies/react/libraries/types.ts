@@ -67,14 +67,15 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
   generateHOCWrapper(componentName: string): string;
 
   /**
-   * 获取需要从包中导入的命名列表
-   * 根据实际使用的上下文决定导入哪些
+   * 获取需要从包中导入的命名列表，按「值 / 类型」分组。
+   *
+   * types 组（WithTranslation / WrappedComponentProps）必须以 `import type` 单独注入：
+   * 作为值导入在 verbatimModuleSyntax 下报 TS1484。restore 侧摘除导入时两组合并使用。
    */
-  getImportSpecifiers(usage: {
-    hasJsxComponent: boolean;
-    hasHook: boolean;
-    hasHOC: boolean;
-  }): string[];
+  getImportSpecifiers(usage: { hasJsxComponent: boolean; hasHook: boolean; hasHOC: boolean }): {
+    values: string[];
+    types: string[];
+  };
 
   /**
    * 生成非组件上下文的全局函数声明

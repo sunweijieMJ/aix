@@ -21,6 +21,13 @@ pnpm add @aix/audio
 npm install @aix/audio
 ```
 
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/audio/style';
+import '@aix/theme/style';
+```
+
 ## 快速开始
 
 ### 统一入口：`useSpeech`
@@ -341,24 +348,7 @@ const waveformData = [0.2, 0.5, 0.8, 0.3, 0.6, 0.9, 0.4]; // 0-1 归一化
 </script>
 ```
 
-**Props**
-
-| 属性名 | 类型 | 默认值 | 必填 | 说明 |
-|--------|------|--------|:----:|------|
-| `src` | `string \| Blob` | - | ✅ | 音频来源（URL 或 Blob） |
-| `waveform` | `number[]` | `[]` | - | 波形数据（0-1 归一化），由 `useWaveform.fullSnapshot()` 获取 |
-| `showWaveform` | `boolean` | `true` | - | 是否显示波形 |
-| `autoplay` | `boolean` | `false` | - | 是否自动播放 |
-
-**Events**
-
-| 事件名 | 参数 | 说明 |
-|--------|------|------|
-| `play` | - | 开始播放 |
-| `pause` | - | 暂停播放 |
-| `ended` | - | 播放结束 |
-| `timeupdate` | `number` | 播放进度更新，返回当前时间（秒） |
-| `error` | `Error` | 加载或播放失败（含自动播放被浏览器拦截） |
+Props / Events 见下方「API」段。
 
 **无障碍**
 
@@ -394,18 +384,7 @@ import { WaveformCanvas } from '@aix/audio';
 </script>
 ```
 
-**Props**
-
-| 属性名 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `data` | `number[]` | `[]` | 波形数据点（0-1 归一化） |
-| `progress` | `number` | `0` | 播放进度（0-1），控制激活颜色的覆盖范围 |
-| `width` | `number` | `0` | 画布宽度（px），`0` 表示自适应父容器 |
-| `height` | `number` | `32` | 画布高度（px） |
-| `barWidth` | `number` | `2` | 柱宽（px） |
-| `barGap` | `number` | `4` | 柱间间距（px） |
-| `activeColor` | `string` | `var(--aix-colorPrimary)` | 已播放部分颜色 |
-| `inactiveColor` | `string` | `var(--aix-colorFillSecondary)` | 未播放部分颜色 |
+Props / Events 见下方「API」段。
 
 ---
 
@@ -628,73 +607,251 @@ app.mount('#app');
 
 ## 主题定制
 
-组件暴露以下 CSS 变量，可在业务侧覆盖：
+AudioPlayer 暴露以下 CSS 变量。默认值是一条回退链——先读组件级变量，
+没设置就读 `@aix/theme` 的语义 token，token 也缺失时才落到写死的兜底色。
+也就是说**不覆盖任何东西时，它已经跟着主题走**，切换明暗主题会自动联动。
+
+| 变量 | 回退到 | 兜底色 | 用途 |
+|------|--------|--------|------|
+| `--aix-audio-player-btn-bg` | `--aix-colorPrimary` | `#1677ff` | 播放按钮背景 |
+| `--aix-audio-player-track-bg` | `--aix-colorFillTertiary` | `#f0f0f0` | 进度条轨道背景 |
+| `--aix-audio-player-progress-bg` | `--aix-colorPrimary` | `#1677ff` | 进度条已播放部分 |
+| `--aix-audio-player-time-color` | `--aix-colorTextTertiary` | `#00000073` | 时间文字颜色 |
+
+只有需要让播放器脱离主题、单独换色时才覆盖，优先写主题 token 而不是色值：
 
 ```css
 :root {
-  /* AudioPlayer 按钮背景色，默认读取 --aix-colorPrimary */
-  --aix-audio-player-btn-bg: #1677ff;
-  /* 进度条轨道背景色 */
-  --aix-audio-player-track-bg: #f0f0f0;
-  /* 进度条激活色 */
-  --aix-audio-player-progress-bg: #1677ff;
-  /* 时间文字颜色 */
-  --aix-audio-player-time-color: rgba(0, 0, 0, 0.45);
+  /* 推荐：指向另一个语义 token，仍然跟随明暗主题 */
+  --aix-audio-player-btn-bg: var(--aix-colorSuccess);
+  --aix-audio-player-progress-bg: var(--aix-colorSuccess);
 }
 ```
 
 ---
 
+## API
+
+**WaveformCanvas** — WaveformCanvas - 波形可视化组件
+接收归一化波形数据点（0-1），用 Canvas 绘制条形波形
+样式通过 CSS Variables 完全暴露，消费方可覆盖
+
+### WaveformCanvas Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `data` | `number[]` | `[]` | - | 波形数据点（0-1 归一化） |
+| `progress` | `number` | `0` | - | 播放进度（0-1） |
+| `width` | `number` | `0` | - | 画布宽度，0 表示自适应父容器 |
+| `height` | `number` | `32` | - | 画布高度（px） |
+| `barGap` | `number` | `4` | - | 柱间间距（px） |
+| `barWidth` | `number` | `2` | - | 柱宽（px） |
+| `inactiveColor` | `string` | `'var(--aix-waveform-inactive, var(--aix-colorTextQuaternary, #c9cdd4))'` | - | 未激活颜色（支持 CSS 变量语法） |
+| `activeColor` | `string` | `'var(--aix-waveform-active, var(--aix-colorPrimary, #1677ff))'` | - | 激活颜色（支持 CSS 变量语法） |
+
+---
+
+**AudioPlayer** — AudioPlayer - 轻量音频播放器组件
+支持波形可视化和进度控制，样式通过 CSS Variables 完全暴露
+
+### AudioPlayer Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `src` | `string \| Blob` | - | ✅ | 音频 URL 或 Blob |
+| `waveform` | `number[]` | `[]` | - | 波形数据点（0-1 归一化），为空则不画波形 |
+| `showWaveform` | `boolean` | `true` | - | 是否显示波形，默认 true |
+| `autoplay` | `boolean` | `false` | - | 是否自动播放，默认 false |
+
+### AudioPlayer Events
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `play` | - | 开始播放 |
+| `pause` | - | 暂停 |
+| `ended` | - | 播放结束 |
+| `timeupdate` | `time: number` | 播放进度更新，参数为当前时间（秒） |
+| `error` | `error: Error` | 加载或播放失败（含自动播放被浏览器拦截） |
+
 ## 类型定义
 
 ```typescript
-// ASR 状态机
-type ASRState = 'idle' | 'connecting' | 'ready' | 'recording' | 'paused' | 'stopped' | 'error' | 'reconnecting';
+/** ASR 状态机 */
+export type ASRState =
+  | 'idle' // 空闲
+  | 'connecting' // 连接中
+  | 'ready' // 已连接，准备录音
+  | 'recording' // 录音中
+  | 'paused' // 已暂停
+  | 'stopped' // 已停止
+  | 'error' // 错误
+  | 'reconnecting';
 
-// TTS 状态机
-type TTSState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
+/** ASR 识别结果 */
+export interface ASRResult {
+  /** 识别文本 */
+  text: string;
+  /** 是否最终结果（false = 中间结果） */
+  isFinal: boolean;
+  /** 置信度 0-1 */
+  confidence?: number;
+  /** 时间戳 */
+  timestamp?: number;
+}
 
-// ASR 配置
-interface ASROptions {
+/** ASR 鉴权配置 */
+export interface ASRAuthConfig {
+  /** 代理模式 */
+  mode: 'token-proxy' | 'ws-proxy' | 'direct';
+  /** Token 代理端点（mode=token-proxy，后端签名后返回 wsUrl） */
+  tokenEndpoint?: string;
+  /** WebSocket 代理端点（mode=ws-proxy，全链路透传） */
+  wsEndpoint?: string;
+  /** 直连密钥（mode=direct） */
+  appKey?: string;
+  appSecret?: string;
+  /**
+   * 直接传入的 Token（aliyun 直连模式）
+   * 由外部调用业务层 getAliToken 后传入，适配器本身不依赖 API 层
+   */
+  token?: string;
+}
+
+/** ASR 配置选项 */
+export interface ASROptions {
+  /** 供应商 */
   provider: 'browser' | 'iflytek' | 'aliyun' | 'tencent' | 'proxy';
+  /** 鉴权配置 */
   auth?: ASRAuthConfig;
-  sampleRate?: number;       // 默认 16000
-  language?: string;         // 默认 zh-CN
-  enableInterimResults?: boolean; // 默认 true
+  /** 采样率（Hz），默认 16000 */
+  sampleRate?: number;
+  /** 语言代码，默认 zh-CN */
+  language?: string;
+  /** 是否启用中间结果，默认 true */
+  enableInterimResults?: boolean;
+  /**
+   * 最大静音时长（秒）
+   * 配置后 `useSpeech` 会启用 VAD 静音检测，持续静音达到该时长自动停止录音。
+   * 不配置则不启用检测。
+   */
   maxSilenceDuration?: number;
 }
 
-// TTS 供应商配置
-interface TTSProviderOptions {
-  provider: 'browser' | 'iflytek' | 'aliyun' | 'proxy';
-  endpoint?: string;       // proxy 模式 HTTP 端点
-  wsEndpoint?: string;     // aliyun WebSocket 代理地址
-  defaultVoice?: string;
-}
+/** TTS 状态机 */
+export type TTSState =
+  | 'idle' // 空闲
+  | 'loading' // 加载中
+  | 'playing' // 播放中
+  | 'paused' // 已暂停
+  | 'error';
 
-// TTS 播放选项
-interface TTSOptions {
+/** TTS 播放选项 */
+export interface TTSOptions {
+  /** 音色 */
   voice?: string;
-  rate?: number;    // 0.5-2
-  pitch?: number;   // 0.5-2
-  volume?: number;  // 0-1
+  /** 语速（0.5-2） */
+  rate?: number;
+  /** 音调（0.5-2） */
+  pitch?: number;
+  /** 音量（0-1） */
+  volume?: number;
 }
 
-// 录音结果
-interface RecordingResult {
+/** TTS 供应商配置 */
+export interface TTSProviderOptions {
+  /** 供应商 */
+  provider: 'browser' | 'iflytek' | 'aliyun' | 'proxy';
+  /** 后端端点（proxy 模式：HTTP REST 接口） */
+  endpoint?: string;
+  /**
+   * 阿里云 WebSocket TTS 专用：后端 WebSocket 代理地址
+   * provider='aliyun' 时必填，不在组件库中硬编码
+   */
+  wsEndpoint?: string;
+  /** 默认音色 */
+  defaultVoice?: string;
+  /** 阿里云 TTS：用户 nid */
+  userNid?: string;
+  /** 阿里云 TTS：助手 nid */
+  assistantNid?: string;
+  /** 阿里云 TTS：音色类型 */
+  ttsVoiceType?: string;
+}
+
+/** 录音配置 */
+export interface RecorderConfig {
+  /** 采样率（Hz），默认 16000 */
+  sampleRate?: number;
+  /** 声道数，默认 1 */
+  channels?: number;
+  /** 最大录音时长（秒），默认 60。达到后自动停止并触发 onMaxDuration */
+  maxDuration?: number;
+  /** MIME 类型，空字符串时自动检测 */
+  mimeType?: string;
+}
+
+/** 录音结果 */
+export interface RecordingResult {
+  /** 音频 Blob */
   blob: Blob;
-  url: string;        // 临时 ObjectURL，页面关闭后失效
-  duration: number;   // 录音时长（秒）
-  waveform: number[]; // 波形数据（0-1）
+  /** 音频临时 URL（仅当前会话有效，持久化请替换为 OSS 地址） */
+  url: string;
+  /** 时长（秒） */
+  duration: number;
+  /** 波形数据（0-1 归一化，由外部波形分析器填充） */
+  waveform: number[];
+  /** MIME 类型 */
   mimeType: string;
 }
 
-// Speech SDK 顶层配置
-interface SpeechConfig {
+/** 波形数据 */
+export interface WaveformData {
+  /** 数据点（0-1） */
+  points: number[];
+  /** 当前进度（0-1） */
+  progress: number;
+  /** 是否播放中 */
+  isPlaying: boolean;
+}
+
+/** VAD 配置 */
+export interface VADConfig {
+  /** 能量阈值（0-100），默认 10 */
+  threshold?: number;
+  /** 静音判定时长（毫秒），默认 1500 */
+  silenceDuration?: number;
+  /** 采样间隔（毫秒），默认 100 */
+  sampleInterval?: number;
+}
+
+/** VAD 事件 */
+export interface VADEvent {
+  /** 是否静音 */
+  isSilent: boolean;
+  /** 当前能量值（0-100） */
+  energy: number;
+  /** 时间戳 */
+  timestamp: number;
+}
+
+/** Speech SDK 完整配置 */
+export interface SpeechConfig {
+  /** ASR 配置 */
   asr?: ASROptions;
+  /** TTS 配置 */
   tts?: TTSProviderOptions;
+  /** 录音配置 */
+  recorder?: RecorderConfig;
+  /** VAD 静音检测配置（需同时设置 asr.maxSilenceDuration 才会启用） */
+  vad?: VADConfig;
+  /**
+   * 降级策略：供应商连接失败时自动切换到浏览器原生实现
+   * 降级后 `didFallback` 会置为 true
+   */
   fallback?: {
+    /** ASR 失败时降级到浏览器原生 */
     asr?: 'browser';
+    /** TTS 失败时降级到浏览器原生 */
     tts?: 'browser';
   };
 }

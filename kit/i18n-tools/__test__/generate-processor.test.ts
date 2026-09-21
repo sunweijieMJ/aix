@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { VueAdapter } from '../src/adapters/VueAdapter';
+import { InteractiveUtils } from '../src/utils/interactive-utils';
 import { LanguageFileManager } from '../src/utils/language-file-manager';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
@@ -242,7 +243,7 @@ describe('GenerateProcessor 编排层', () => {
     // 真正驱动 written[] 的逐文件回滚——作为 rollbackWritten 抽取重构的特征护栏。
     writeSource('A.vue', `<template><div>提交</div></template>\n`);
     writeSource('B.vue', `<template><div>取消</div></template>\n`);
-    vi.spyOn(LanguageFileManager, 'updateLanguageFiles').mockImplementation(() => {
+    vi.spyOn(LanguageFileManager.prototype, 'updateLanguageFiles').mockImplementation(() => {
       throw new Error('disk boom');
     });
 
@@ -321,6 +322,63 @@ describe('GenerateProcessor 编排层', () => {
     ).rejects.toThrow(/语言文件损坏/);
 
     expect(fs.readdirSync(planRoot).some((name) => name.startsWith('generate-'))).toBe(false);
+  });
+
+  /**
+   * 覆盖率快照进 plan（P1）：`--dry-run` 打完整覆盖率面板，但 apply 回放此前只打
+   * 「N 文件、M 新 key」，`--coverage-threshold` / ci.coverageThreshold 在两段式
+   * 工作流里恒不生效（CI 卡点被架空）。dry-run 把账本写进 plan，apply 回放同款面板
+   * 并把 metric 写回 report 供 CLI 判定阈值。
+   */
+  describe('plan 覆盖率快照与 apply 回放', () => {
+    /** 一处可自动转换 + 一处需人工的 HTML 模板 → 覆盖率 50%，且 plan 非空 */
+    const MIXED_FILE =
+      "<script setup>\nconst label = '提交';\nconst html = `<div>提示</div>`;\n</script>\n";
+
+    it('dry-run plan 携带覆盖率账本（metric + 新增 key + 待人工分类计数）', async () => {
+      const file = writeSource('PlanCoverage.vue', MIXED_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      expect(plan.coverage.metric).toMatchObject({
+        totalChineseSegments: 2,
+        newlyGenerated: 1,
+        skipped: 1,
+        coverageRate: 0.5,
+      });
+      expect(plan.coverage.newKeys).toBe(1);
+      expect(plan.coverage.manualByCategory).toEqual({ 'html-in-template': 1 });
+    });
+
+    it('apply-plan 回放覆盖率面板并透出 getCoverage（CI 阈值卡点据此判定）', async () => {
+      const file = writeSource('ApplyCoverage.vue', MIXED_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      vi.clearAllMocks();
+
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+      await proc.applyFromPlan(planJson);
+
+      expect(proc.getCoverage()).toMatchObject({ coverageRate: 0.5, skipped: 1 });
+      expect(LoggerUtils.info).toHaveBeenCalledWith(expect.stringContaining('本次国际化覆盖率'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('覆盖率待人工 1 条'));
+    });
+
+    it('旧版 plan 无 coverage → 照常回放，只提示跳过阈值判定', async () => {
+      const file = writeSource('LegacyCoverage.vue', MIXED_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      delete plan.coverage;
+      fs.writeFileSync(planJson, JSON.stringify(plan), 'utf-8');
+
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+      await proc.applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\bt\('/);
+      expect(proc.getCoverage()).toBeUndefined();
+      expect(LoggerUtils.info).toHaveBeenCalledWith(
+        expect.stringContaining('旧版 plan 未记录覆盖率信息'),
+      );
+    });
   });
 
   it('apply-plan happy path：回放 plan → 源码替换 + 语言文件写入（不触 LLM/AST）', async () => {
@@ -411,6 +469,242 @@ describe('GenerateProcessor 编排层', () => {
     ).rejects.toThrow(/根目录/);
 
     expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+  });
+
+  /**
+   * localeDelta 漂移守卫（审计 P2）：指纹只盖源码文件，dry-run 与 apply 之间若有人改了
+   * 将被 delta 覆盖的 key 值，apply 会静默把旧值写回去。plan 新增 localeBaseline 快照
+   * （只记「将被覆盖的既有 key」），apply 时比对当前 locale。
+   */
+  describe('apply-plan locale 漂移守卫', () => {
+    /** 产一份「localeDelta 会覆盖既有 key」的 plan，返回 plan.json 路径与该 key */
+    const makePlanOverExistingKey = async (
+      file: string,
+    ): Promise<{ planJson: string; key: string }> => {
+      // 首轮 dry-run 只为拿到本轮生成的 key（本地 ID 生成确定性）
+      const first = await makePlan(buildConfig(rootDir), file);
+      const key = Object.keys(JSON.parse(fs.readFileSync(first, 'utf-8')).localeDelta)[0]!;
+      fs.rmSync(planRoot, { recursive: true, force: true });
+      fs.mkdirSync(planRoot, { recursive: true });
+      // 模拟「该 key 已由别的分支写进 locale」——第二轮 plan 的 localeBaseline 会记下它
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交' }), 'utf-8');
+      return { planJson: await makePlan(buildConfig(rootDir), file), key };
+    };
+
+    it('plan 记录 localeBaseline：只含将被覆盖的既有 key，新 key 不记', async () => {
+      const file = writeSource('Baseline.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      expect(plan.localeBaseline).toEqual({ [key]: '提交' });
+      expect(plan.summary.newKeys).toBe(0);
+    });
+
+    it('新 key 不进 localeBaseline（控制体积）', async () => {
+      const file = writeSource('NewKeyOnly.vue', VUE_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+
+      expect(JSON.parse(fs.readFileSync(planJson, 'utf-8')).localeBaseline).toEqual({});
+    });
+
+    it('值漂移 + 非交互 → 拒绝 apply，源码与 locale 均不变', async () => {
+      const file = writeSource('Drift.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      // dry-run 之后有人改了该 key 的文案
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+
+      await expect(
+        new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson, {
+          keepPlan: true,
+        }),
+      ).rejects.toThrow(/拒绝 apply/);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(readZh()).toEqual({ [key]: '提交订单' });
+    });
+
+    it('key 被删除同样算漂移 → 拒绝 apply', async () => {
+      const file = writeSource('DriftDeleted.vue', VUE_FILE);
+      const { planJson } = await makePlanOverExistingKey(file);
+      fs.writeFileSync(zhPath(), JSON.stringify({}), 'utf-8');
+
+      await expect(
+        new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson, {
+          keepPlan: true,
+        }),
+      ).rejects.toThrow(/拒绝 apply/);
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+    });
+
+    it('无漂移 → 正常 apply', async () => {
+      const file = writeSource('NoDrift.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+      expect(readZh()[key]).toBe('提交');
+    });
+
+    it('旧 plan 无 localeBaseline → 跳过检查照常 apply（向后兼容）', async () => {
+      const file = writeSource('LegacyPlan.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      delete plan.localeBaseline;
+      fs.writeFileSync(planJson, JSON.stringify(plan), 'utf-8');
+      // 即便此时 locale 已漂移，旧 plan 也只提示、不拦
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+
+      await new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+      expect(readZh()[key]).toBe('提交');
+      expect(LoggerUtils.info).toHaveBeenCalledWith(
+        expect.stringContaining('跳过 locale 漂移检查'),
+      );
+    });
+
+    it('交互模式：确认后继续覆盖', async () => {
+      const file = writeSource('DriftConfirm.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(true);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).applyFromPlan(planJson);
+
+      expect(readZh()[key]).toBe('提交');
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+    });
+
+    /**
+     * 回归（四轮审计 A2）：baseline 只快照「dry-run 当时已存在的 key」，dry-run 之后才被
+     * 别人新建的同名 key 不在 baseline 里，只比对 baseline 会让 apply 静默覆盖它。
+     */
+    it('dry-run 后才出现的同名 key（不在 baseline）值不同 → 同样算漂移并拒绝 apply', async () => {
+      const file = writeSource('DriftNewKey.vue', VUE_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      const key = Object.keys(plan.localeDelta)[0]!;
+      expect(plan.localeBaseline).toEqual({}); // 生成 plan 时该 key 尚不存在
+      // dry-run 之后别的分支用不同文案建了同一个 key
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单（已改文案）' }), 'utf-8');
+
+      await expect(
+        new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson, {
+          keepPlan: true,
+        }),
+      ).rejects.toThrow(/拒绝 apply/);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(readZh()).toEqual({ [key]: '提交订单（已改文案）' });
+    });
+
+    it('dry-run 后出现的同名 key 值与 plan 一致 → 不算漂移，正常 apply', async () => {
+      const file = writeSource('SameValueNewKey.vue', VUE_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      const key = Object.keys(plan.localeDelta)[0]!;
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: plan.localeDelta[key] }), 'utf-8');
+
+      await new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+    });
+
+    it('交互模式：选否 → 取消，零改动且收尾不打成功', async () => {
+      const file = writeSource('DriftCancel.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+      // 只看本次 apply 的收尾日志：上面两轮 dry-run 也会打「代码生成完成」
+      vi.clearAllMocks();
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(readZh()).toEqual({ [key]: '提交订单' });
+      // plan 目录保留，供用户重新决策
+      expect(fs.existsSync(planJson)).toBe(true);
+      expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('代码生成完成'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('已取消'));
+    });
+  });
+
+  /**
+   * 取消分支必须置 cancelled 位（FileProcessor 契约）：否则 executeWithLifecycle
+   * 收尾照打「✅ 代码生成完成」，取消的运行被人与 CI 误判为已改写源码。
+   */
+  describe('交互取消收尾', () => {
+    it('目录模式「是否继续分析这些文件？」选否 → 打已取消、零改动', async () => {
+      const file = writeSource('CancelDir.vue', VUE_FILE);
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).execute(srcDir, true);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(fs.existsSync(zhPath())).toBe(false);
+      expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('代码生成完成'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('代码生成已取消'));
+    });
+
+    it('「是否应用这些转换？」选否 → 打已取消、零改动', async () => {
+      const file = writeSource('CancelApply.vue', VUE_FILE);
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).execute(file, true);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(fs.existsSync(zhPath())).toBe(false);
+      expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('代码生成完成'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('代码生成已取消'));
+    });
+
+    /**
+     * A-3：取消的运行仍照常结算覆盖率（反映本次扫描结果，与是否落盘无关），但 CLI 的
+     * --coverage-threshold 卡点必须据 isCancelled() 跳过——否则用户主动放弃会被判成
+     * CI 失败，且失败文案（「改动已写入源码与语言文件…请用 git 回滚」）与事实相反。
+     */
+    it('A-3: 取消后 isCancelled() 为真，覆盖率仍结算（CLI 据此跳过阈值卡点）', async () => {
+      const file = writeSource('CancelCoverage.vue', VUE_FILE);
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, true);
+      await proc.execute(file, true);
+
+      expect(proc.isCancelled()).toBe(true);
+      expect(proc.getCoverage()).toBeTruthy();
+      expect(fs.existsSync(zhPath())).toBe(false);
+    });
+
+    it('A-3: 正常落盘的运行 isCancelled() 为假（无回归）', async () => {
+      const file = writeSource('NoCancel.vue', VUE_FILE);
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+      await proc.execute(file, true);
+
+      expect(proc.isCancelled()).toBe(false);
+      expect(proc.getCoverage()).toBeTruthy();
+    });
+  });
+
+  /**
+   * A-1：dry-run 写出的 plan 必须带 transformedHash，且 apply 前会校验 `sources/` 副本
+   * 未被外部改过——否则被改坏的副本会被当「已审过的代码」写回源文件，locale 却照常更新。
+   */
+  it('A-1: dry-run 产出的 plan 带 transformedHash；sources/ 被改 → apply 拒绝且零改动', async () => {
+    const file = writeSource('PlanHash.vue', VUE_FILE);
+    const planJson = await makePlan(buildConfig(rootDir), file);
+    const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+    expect(plan.entries[0].transformedHash).toMatch(/^[0-9a-f]{64}$/);
+
+    const copy = path.join(path.dirname(planJson), plan.entries[0].transformedCodeRef);
+    fs.writeFileSync(copy, '<template><div>被改坏了</div></template>\n', 'utf-8');
+
+    await expect(
+      new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson),
+    ).rejects.toThrow(/转换后源码与写 plan 时不一致/);
+
+    expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+    expect(fs.existsSync(zhPath())).toBe(false);
   });
 
   it('覆盖率：源码已存在 $t() 调用点计入 alreadyI18n', async () => {

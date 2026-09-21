@@ -11,11 +11,6 @@ export class ConcurrencyController {
     this.maxConcurrency = maxConcurrency;
   }
 
-  /**
-   * 添加任务到队列
-   * @param task - 异步任务函数
-   * @returns Promise
-   */
   async add<T>(task: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push(async () => {

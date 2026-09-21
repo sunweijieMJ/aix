@@ -19,6 +19,7 @@
         @click="emit('select', item)"
       >
         <component :is="item.icon" v-if="item.icon" :class="ns.e('icon')" />
+        <!-- @slot 单条建议的内容，作用域 item；默认显示 label 或 text -->
         <slot :item="item">{{ item.label ?? item.text }}</slot>
       </button>
     </template>
@@ -29,15 +30,20 @@
 export interface SuggestionsProps {
   /** 建议项（已由上层归一化并截断） */
   items: SuggestionItem[];
-  /** 建议生成中：为 true 时渲染占位胶囊，忽略 items，默认 false */
+  /**
+   * 建议生成中：为 true 时渲染占位胶囊，忽略 items
+   * @default false
+   */
   loading?: boolean;
 }
 export interface SuggestionsEmits {
+  /** 点击某条建议 */
   (e: 'select', item: SuggestionItem): void;
 }
 </script>
 
 <script setup lang="ts">
+/** 追问建议：一行可点的候选问题，加载期间出骨架屏。 */
 import { useNamespace } from '@aix/hooks';
 import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { SuggestionItem } from '../types';

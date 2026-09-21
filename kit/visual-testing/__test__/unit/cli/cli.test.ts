@@ -10,21 +10,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Command } from 'commander';
 
-const { registerInitCommand, registerSyncCommand, registerTestCommand } = vi.hoisted(() => ({
-  registerInitCommand: vi.fn(),
-  registerSyncCommand: vi.fn(),
-  // 注册一个 action 会抛错的 test 命令，模拟"配置加载失败"等逃逸异常
-  registerTestCommand: vi.fn((program: Command) => {
-    program.command('test').action(async () => {
-      throw new Error('config load failed');
-    });
-  }),
-}));
+const { registerInitCommand, registerSyncCommand, registerTestCommand, registerFidelityCommand } =
+  vi.hoisted(() => ({
+    registerInitCommand: vi.fn(),
+    registerSyncCommand: vi.fn(),
+    registerFidelityCommand: vi.fn(),
+    // 注册一个 action 会抛错的 test 命令，模拟"配置加载失败"等逃逸异常
+    registerTestCommand: vi.fn((program: Command) => {
+      program.command('test').action(async () => {
+        throw new Error('config load failed');
+      });
+    }),
+  }));
 
 vi.mock('../../../src/cli/commands', () => ({
   registerInitCommand,
   registerSyncCommand,
   registerTestCommand,
+  registerFidelityCommand,
 }));
 
 /**

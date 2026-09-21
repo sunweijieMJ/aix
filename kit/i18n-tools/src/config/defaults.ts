@@ -38,6 +38,9 @@ export const DEFAULT_IO: Required<Omit<IoConfig, 'exportDir' | 'customDir'>> = {
     'dist',
     'build',
     '.git',
+    // 工具自身的 plan 目录：sources/ 下是转换后的源码副本，被当源码处理会污染
+    // restore（把副本还原成未国际化代码）与覆盖率统计。
+    '.i18n-tools',
     'public',
     '*.config.ts',
     '*.config.js',
@@ -193,8 +196,9 @@ export const DEFAULT_GLOSSARY: Required<Omit<GlossaryConfig, 'file'>> = {
 /**
  * 默认 LLM 任务配置。
  *
- * idGeneration / translation 各自独立维护一份默认，避免一处改动影响另一处。
- * 当前两者默认值相同；保留两个常量是为了将来差异化（如翻译用更大并发）。
+ * idGeneration 与 translation 共用这一份默认：loader 的 resolveTask 对两个任务分别做
+ * 「用户任务配置 ?? llm.shared ?? 本常量」的逐字段兜底，故改这里会同时影响两个任务。
+ * 将来若要差异化（如翻译用更大并发），需另立常量并在 resolveTask 里按 context 分派。
  */
 export const DEFAULT_LLM_TASK: Required<
   Omit<LLMTaskConfig, 'apiKey' | 'baseURL' | 'model' | 'headers' | 'prompt'>

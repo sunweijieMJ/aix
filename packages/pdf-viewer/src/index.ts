@@ -20,7 +20,12 @@ export * from './composables';
 export * from './types';
 
 // 国际化
-export { locale, type PdfViewerLocaleText } from './locale';
+export {
+  locale as pdfViewerLocale,
+  zhCN as pdfViewerZhCN,
+  enUS as pdfViewerEnUS,
+  type PdfViewerLocaleText,
+} from './locale';
 
 // 常量
 export {

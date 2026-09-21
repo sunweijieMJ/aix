@@ -21,25 +21,31 @@ vi.spyOn(console, 'error').mockImplementation(() => {
 // ---------------【Mock LocalStorage】---------------
 const localStorageStore = new Map<string, string>();
 
-global.localStorage = {
-  getItem: vi.fn((key: string) => localStorageStore.get(key) ?? null),
-  setItem: vi.fn((key: string, value: string) => {
-    localStorageStore.set(key, value);
-  }),
-  removeItem: vi.fn((key: string) => {
-    localStorageStore.delete(key);
-  }),
-  clear: vi.fn(() => {
-    localStorageStore.clear();
-  }),
-  get length() {
-    return localStorageStore.size;
-  },
-  key: vi.fn((index: number) => {
-    const keys = Array.from(localStorageStore.keys());
-    return keys[index] ?? null;
-  }),
-} as unknown as Storage;
+// vitest 5 起 jsdom 全局以 accessor（只读 getter）形式注入 globalThis，
+// 直接 `global.localStorage = ...` 会抛 "has only a getter"，必须用 defineProperty 覆盖。
+Object.defineProperty(global, 'localStorage', {
+  configurable: true,
+  writable: true,
+  value: {
+    getItem: vi.fn((key: string) => localStorageStore.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      localStorageStore.set(key, value);
+    }),
+    removeItem: vi.fn((key: string) => {
+      localStorageStore.delete(key);
+    }),
+    clear: vi.fn(() => {
+      localStorageStore.clear();
+    }),
+    get length() {
+      return localStorageStore.size;
+    },
+    key: vi.fn((index: number) => {
+      const keys = Array.from(localStorageStore.keys());
+      return keys[index] ?? null;
+    }),
+  } as unknown as Storage,
+});
 
 // ---------------【jsdom 缺失的 DOM API 补丁】---------------
 // jsdom 未实现 document.elementFromPoint，tiptap / ProseMirror 的坐标定位会调用它而抛

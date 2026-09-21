@@ -2,7 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import {
+  applyReplacements,
+  findExactStringNode,
+  nodeMatchesExtractedOriginal,
+  parseSourceFile,
+} from '../../utils/ast-core';
+import { isInThisBindableScope } from '../../utils/ast-guards';
+import { createMessageWithOptions, filterLiterals } from '../../utils/message-shape';
+import { formatValuesMapping } from '../../utils/string-escape';
+import { vueExtras } from './extracted-extras';
+import { isHtmlTemplateLang, isStandaloneScriptPath, scriptFileNameOfLang } from './sfc-blocks';
 import type { ExtractedString } from '../../utils/types';
 import type {
   IComponentInjector,
@@ -10,26 +20,6 @@ import type {
   ITransformer,
 } from '../../adapters/FrameworkAdapter';
 import type { VueI18nLibrary } from './libraries';
-
-/**
- * 从 from 起在一行内查找 pattern，但跳过紧邻比较运算符(=== / !== / == / !=)的命中。
- * 那是提取端有意跳过的「比较操作数」字面量（与 VueTextExtractor.isComparisonOperand 对称）：
- * 替换它会让运行时用译文做比较、分支永不命中，且真正的展示分支反而残留硬编码。
- * 跳过比较操作数位置，继续找下一处（即展示分支）。
- *
- * 比较符可能在命中点**之前**（右操作数 `x === '中'`）或**之后**（左操作数 / Yoda 写法
- * `'中' === x`），两侧都要检测——只判一侧会漏掉 Yoda 写法，误把左操作数替换掉。
- */
-function indexOfSkippingComparison(line: string, pattern: string, from: number): number {
-  let i = line.indexOf(pattern, from);
-  while (i !== -1) {
-    const isRightOperand = /[=!]==?$/.test(line.slice(0, i).trimEnd());
-    const isLeftOperand = /^(==|!=)=?/.test(line.slice(i + pattern.length).trimStart());
-    if (!isRightOperand && !isLeftOperand) return i;
-    i = line.indexOf(pattern, i + 1);
-  }
-  return -1;
-}
 
 /**
  * Vue 代码转换器
@@ -109,12 +99,28 @@ export class VueTransformer implements ITransformer {
         { block: descriptor.scriptSetup, allowThisQualifier: false },
       ];
 
+      // 一条 script 字符串只能归属一个块。优先用提取端记下的块起点（绝对偏移）判定：
+      // `</script><script setup>` 写在同一行时，按行号区间判定会让边界行上的字符串同时
+      // 落进两个块 —— 同一区间被替换两次，第二次在已改写的内容上按旧行列换算位置，
+      // 抛出无线索的 ts Debug Failure。旧数据（无该字段）回落行号区间，且按顺序只认第一个
+      // 命中的块，保证「至多归属一个块」这一不变式与新路径一致。
+      const claimed = new Set<ExtractedString>();
+      const belongsTo = (
+        s: ExtractedString,
+        block: NonNullable<(typeof scriptBlocks)[number]['block']>,
+      ): boolean => {
+        const blockStart = vueExtras(s).scriptBlockStart;
+        if (blockStart !== undefined) return blockStart === block.loc.start.offset;
+        if (claimed.has(s)) return false;
+        const hit = s.line >= block.loc.start.line && s.line <= block.loc.end.line;
+        if (hit) claimed.add(s);
+        return hit;
+      };
+
       for (const { block, allowThisQualifier } of scriptBlocks) {
         if (!block) continue;
-        const blockStartLine = block.loc.start.line;
-        const blockEndLine = block.loc.end.line;
         const scriptStrings = fileStrings.filter(
-          (s) => s.context === 'script' && s.line >= blockStartLine && s.line <= blockEndLine,
+          (s) => s.context === 'script' && belongsTo(s, block),
         );
         if (scriptStrings.length === 0) continue;
 
@@ -123,6 +129,7 @@ export class VueTransformer implements ITransformer {
           block.loc.start.line - 1,
           scriptStrings,
           allowThisQualifier,
+          scriptFileNameOfLang(block.lang),
         );
         replacements.push({
           start: block.loc.start.offset,
@@ -131,13 +138,14 @@ export class VueTransformer implements ITransformer {
         });
       }
 
-      // 处理 template 部分（后处理，但先替换）
-      if (descriptor.template) {
+      // 处理 template 部分（后处理，但先替换）。非 HTML 模板（pug 等）提取端整块跳过，
+      // 正常不会有 template 字符串落到这里；显式守卫是为了挡住陈旧提取数据——按 HTML
+      // 偏移改写 pug 源码会把整块模板替换成一句 $t()，且不可还原。
+      if (descriptor.template && isHtmlTemplateLang(descriptor.template.lang)) {
         const templateStrings = fileStrings.filter((s) => s.context === 'template');
         if (templateStrings.length > 0) {
           const transformedTemplate = this.processTemplate(
             descriptor.template.content,
-            descriptor.template.loc.start.line - 1,
             templateStrings,
           );
           replacements.push({
@@ -158,15 +166,18 @@ export class VueTransformer implements ITransformer {
           transformedCode.substring(replacement.end);
       }
     }
-    // 处理纯 .ts 或 .js 文件
-    else if (ext === 'ts' || ext === 'js') {
+    // 处理独立脚本（.ts / .js / .tsx / .jsx）
+    else if (isStandaloneScriptPath(filePath)) {
       const scriptStrings = fileStrings.filter((s) => s.context === 'script');
       if (scriptStrings.length > 0) {
         transformedCode = this.processScript(
           sourceText,
           0, // 没有 template，从第 0 行开始
           scriptStrings,
-          false, // 纯 .ts/.js 走 import { t } from '@/plugins/locale' 路径，不用 this.$t
+          false, // 独立脚本走 import { t } from '@/plugins/locale' 路径，不用 this.$t
+          // 解析文件名用真实路径：tsx/jsx 必须按 JSX 解析，否则 `<div a="x">` 被当成类型断言，
+          // 与提取端（同样用真实路径）的 AST 对不上，定位必然失败。
+          filePath,
         );
       }
     }
@@ -178,406 +189,61 @@ export class VueTransformer implements ITransformer {
       filePath,
     );
 
-    // 只对 .vue 文件注入 Hook
+    // 只对 .vue 文件注入 Hook（filePath 按接口约定透传；Vue 侧内部一律按 SFC 分段，
+    // 不依赖它决定 ScriptKind）
     if (ext === 'vue') {
-      transformedCode = this.componentInjector.inject(transformedCode);
+      transformedCode = this.componentInjector.inject(transformedCode, filePath);
     }
 
     return transformedCode;
   }
 
   /**
-   * 处理 template 内容
-   * @param templateContent - template 内容
-   * @param lineOffset - template 起始行偏移
+   * 处理 template 内容：按提取端给出的绝对偏移做精确区间替换。
+   *
+   * Why 绝对偏移而非「行列 + indexOf」：按 (line, column) 定位到行再在行内 indexOf 原文，
+   * 必然要配一整套启发式补丁（引号感知搜索、比较操作数跳过、属性正则、邻行与跨行兜底），
+   * 且补丁之间还要排优先级；同行出现第二个相同字面量就会替换到错误的那一处（产出坏代码），
+   * 字面量距节点起始行较远时又会直接抛错、整个文件不再转换。compiler-dom 的 loc 是精确
+   * 区间，这些启发式一条都不需要。
+   *
+   * @param templateContent - template 内容（偏移的基准，必须与提取时同一份）
    * @param strings - template 中的字符串数组
    * @returns 转换后的 template 内容
    */
-  private processTemplate(
-    templateContent: string,
-    lineOffset: number,
-    strings: ExtractedString[],
-  ): string {
-    // 按位置倒序排列，从后往前替换
-    const sortedStrings = strings.sort((a, b) => {
-      const aLine = a.line - lineOffset - 1;
-      const bLine = b.line - lineOffset - 1;
-      if (aLine !== bLine) return bLine - aLine;
-      return b.column - a.column;
-    });
+  private processTemplate(templateContent: string, strings: ExtractedString[]): string {
+    const replacements: Array<{ start: number; end: number; replacement: string }> = [];
 
-    // 只拆一次行数组、循环内由 replaceInLines 原地修改、结束后 join 一次：
-    // 此前每个字符串都对整段 template split('\n') + join('\n')，O(条目数 × 模板长度)，
-    // 大 SFC 多文案时是可观的重复拷贝。倒序处理保证后续条目的 (line, column) 不受
-    // 已完成替换影响（多行兜底分支改变行数时也只影响其后的行）。
-    const lines = templateContent.split('\n');
+    for (const extracted of strings) {
+      const where = `${extracted.filePath}:${extracted.line}:${extracted.column}「${extracted.original}」`;
 
-    for (const extracted of sortedStrings) {
-      const replacement = this.generateTemplateReplacement(extracted);
-      const localLine = extracted.line - lineOffset - 1;
-      // @vue/compiler-dom 给的 column 是 1-based，replaceInLines 内部所有
-      // indexOf / 范围比较都按 0-based 处理，必须减 1。否则文本节点位于行末时，
-      // indexOf 会从下一字符起找不到原文，落入"全行重新搜索"的兜底分支，把同行
-      // 前面（如 v-tooltip 字符串字面量内部）出现的相同子串误替换。
-      const localColumn = extracted.column - 1;
+      // 提取端必须给出精确区间。缺失说明有提取路径漏填 startOffset/sourceSlice——
+      // 此时既不能猜也不能跳过（跳过 = locale 已写 key 而源码残留中文的孤儿键），中止。
+      if (extracted.startOffset === undefined || extracted.sourceSlice === undefined) {
+        throw new Error(`已提取文本缺少精确源码区间，已中止转换: ${where}`);
+      }
 
-      // 在 template 内容中查找并替换
-      const replaced = this.replaceInLines(
-        lines,
-        extracted.original,
-        replacement,
-        localLine,
-        localColumn,
-        extracted.templateContext,
-      );
-      if (!replaced) {
+      const start = extracted.startOffset;
+      const end = start + extracted.sourceSlice.length;
+      // 核对偏移仍指向提取时看到的原文。对不上意味着「提取与转换看到的不是同一份
+      // template」（源码被并发改动、或某条提取路径的偏移换算有 bug），此时任何替换
+      // 都会砍在半截语法上，故中止而不是退化搜索。这一道校验就是全部的防误替换机制：
+      // 区间精确到字符，不可能命中"同行另一处相同字面量"或"比较运算符的操作数"，
+      // 无需再叠加引号感知搜索、邻行兜底之类的启发式。
+      const actual = templateContent.slice(start, end);
+      if (actual !== extracted.sourceSlice) {
         throw new Error(
-          `无法定位已提取文本的模板节点，已中止转换: ${extracted.filePath}:${extracted.line}:${extracted.column}「${extracted.original}」`,
+          `已提取文本的源码区间与原文不符，已中止转换: ${where}\n` +
+            `  期望 [${start},${end}) = ${JSON.stringify(extracted.sourceSlice)}\n` +
+            `  实际 = ${JSON.stringify(actual)}`,
         );
       }
+
+      replacements.push({ start, end, replacement: this.generateTemplateReplacement(extracted) });
     }
 
-    // 返回转换后的 template 内容
-    return lines.join('\n');
-  }
-
-  /**
-   * 构造静态属性匹配正则：匹配整个 `attrName="value"`（含连字符属性名如
-   * `confirm-button-text`），并**容忍引号与值之间的首尾空白**。
-   *
-   * Why 容忍空白：extractFromAttributes 存入的 original 是 attr.value.content.trim()，
-   * 而源码里可能是 `title=" 确认"` / `title="\t确认"`。旧正则 `=["']确认["']` 要求引号
-   * 紧贴文本，padding 时失配 → chosen 为空 → 旧逻辑 fall through 到裸文本搜索，把
-   * `:title="$t(...)"` 插进引号内部，产出引号失衡的非法标记。`\s*` 让 trim 后的 original
-   * 仍能整体匹配 padded 属性，locale 值则保持 trim（不把词间距污染进文案）。
-   *
-   * Why 兼容无引号：HTML/Vue 合法允许无引号属性值（`<el-button title=确认>`），
-   * @vue/compiler-dom 照常解析并提取（写入 locale），但旧正则强制引号无法匹配 →
-   * 转换阶段静默漏替换 → 孤儿 key + 源码残留中文。无引号分支 `${escaped}(?=[\s/>])`：
-   * 值紧贴 `=`（无引号值不能含空白），后随空白/`/`/`>` 才算属性值边界，仍由前缀
-   * `([\w-]+)=` 约束必须是「属性名=」形态，不会误吃正文。
-   */
-  private buildStaticAttrPattern(original: string, flags = ''): RegExp {
-    const escaped = CommonASTUtils.escapeRegExp(original);
-    return new RegExp(`([\\w-]+)=(?:(["'])\\s*${escaped}\\s*\\2|${escaped}(?=[\\s/>]))`, flags);
-  }
-
-  /** 以 next 的内容整体覆写 lines（原地），供多行兜底分支在整段替换后回写行数组。 */
-  private static overwriteLines(lines: string[], next: string): void {
-    const nextLines = next.split('\n');
-    lines.length = nextLines.length;
-    for (let i = 0; i < nextLines.length; i++) lines[i] = nextLines[i]!;
-  }
-
-  /**
-   * 在 template 行数组中原地查找并替换单个字符串。
-   * 调用方持有行数组、本方法原地修改，批量替换时摊销 split/join 成本；两个多行兜底分支
-   * （跨行静态属性 / 跨行文本节点）需要整段内容做正则或偏移定位时，才临时 join 一次
-   * （罕见路径，成本可接受）。
-   */
-  private replaceInLines(
-    lines: string[],
-    original: string,
-    replacement: string,
-    line: number,
-    column: number,
-    templateContext?: ExtractedString['templateContext'],
-  ): boolean {
-    if (line < 0 || line >= lines.length) {
-      return false;
-    }
-
-    const targetLine = lines[line]!;
-
-    // 检查是否是静态属性转换（replacement 以 : 开头）
-    if (replacement.startsWith(':')) {
-      // 静态属性转换：需要替换整个属性 attr="value" -> :attr="$t(...)"
-      // 同行内出现多个相同文本时（如 <span title="确认"><button title="确认">），
-      // 需按 column 选中包含目标位置的那一处，避免 String.replace 总是命中第一处。
-      const attrPattern = this.buildStaticAttrPattern(original, 'g');
-      let attrMatch: RegExpExecArray | null;
-      let chosen: RegExpExecArray | null = null;
-      while ((attrMatch = attrPattern.exec(targetLine)) !== null) {
-        const start = attrMatch.index;
-        const end = start + attrMatch[0].length;
-        if (start <= column && end >= column) {
-          chosen = attrMatch;
-          break;
-        }
-        if (chosen === null) chosen = attrMatch; // 兜底：保持原行为找第一处
-      }
-
-      if (chosen) {
-        const start = chosen.index;
-        lines[line] =
-          targetLine.substring(0, start) +
-          replacement +
-          targetLine.substring(start + chosen[0].length);
-        return true;
-      }
-
-      // 静态属性未在目标行命中：**绝不** fall through 到下方的引号/裸文本搜索——
-      // 那会把 `:attr="$t(...)"` 插进引号内部，毁掉标记（引号失衡）。只在附近行做
-      // 属性感知匹配（tryReplaceOnLine 对 `:` 前缀仅尝试属性正则）。
-      for (let delta = 1; delta <= 5; delta++) {
-        for (const tryIdx of [line + delta, line - delta]) {
-          if (tryIdx < 0 || tryIdx >= lines.length) continue;
-          const result = this.tryReplaceOnLine(
-            lines[tryIdx]!,
-            original,
-            replacement,
-            templateContext,
-          );
-          if (result !== null) {
-            lines[tryIdx] = result;
-            return true;
-          }
-        }
-      }
-
-      // 多行静态属性兜底：属性值跨行时（如 `title="\n  确认\n"`），上面的逐行匹配与
-      // ±5 行 fallback（均按单行）必然落空——且 original 是 trim 后的 `确认`、不含
-      // `\n`，下方文本节点的多行分支也不会接管。这里用 (line,column) 推绝对偏移，在整段
-      // template 上用同一「属性感知」正则（buildStaticAttrPattern 的 `\s*` 跨行匹配引号
-      // 内 padding）做全局匹配，选中包含目标偏移的那一处整体替换。仍用属性正则、不退化
-      // 为裸文本搜索，故不会破坏标记；找不到就原样返回（宁可漏替换也不破坏源码）。
-      // 不替换会导致 locale 已写入 key 但源码静态属性未改写 → 孤儿 key + 中文残留。
-      let targetOffset = column;
-      for (let i = 0; i < line; i++) {
-        targetOffset += lines[i]!.length + 1; // +1：补回 split 去掉的换行符
-      }
-      // 罕见路径才需要整段内容：此处临时 join 一次做跨行正则定位
-      const templateContent = lines.join('\n');
-      const multilinePattern = this.buildStaticAttrPattern(original, 'g');
-      let mlMatch: RegExpExecArray | null;
-      let mlChosen: RegExpExecArray | null = null;
-      while ((mlMatch = multilinePattern.exec(templateContent)) !== null) {
-        const start = mlMatch.index;
-        const end = start + mlMatch[0].length;
-        if (start <= targetOffset && targetOffset <= end) {
-          mlChosen = mlMatch;
-          break;
-        }
-        if (mlChosen === null) mlChosen = mlMatch; // 兜底：保持「命中第一处」行为
-      }
-      if (mlChosen) {
-        const start = mlChosen.index;
-        VueTransformer.overwriteLines(
-          lines,
-          templateContent.slice(0, start) +
-            replacement +
-            templateContent.slice(start + mlChosen[0].length),
-        );
-        return true;
-      }
-      return false;
-    }
-
-    // 多行文本节点：condense 解析下，跨行文本的 loc.source（即 original）含 `\n`，
-    // 而上方逐行 indexOf 永远无法在单行内命中（±5 行兜底亦逐行）。这里用
-    // (line, column) 推出绝对偏移在整段 template 内定位并整体替换；偏移不精确时
-    // 退化为全局查找，仍找不到则原样返回（宁可漏替换也不破坏源码）。
-    if (original.includes('\n')) {
-      let offset = column;
-      for (let i = 0; i < line; i++) {
-        offset += lines[i]!.length + 1; // +1：补回 split 去掉的换行符
-      }
-      // 罕见路径才需要整段内容：此处临时 join 一次做绝对偏移定位
-      const templateContent = lines.join('\n');
-      if (templateContent.startsWith(original, offset)) {
-        VueTransformer.overwriteLines(
-          lines,
-          templateContent.slice(0, offset) +
-            replacement +
-            templateContent.slice(offset + original.length),
-        );
-        return true;
-      }
-      const idx = templateContent.indexOf(original);
-      if (idx !== -1) {
-        VueTransformer.overwriteLines(
-          lines,
-          templateContent.slice(0, idx) +
-            replacement +
-            templateContent.slice(idx + original.length),
-        );
-        return true;
-      }
-      return false;
-    }
-
-    // 检查 original 是否已经带引号（模板字符串、字符串字面量）
-    const hasQuotes =
-      (original.startsWith("'") && original.endsWith("'")) ||
-      (original.startsWith('"') && original.endsWith('"')) ||
-      (original.startsWith('`') && original.endsWith('`'));
-
-    let index: number;
-
-    if (hasQuotes) {
-      // 如果 original 已经带引号（如模板字符串 `text` 或已转义的字符串），直接查找
-      index = targetLine.indexOf(original, column);
-      // column 越过字面量实际起点时从行首重试：带引号字面量确在本行却被漏过会跌到邻行
-      // fallback 致漏替换。与下方 else 分支裸文本回退（405-408 从 0 重试）对齐。
-      if (index === -1) index = targetLine.indexOf(original);
-      if (index !== -1) {
-        lines[line] =
-          targetLine.substring(0, index) +
-          replacement +
-          targetLine.substring(index + original.length);
-        return true;
-      }
-    } else {
-      // 引号包裹搜索仅对「源码里本就带引号的字符串字面量」上下文有意义：
-      // dynamic-attribute（`:attr="'文案'"`）与 interpolation（`{{ ok ? '成功' : '失败' }}`）。
-      // text-node / mixed-content 的 original 是模板原文（无引号），绝不能套引号搜索——否则
-      // doubleQuotePattern 的 indexOf 会从 column 向后误命中【同行后方未被提取的带引号技术属性值】
-      // （如 `<label>全部<input value="全部"/>`），把属性毁成非法 `value={{ $t() }}` 且漏译文本节点、
-      // 在 locale 留下孤儿 key。故按 templateContext 收窄引号搜索范围。
-      const searchQuoted =
-        templateContext === 'dynamic-attribute' || templateContext === 'interpolation';
-
-      if (searchQuoted) {
-        // original 不带引号，需要在外面加引号查找（处理三元运算符 / 动态属性字符串字面量场景）
-        // 优先查找单引号版本
-        const singleQuotePattern = `'${original}'`;
-        index = indexOfSkippingComparison(targetLine, singleQuotePattern, column);
-        if (index !== -1) {
-          // 在引号内的字符串（三元运算符内），替换整个 'text' 为 $t(...)
-          // 注意：replacement 已经是 $t(...) 格式，不包含外层引号
-          lines[line] =
-            targetLine.substring(0, index) +
-            replacement +
-            targetLine.substring(index + singleQuotePattern.length);
-          return true;
-        }
-
-        // 查找双引号版本
-        const doubleQuotePattern = `"${original}"`;
-        index = indexOfSkippingComparison(targetLine, doubleQuotePattern, column);
-        if (index !== -1) {
-          lines[line] =
-            targetLine.substring(0, index) +
-            replacement +
-            targetLine.substring(index + doubleQuotePattern.length);
-          return true;
-        }
-
-        // 查找反引号版本（处理无变量模板字符串场景）
-        const backtickPattern = `\`${original}\``;
-        index = targetLine.indexOf(backtickPattern, column);
-        if (index !== -1) {
-          lines[line] =
-            targetLine.substring(0, index) +
-            replacement +
-            targetLine.substring(index + backtickPattern.length);
-          return true;
-        }
-      }
-
-      // 如果没有找到带引号的版本，查找原始字符串（处理文本节点场景）
-      // 从 column 开始查找，同行重复文本时可命中目标位置而非第一处
-      index = targetLine.indexOf(original, Math.max(0, column));
-      if (index === -1) {
-        index = targetLine.indexOf(original);
-      }
-      if (index !== -1) {
-        lines[line] =
-          targetLine.substring(0, index) +
-          replacement +
-          targetLine.substring(index + original.length);
-        return true;
-      }
-    }
-
-    // Fallback: 在附近行搜索（处理多行文本节点和跨行插值表达式）
-    for (let delta = 1; delta <= 5; delta++) {
-      for (const tryIdx of [line + delta, line - delta]) {
-        if (tryIdx < 0 || tryIdx >= lines.length) continue;
-        const result = this.tryReplaceOnLine(
-          lines[tryIdx]!,
-          original,
-          replacement,
-          templateContext,
-        );
-        if (result !== null) {
-          lines[tryIdx] = result;
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  /**
-   * 在单行中尝试替换文本（用于 fallback 搜索附近行）
-   * @param lineContent - 行内容
-   * @param original - 原始字符串
-   * @param replacement - 替换字符串
-   * @returns 替换后的行内容，如果未找到匹配则返回 null
-   */
-  private tryReplaceOnLine(
-    lineContent: string,
-    original: string,
-    replacement: string,
-    templateContext?: ExtractedString['templateContext'],
-  ): string | null {
-    // 静态属性转换
-    if (replacement.startsWith(':')) {
-      const attrPattern = this.buildStaticAttrPattern(original);
-      const match = lineContent.match(attrPattern);
-      if (match) {
-        return lineContent.replace(match[0], replacement);
-      }
-      // 静态属性未命中：不得 fall through 到下方引号/裸文本搜索（同样会插进引号内部
-      // 毁坏标记）。返回 null 表示本行无匹配，交由调用方继续找其他行或原样返回。
-      return null;
-    }
-
-    const hasQuotes =
-      (original.startsWith("'") && original.endsWith("'")) ||
-      (original.startsWith('"') && original.endsWith('"')) ||
-      (original.startsWith('`') && original.endsWith('`'));
-
-    if (hasQuotes) {
-      const index = lineContent.indexOf(original);
-      if (index !== -1) {
-        return (
-          lineContent.substring(0, index) +
-          replacement +
-          lineContent.substring(index + original.length)
-        );
-      }
-      return null;
-    }
-
-    // 尝试各种引号包裹（仅 dynamic-attribute / interpolation：原文带引号的字符串字面量）。
-    // text-node / mixed-content 不套引号：套引号会误命中同行带引号属性值。
-    if (templateContext === 'dynamic-attribute' || templateContext === 'interpolation') {
-      for (const quote of ["'", '"', '`']) {
-        const quoted = `${quote}${original}${quote}`;
-        const index = lineContent.indexOf(quoted);
-        if (index !== -1) {
-          return (
-            lineContent.substring(0, index) +
-            replacement +
-            lineContent.substring(index + quoted.length)
-          );
-        }
-      }
-    }
-
-    // 尝试裸文本
-    const index = lineContent.indexOf(original);
-    if (index !== -1) {
-      return (
-        lineContent.substring(0, index) +
-        replacement +
-        lineContent.substring(index + original.length)
-      );
-    }
-
-    return null;
+    // applyReplacements 负责倒序写入与重叠检测（重叠即抛错，不静默取舍）。
+    return applyReplacements(templateContent, replacements);
   }
 
   /**
@@ -591,40 +257,35 @@ export class VueTransformer implements ITransformer {
     // template 中 $t() 是全局函数，vue-i18next 需要 namespace:key 前缀
     const ns = this.library?.namespace;
     const semanticId = ns ? `${ns}:${extracted.semanticId}` : extracted.semanticId;
+    // key 的引号必须与所在属性的外层引号不同，否则 `:title='a ? $t('k') : b'` 在外层单引号
+    // 处提前闭合，产出坏模板。key 由工具生成，不含引号，选另一种即可，无需转义。
+    const q = vueExtras(extracted).attributeQuote === "'" ? '"' : "'";
+    const key = `${q}${semanticId}${q}`;
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables
-      ? CommonASTUtils.filterLiterals(templateVariables)
-      : undefined;
+    const actualVariables = templateVariables ? filterLiterals(templateVariables) : undefined;
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
-      // createMessageWithOptions 需要「内联字面量后、仅含真正变量 `${expr}`」的形式：
-      //  - mixed-content：`original` 是源码层形式（含 `{{ }}`），用合成的 processedMessage；
-      //  - dynamic-attribute / interpolation：`original` 现存源码层模板串（含字面量插值如
-      //    `${'X'}`，供源码文本匹配），其内联后的 processedMessage 才是正确的消息输入。
-      // 统一优先取 processedMessage，无（纯变量插值、内联前后相同）时回落 original。
+      // 这里只取 placeholderMap（`表达式 → 占位符名`），它仅由 actualVariables 推导，
+      // 与传入文本无关；locale 值由 buildLocaleMessage 另行生成。入参仍与消息生成端同源
+      // （优先 processedMessage、回落 original），避免两端各喂一份文本而口径分叉。
       const messageInput = extracted.processedMessage ?? extracted.original;
-      const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
-        messageInput,
-        actualVariables,
-      );
-      const variablesMapping = CommonASTUtils.formatValuesMapping(placeholderMap);
+      const { placeholderMap } = createMessageWithOptions(messageInput, actualVariables);
+      const variablesMapping = formatValuesMapping(placeholderMap);
 
-      // 根据上下文生成不同格式
+      // 根据上下文生成不同格式。static-attribute 不在此分支：提取端该路径恒
+      // isTemplateString:false（静态属性值是纯字面量），带变量形态只出现在下面三种上下文。
       switch (templateContext) {
-        case 'static-attribute':
-          // 静态属性转动态绑定：title="文本" -> :title="$t('...')"
-          return `:${attributeName}="$t('${semanticId}', ${variablesMapping})"`;
         case 'interpolation':
         case 'dynamic-attribute':
           // 插值表达式和动态属性中：不需要额外的 {{ }}（已在表达式上下文中）
-          return `$t('${semanticId}', ${variablesMapping})`;
+          return `$t(${key}, ${variablesMapping})`;
         case 'mixed-content':
         case 'text-node':
         default:
-          // 文本节点 / 复合句：使用 {{ }} 包裹。mixed-content 的 original 已涵盖
-          // 多个源码节点（如 `全部({{ totalCount }})`），整体被一次 indexOf 替换。
+          // 文本节点 / 复合句：使用 {{ }} 包裹。mixed-content 的区间已涵盖多个源码节点
+          // （如 `全部({{ totalCount }})`，可跨行），整体被一次精确区间替换。
           return `{{ $t('${semanticId}', ${variablesMapping}) }}`;
       }
     } else {
@@ -636,7 +297,7 @@ export class VueTransformer implements ITransformer {
         case 'interpolation':
         case 'dynamic-attribute':
           // 插值表达式和动态属性中：不需要额外的 {{ }}（已在表达式上下文中）
-          return `$t('${semanticId}')`;
+          return `$t(${key})`;
         case 'text-node':
         default:
           // 文本节点：使用 {{ }} 包裹
@@ -657,17 +318,13 @@ export class VueTransformer implements ITransformer {
     lineOffset: number,
     strings: ExtractedString[],
     allowThisQualifier: boolean,
+    parseFileName: string = 'temp.ts',
   ): string {
-    const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, 'temp.ts');
+    const sourceFile = parseSourceFile(scriptContent, parseFileName);
 
-    // 按位置倒序排列，从后往前替换
-    const sortedStrings = strings.sort((a, b) => {
-      const aLine = a.line - lineOffset - 1;
-      const bLine = b.line - lineOffset - 1;
-      const aPos = ts.getPositionOfLineAndCharacter(sourceFile, aLine, a.column - 1);
-      const bPos = ts.getPositionOfLineAndCharacter(sourceFile, bLine, b.column - 1);
-      return bPos - aPos;
-    });
+    // 无需在此按位置预排序：倒序写入与重叠检测都由 applyReplacements 内部统一完成，
+    // 预排序对最终产物无影响，且会原地 mutate 入参数组。与 ReactTransformer.replaceStrings
+    // 的同款说明保持一致（那边已删掉这段排序）。
 
     const replacements: Array<{
       start: number;
@@ -675,30 +332,43 @@ export class VueTransformer implements ITransformer {
       replacement: string;
     }> = [];
 
-    for (const extracted of sortedStrings) {
+    for (const extracted of strings) {
       const localLine = extracted.line - lineOffset - 1;
       const localColumn = extracted.column - 1;
       const position = ts.getPositionOfLineAndCharacter(sourceFile, localLine, localColumn);
-      const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
+      const node = findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
         // 仅当所在块允许 this.$t（普通 <script> 块），且当前节点位于可绑定 this
         // 的词法作用域（method / lifecycle / 普通函数体内部，箭头函数透明）时，
         // 才使用 this.$t；模块顶层 / 选项对象的属性初始化器外层 → 裸 t()。
-        const useThis = allowThisQualifier && CommonASTUtils.isInThisBindableScope(node);
-        const replacement = this.generateScriptReplacement(extracted, useThis);
+        const useThis = allowThisQualifier && isInThisBindableScope(node);
+        // JSX 属性值只接受字符串字面量或 `{表达式}`（`lang="tsx"` 的 script 块才可能出现）：
+        // 裸 `title=t('k')` 是语法错误，必须补花括号。
+        const inJsxAttribute =
+          node.parent !== undefined &&
+          ts.isJsxAttribute(node.parent) &&
+          node.parent.initializer === node;
+        const call = this.generateScriptReplacement(extracted, useThis);
+        const replacement = inJsxAttribute ? `{${call}}` : call;
         const start = node.getStart(sourceFile);
         const end = node.getEnd();
 
-        // 验证节点文本
-        const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
-        const isTemplateString =
-          extracted.original.startsWith('`') && extracted.original.endsWith('`');
+        // 「original 是否为带定界符的源码形式」以提取端的旗标为准，不看首尾字符：
+        // script 侧只有 TemplateExpression 存源码形式（isTemplateString=true），
+        // StringLiteral / 无插值模板存的是裸内容。用首尾字符猜会把 `'\`代码\`'` 这类
+        // 「内容本身首尾是反引号」的普通字符串误判成模板源码形式 → 裸内容侧被多剥一层
+        // → 复核不通过 → 整文件中止转换。
+        const isTemplateString = extracted.isTemplateString === true;
 
-        // script 侧节点为 StringLiteral / 模板串，源码侧均含定界符；extracted.original 仅模板串
-        // 是源码形式、其余为裸内容 → 据此控制裸内容侧不剥定界符，避免内容自带成对引号被误剥。
+        // 验证节点文本。script 侧节点为 StringLiteral / 模板串，源码侧均含定界符；
+        // extracted.original 仅模板串是源码形式、其余为裸内容 → 据此控制裸内容侧不剥定界符，
+        // 避免内容自带成对引号被误剥。模板串走结构化比对（见 nodeMatchesExtractedOriginal），
+        // 与 findExactStringNode 的定位口径同源，不会出现「定位得到、复核不过」。
+        // nodeDelimited 排除 JsxText：`lang="tsx"` 的块按 TSX 解析，定位回退路径可能返回
+        // JsxText 节点，它源码侧本就无定界符，剥一层会剪掉首尾真实字符。
         if (
-          CommonASTUtils.shouldReplaceNode(originalNodeText, extracted.original, isTemplateString, {
+          nodeMatchesExtractedOriginal(node, sourceFile, extracted.original, {
             nodeDelimited: !ts.isJsxText(node),
             originalDelimited: isTemplateString,
           })
@@ -717,7 +387,7 @@ export class VueTransformer implements ITransformer {
     }
 
     // 返回转换后的 script 内容
-    return CommonASTUtils.applyReplacements(scriptContent, replacements);
+    return applyReplacements(scriptContent, replacements);
   }
 
   /**
@@ -743,17 +413,12 @@ export class VueTransformer implements ITransformer {
     const tFunc = useThisQualifier ? 'this.$t' : 't';
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables
-      ? CommonASTUtils.filterLiterals(templateVariables)
-      : undefined;
+    const actualVariables = templateVariables ? filterLiterals(templateVariables) : undefined;
 
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
       // 对于模板字符串，使用变量插值
-      const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
-        extracted.original,
-        actualVariables,
-      );
-      const variablesMapping = CommonASTUtils.formatValuesMapping(placeholderMap);
+      const { placeholderMap } = createMessageWithOptions(extracted.original, actualVariables);
+      const variablesMapping = formatValuesMapping(placeholderMap);
       return `${tFunc}('${semanticId}', ${variablesMapping})`;
     } else {
       // 对于普通字符串（或所有变量都是字面量）

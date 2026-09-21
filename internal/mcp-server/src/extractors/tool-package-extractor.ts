@@ -1,7 +1,10 @@
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ToolPackageInfo } from '../types/index';
 import { findPackages, getDisplayName, readPackageJson } from '../utils/index';
 import { log } from '../utils/logger';
+import { findRepoRoot, toRepoRelative } from '../utils/repo-root';
 import { ReadmeExtractor } from './readme-extractor';
 
 /**
@@ -55,20 +58,24 @@ export class ToolPackageExtractor {
     if (!packageInfo) return null;
 
     // 读取 README
-    let readmeData: Awaited<ReturnType<typeof this.readmeExtractor.extractFromReadme>> = null;
-    let readmePath: string | undefined;
-    let apiSections: Array<{ title: string; content: string }> = [];
+    // extractFromReadme 内部吞异常返回 null，所以 readmePath 必须靠 existsSync 判断，
+    // 否则没有 README 的包也会带上一个不存在的路径
+    const readmeAbsolutePath = join(packagePath, 'README.md');
+    const hasReadme = existsSync(readmeAbsolutePath);
+    const readmeData = hasReadme
+      ? await this.readmeExtractor.extractFromReadme(readmeAbsolutePath)
+      : null;
+    const apiSections = readmeData?.content
+      ? this.readmeExtractor.extractApiSections(readmeData.content)
+      : [];
 
-    try {
-      readmePath = join(packagePath, 'README.md');
-      readmeData = await this.readmeExtractor.extractFromReadme(readmePath);
+    const changelogAbsolutePath = join(packagePath, 'CHANGELOG.md');
+    const changelogContent = existsSync(changelogAbsolutePath)
+      ? await readFile(changelogAbsolutePath, 'utf8').catch(() => undefined)
+      : undefined;
 
-      if (readmeData?.content) {
-        apiSections = this.readmeExtractor.extractApiSections(readmeData.content);
-      }
-    } catch {
-      readmePath = undefined;
-    }
+    const repoRoot = findRepoRoot(packagePath);
+    const relativize = (p: string) => (repoRoot ? toRepoRelative(p, repoRoot) : p);
 
     return {
       name: getDisplayName(packageInfo.name),
@@ -81,8 +88,8 @@ export class ToolPackageExtractor {
       license: packageInfo.license || 'MIT',
       scope,
 
-      sourcePath: packagePath,
-      readmePath,
+      sourcePath: relativize(packagePath),
+      readmePath: hasReadme ? relativize(readmeAbsolutePath) : undefined,
 
       dependencies: Object.keys(packageInfo.dependencies || {}),
       peerDependencies: Object.keys(packageInfo.peerDependencies || {}),
@@ -90,6 +97,9 @@ export class ToolPackageExtractor {
       features: readmeData?.features || [],
       examples: readmeData?.examples || [],
       apiSections,
+
+      readmeContent: readmeData?.content,
+      changelogContent,
     };
   }
 

@@ -6,10 +6,10 @@ import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { IdReuseResolver } from '../src/core/IdReuseResolver';
 import { LLMClient } from '../src/utils/llm-client';
 import { LoggerUtils } from '../src/utils/logger';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
 import { RunReport, type ManualCategory } from '../src/utils/run-report';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
+import type { ExtractedString } from '../src/utils/types';
 
 /**
  * generate 杂项单点回归合集（场景以 describe 分组）。
@@ -172,7 +172,6 @@ describe('GenerateProcessor 覆盖率 — 空提取分支仍计入已国际化�
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -238,7 +237,6 @@ describe('GenerateProcessor 覆盖率 — 已国际化文件的调用点计入�
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -275,9 +273,8 @@ describe('GenerateProcessor 覆盖率 — 已国际化文件的调用点计入�
 
 /**
  * 回归：apply（落盘）路径下，applyTransformations 先于 recordAndRenderCoverage 执行，
- * 而前者链路里健康度 lint（LocaleValueLinter.analyze）已把
- * CommonASTUtils.drainSkippedComparisonOperands() 这个进程级 collector drain 空。
- * 于是 recordAndRenderCoverage 拿到空数组：
+ * 而前者链路里健康度 lint（LocaleValueLinter.analyze）会消费提取阶段记录的跳过项。
+ * 若不共享同一份快照，recordAndRenderCoverage 就会拿到空数组：
  *   - coverage.skipped 恒为 0；
  *   - total 分母缺 skipped → coverageRate 被系统性高估（CI --coverage-threshold 被架空）；
  *   - comparison-operand 待人工条目全部丢失。
@@ -312,7 +309,6 @@ describe('GenerateProcessor 覆盖率 — 比较运算符跳过项不被 linter 
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands(); // 清掉跨测试可能的残留
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -443,9 +439,6 @@ describe('GenerateProcessor dry-run — 评审阶段就跑 lint（nested-interpo
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    // 清掉跨测试可能残留的进程级 collector（drain 是消耗性操作）
-    CommonASTUtils.drainSkippedNestedChinese();
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -492,8 +485,6 @@ describe('GenerateProcessor dry-run — 评审阶段就跑 lint（nested-interpo
 
     // commit（重置源文件，避免被 dry-run？dry-run 不改源码，但稳妥起见重写）
     fs.writeFileSync(file, VUE_FILE, 'utf-8');
-    CommonASTUtils.drainSkippedNestedChinese();
-    CommonASTUtils.drainSkippedComparisonOperands();
     const commitSpy = vi.spyOn(RunReport.prototype, 'addManualEntry');
     await new GenerateProcessor(buildConfig(), false, false).execute(file, true);
     const commitCount = countNested(commitSpy);
@@ -576,6 +567,32 @@ describe('GenerateProcessor：LLM id 数量不匹配时整文件本地回退（�
     expect(Object.values(zh)).toContain('取消');
     // 关键：LLM 返回的错位 id 不得污染任何 key（长度不匹配 → 整文件本地回退）
     expect(Object.keys(zh).some((k) => k.includes('wrongllmid'))).toBe(false);
+  });
+
+  it('LLM 未返回任何 id（调用失败 / 连接熄火）→ 不报「数量不匹配」，只提示走本地生成', async () => {
+    const file = path.join(srcDir, 'B.vue');
+    fs.writeFileSync(file, `<template>\n  <div>提交</div>\n</template>\n`, 'utf-8');
+
+    vi.spyOn(LLMClient.prototype, 'generateSemanticIdsForFiles').mockImplementation(
+      async (groups: Record<string, string[]>) => {
+        const out: Record<string, string[]> = {};
+        for (const fp of Object.keys(groups)) out[fp] = []; // 熄火 / 失败：空结果
+        return out;
+      },
+    );
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+    await proc.execute(file, false);
+
+    const zh = JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf-8')) as Record<
+      string,
+      string
+    >;
+    expect(Object.values(zh)).toContain('提交');
+    expect(warnSpy.mock.calls.flat().join('\n')).not.toMatch(/数量与文本数量不匹配/);
+    expect(infoSpy.mock.calls.flat().join('\n')).toMatch(/未获得 LLM 语义 ID，使用本地ID生成/);
   });
 });
 
@@ -694,7 +711,6 @@ describe('GenerateProcessor 单文件 — 规范化路径不一致不致源码�
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -809,5 +825,231 @@ describe('resolveSemanticId — promoteToCommon 分支空串 llmId 兜底', () =
     // 修复前：两者共用 t_<hash('')> 基名，id2 恒为 `${id1}_1`（顺序相关）
     expect(id2).not.toBe(`${id1}_1`);
     expect(id1).not.toBe(id2);
+  });
+});
+
+/**
+ * 提升到 common namespace 的分支与非提升分支必须口径一致：LLM 未给出 id 时，
+ * 本地兜底同样要先查 keys.fallback.mappings，命中才退 t_<hash>。
+ */
+describe('resolveSemanticId — promoteToCommon 分支的本地兜底查 keys.fallback.mappings', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promote-fallback-mappings-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function writeJson(relPath: string, data: unknown): void {
+    const full = path.join(tmpDir, 'locale', relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  }
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  function setupPromoteConfig(mappings: Record<string, string>): ResolvedConfig {
+    // 两个模块前缀已用过同一原文 → threshold=3 时新模块触发提升
+    writeJson('zh-CN.json', {
+      'pages.foo.a': '確定',
+      'pages.bar.a': '確定',
+      'pages.foo.b': '未收录的长文案内容',
+      'pages.bar.b': '未收录的长文案内容',
+    });
+    return makeConfig({
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: {
+        separator: '.',
+        prefix: { strategy: 'path', anchor: 'src' },
+        fallback: { mappings },
+        reuse: {
+          acrossDirectories: false,
+          promoteToCommon: { threshold: 3, namespace: 'common' },
+        },
+      },
+    });
+  }
+
+  function resolveId(config: ResolvedConfig, text: string, filePath: string): string {
+    const proc = new GenerateProcessor(config, false, false);
+    const internals = proc as unknown as {
+      resolveSemanticId: (
+        item: ExtractedString,
+        llmId: string | undefined,
+        textToIdMap: Map<string, string>,
+        reuseResolver: IdReuseResolver,
+      ) => string;
+    };
+    const item = {
+      original: text,
+      semanticId: '',
+      filePath,
+      line: 1,
+      column: 1,
+      context: 'template',
+    } as ExtractedString;
+    return internals.resolveSemanticId.call(
+      proc,
+      item,
+      '', // --skip-llm / LLM 漏答：llm-client 显式置空串
+      new Map<string, string>(),
+      new IdReuseResolver(config, false),
+    );
+  }
+
+  it('提升到 common 的新 key 命中词表 → common.confirm 而非 common.t_<hash>', () => {
+    const config = setupPromoteConfig({ 確定: 'confirm' });
+    const id = resolveId(config, '確定', path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue'));
+    expect(id).toBe('common.confirm');
+  });
+
+  it('[反向] 词表未命中时仍走 t_<hash> 兜底，不误伤', () => {
+    const config = setupPromoteConfig({ 確定: 'confirm' });
+    const id = resolveId(
+      config,
+      '未收录的长文案内容',
+      path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue'),
+    );
+    expect(id).toMatch(/^common\.t_/);
+  });
+
+  it('[反向] 未触发提升的分支行为不变：词表命中带目录前缀', () => {
+    // 只在一个模块出现过 → 不满足 threshold=3
+    writeJson('zh-CN.json', { 'pages.foo.a': '確定' });
+    const config = makeConfig({
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: {
+        separator: '.',
+        prefix: { strategy: 'path', anchor: 'src' },
+        fallback: { mappings: { 確定: 'confirm' } },
+        reuse: {
+          acrossDirectories: false,
+          promoteToCommon: { threshold: 3, namespace: 'common' },
+        },
+      },
+    });
+    const id = resolveId(config, '確定', path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue'));
+    expect(id).toBe('pages.baz.confirm');
+  });
+});
+
+/**
+ * A-2：IdReuseResolver 的目录前缀不再用 `lastIndexOf(separator)` 从 key 反推。
+ *
+ * sanitizeSemanticId 把空格转 `_`，语义段天然含 `_`；separator 配成 `_` 时
+ * `pages_a_confirm_order` 会被切成前缀 `pages_a_confirm`，同一目录下两个同原文 key
+ * 被数成两个模块，第三个目录首次出现该原文即误触发 promoteToCommon。
+ * 现在改为：新 key 记真实目录前缀，历史 key 按「已知前缀集合最长匹配 + separator 边界」
+ * 归属，separator 可能出现在语义段里且无匹配时归入未知域（宁可少提升）。
+ */
+describe('IdReuseResolver — 目录前缀归属（A-2）', () => {
+  let tmpDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'id-reuse-prefix-'));
+    localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const buildConfig = (separator: string): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir: path.join(tmpDir, 'src'), format: 'flat' },
+      keys: {
+        separator,
+        prefix: { strategy: 'path', anchor: 'src' },
+        reuse: {
+          acrossDirectories: false,
+          promoteToCommon: { threshold: 3, namespace: 'common' },
+        },
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  const writeLocale = (data: Record<string, string>): void =>
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify(data));
+
+  it("A-2: separator='_' 时同目录的两个 key 不被数成两个模块（不误触发提升）", () => {
+    // 两个 key 都在 src/pages/a 下，语义段自身含 '_'
+    writeLocale({ pages_a_confirm_order: '确认订单', pages_a_submit_order: '确认订单' });
+    const resolver = new IdReuseResolver(buildConfig('_'), false);
+    const fileB = path.join(tmpDir, 'src', 'pages', 'b', 'B.vue');
+
+    expect(resolver.shouldPromoteToCommon('确认订单', fileB)).toBe(false);
+  });
+
+  it("A-2: separator='_' 时真的跨 3 个目录仍会提升（已知前缀最长匹配生效）", () => {
+    writeLocale({ pages_a_confirm_order: '确认订单', pages_b_confirm_order: '确认订单' });
+    const resolver = new IdReuseResolver(buildConfig('_'), false);
+    // 先让 pages_a / pages_b 进入已知前缀集合（真实运行里由扫描文件列表登记）
+    resolver.scanExistingCallsInSources([
+      path.join(tmpDir, 'src', 'pages', 'a', 'A.vue'),
+      path.join(tmpDir, 'src', 'pages', 'b', 'B.vue'),
+    ]);
+
+    expect(
+      resolver.shouldPromoteToCommon('确认订单', path.join(tmpDir, 'src', 'pages', 'c', 'C.vue')),
+    ).toBe(true);
+  });
+
+  it("A-2: 默认 separator='.' 的既有判定不变（2 个历史前缀 + 新前缀 → 提升）", () => {
+    writeLocale({ 'pages.foo.save': '保存', 'pages.bar.save': '保存' });
+    const resolver = new IdReuseResolver(buildConfig('.'), false);
+
+    expect(
+      resolver.shouldPromoteToCommon('保存', path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue')),
+    ).toBe(true);
+  });
+
+  it('A-2: 新分配的 key 记真实目录前缀，提升到 common 后不丢模块信息', () => {
+    writeLocale({});
+    const resolver = new IdReuseResolver(buildConfig('.'), false);
+    resolver.registerNewId(
+      '保存',
+      'common.save',
+      path.join(tmpDir, 'src', 'pages', 'foo', 'a.vue'),
+    );
+    resolver.registerNewId(
+      '保存',
+      'common.save',
+      path.join(tmpDir, 'src', 'pages', 'bar', 'b.vue'),
+    );
+
+    // 已记录 pages.foo / pages.bar 两个真实模块；第三个模块达阈值
+    expect(
+      resolver.shouldPromoteToCommon('保存', path.join(tmpDir, 'src', 'pages', 'baz', 'c.vue')),
+    ).toBe(true);
+    // 同模块重复出现不再计数
+    expect(
+      resolver.shouldPromoteToCommon('保存', path.join(tmpDir, 'src', 'pages', 'foo', 'd.vue')),
+    ).toBe(false);
   });
 });

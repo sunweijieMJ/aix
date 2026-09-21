@@ -20,6 +20,12 @@ export interface CompareOptions {
   threshold?: number;
   /** 忽略抗锯齿 */
   antialiasing?: boolean;
+  /**
+   * 两图尺寸不一致时的对齐方式。
+   * - pad（默认）：补透明像素到较大尺寸，多出的部分全部计为差异（回归测试希望尺寸变化被发现）
+   * - crop：裁到交集尺寸比对，多出的边不计入（fidelity 场景下 1~2px 的高度差是常态，补零会制造幽灵区域）
+   */
+  sizeAlignment?: 'pad' | 'crop';
 }
 
 export interface CompareResult {

@@ -20,7 +20,7 @@ model: inherit
 1. **需求分析** - 理解组件的使用场景、功能边界和技术约束
 2. **架构设计** - 规划文件结构、模块拆分、数据流和状态管理
 3. **API 设计** - 设计 Props / Emits / Slots 接口
-4. **依赖规划** - 明确包间依赖、复用哪些 hooks/utils、是否需要新建子包
+4. **依赖规划** - 明确包间依赖、复用 `@aix/hooks` 的哪些 composable（本仓**没有** `@aix/utils` 包）、是否需要新建子包
 5. **任务拆解** - 为 coder/tester/storyteller 拆分可并行的子任务
 6. **方案输出** - 以结构化文本提交完整架构方案，等待调用方审批后再进入实施
 
@@ -65,11 +65,14 @@ model: inherit
 ### 2. 文件结构
 packages/<name>/
 ├── src/
-│   ├── index.vue          # 主组件
-│   ├── index.ts           # 导出入口
-│   ├── types.ts           # 类型定义
-│   ├── XxxSub.vue         # 子组件（如需）
-│   └── composables/       # 组件专属 hooks（如需）
+│   ├── <Pascal>.vue       # 主组件（如 DatePicker.vue，**不是** index.vue）
+│   ├── index.ts           # 导出入口：具名导出 + default install 插件
+│   ├── types.ts           # 对外 Props/Emits 接口（带 @default JSDoc）
+│   ├── use<Pascal>.ts     # 组件逻辑 composable
+│   ├── index.scss         # 组件样式
+│   ├── locale/            # 有用户可见文案时必须有
+│   ├── components/        # 内部子组件（如需）
+│   └── composables/       # 跨子组件复用的逻辑（如需）
 ├── __test__/
 ├── stories/
 └── ...
@@ -125,6 +128,17 @@ packages/<name>/
 - **[team-storyteller](team-storyteller.md)**: 与 tester 并行编写 Story 和文档，负责 `stories/` + `docs/`
 
 **协作流程**: designer 提交方案 → lead 审批 → coder 实现 → tester + storyteller 并行
+
+## 命名硬约束（输出方案时不要写错）
+
+- **主组件文件名是 `<Pascal>.vue`**，不是 `index.vue`。`code-editor` / `pdf-viewer` /
+  `subtitle` / `video` 用的是 `index.vue`，属**历史遗留，新包不要跟随**。
+- 新建包一律走 `pnpm gen <kebab-name>`（`scripts/gen/` 的 20 个 `.eta` 模板是脚手架的
+  单一事实来源），方案里不要规划手写 `package.json` / `tsconfig.json` / `rollup.config.js`。
+- class 一律由 `useNamespace` 生成（`ns.b()` / `ns.e()` / `ns.m()`），方案里的 BEM 规划
+  写成 block 名即可，不要规划手写 `aix-xxx` 字符串。
+- 用户可见文案走 `useLocale` + `src/locale/`（`pnpm gen --i18n` 可直接生成），
+  方案里要显式标出哪些文案需要进语言包。
 
 ## 约束
 

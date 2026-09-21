@@ -1,0 +1,277 @@
+import fs from 'fs';
+import path from 'path';
+import { LoggerUtils } from './logger';
+
+/**
+ * JSON / 文本文件的读写栈：解析、四态判别、降级读取、原子写入。
+ *
+ * 职责边界：只认「路径 → 内容」，不认 locale、bucket、glob 或任何业务语义
+ * （那些归 file-utils / language-file-manager）。**locale / 中间产物 JSON 的写盘**都应经此
+ * 模块的 atomicWriteText，避免有的路径直接 writeFileSync 而失去原子性。（源码文本与
+ * .gitignore 这类非 JSON 产物仍走各自的 fs.writeFileSync：GeneratePlan / GenerateProcessor /
+ * RestoreProcessor 写回改写后的源码，run-report 写快照目录的 .gitignore。）
+ *
+ * 依赖方向单向：file-utils 引用本模块，本模块不反向引用 file-utils。
+ */
+
+/**
+ * classifyJsonFile 的判别式结果：四态明确区分，调用方据 status 分流。
+ */
+export type JsonFileClassification<T = any> =
+  | { status: 'missing' }
+  | { status: 'empty' }
+  /**
+   * reason：corrupt 的细分原因——要么是「顶层不是对象」的结构性说明，要么是 JSON 解析器
+   * 抛出的原始 message（含出错位置）。
+   *
+   * Why 带在返回值里而不是只打日志：探测型调用方（findCorruptLocale / findCorruptBucketFile /
+   * plan read）会用 silent 抑制解析期日志，再由上层配合文件路径给出可操作的错误文案；
+   * 错因若只存在于被抑制的那行日志里就彻底丢了，用户拿不到「第几行坏了」。
+   */
+  | { status: 'corrupt'; reason?: string }
+  | { status: 'ok'; data: T };
+
+/**
+ * 解析 JSON，用 `{ ok }` 判别式区分「解析失败」与「解析出 null」。
+ *
+ * safeParseJson 用 null 双关这两种情况：内容为合法 `null` 的文件会被判成损坏。
+ * 需要精确分类的调用方（classifyJsonFile）走这里，不要用返回值判空。
+ */
+function tryParseJson(
+  content: string,
+  opts: { silent?: boolean } = {},
+): { ok: true; value: any } | { ok: false; reason: string } {
+  try {
+    // 剥离 UTF-8 BOM（U+FEFF）：Windows 外部编辑器（PowerShell 5.1、VS、记事本）写出的
+    // locale/glossary/translations 文件常带 BOM，带 BOM 的内容直接 JSON.parse 会抛错，
+    // 导致整条读链路误判文件损坏。此处单点收口，safeParseJson 与 classifyJsonFile 两条
+    // 读链路都经过这里，不要在各调用点重复剥离。
+    const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+    return { ok: true, value: JSON.parse(normalized) };
+  } catch (error) {
+    // silent：调用方明确承诺「本次读取不产生输出」（safeLoadJsonFile 的 silent 选项）或
+    // 属于纯探测路径（findCorrupt* / plan read，错因由上层带文件路径统一报），
+    // 此时不得在这里打印无上下文的裸报错。
+    if (!opts.silent) {
+      LoggerUtils.error('JSON解析失败:', error);
+    }
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function safeParseJson(content: string, opts: { silent?: boolean } = {}): any {
+  const result = tryParseJson(content, opts);
+  return result.ok ? result.value : null;
+}
+
+/**
+ * 判别式 JSON 文件读取：区分「不存在 / 空 / 损坏 / 正常」四态，收口散落在 glossary 与
+ * language-file-manager 多处的「readFileSync → trim 判空 → safeParseJson → null 即损坏」骨架。
+ *
+ * 与 safeLoadJsonFile 的区别：后者把「不存在」「空」「损坏」一律降级为 defaultValue，
+ * 无法区分——凡需对损坏 fail-fast（抛错/中止/回调）的调用方都只能绕过它自己手写。
+ * 本方法把分类逻辑收一处，各调用方仅 switch on status、保留各自的后续动作。
+ */
+export function classifyJsonFile<T = any>(
+  filePath: string,
+  opts: { silent?: boolean } = {},
+): JsonFileClassification<T> {
+  if (!fs.existsSync(filePath)) return { status: 'missing' };
+  const content = fs.readFileSync(filePath, 'utf-8');
+  if (content.trim() === '') return { status: 'empty' };
+  const parsed = tryParseJson(content, opts);
+  // 语法错误的错因随返回值带出（见 JsonFileClassification.corrupt 的 reason 注释），
+  // 使 silent 探测路径也能把「坏在哪」透出给最终错误文案。
+  if (!parsed.ok) return { status: 'corrupt', reason: parsed.reason };
+  // 内容为合法 `null` 的文件不是损坏：判 corrupt 会让 loadJsonDictOrThrow 抛错中止整条命令。
+  // 它同样不是可用字典，归入 empty（与「空文件」同档，调用方一律降级为 {}）。
+  if (parsed.value === null) return { status: 'empty' };
+  // 顶层必须是对象。全部调用方（locale 文件、bucket 文件、glossary、translations/untranslated）
+  // 消费的都是「key → value」字典，语法合法但顶层是数组/字符串/数字时若判 ok 放行：
+  // Object.entries("hello") 会把字符串按字符拆成条目、数组会被当成下标字典，一路加工到落盘
+  // 都不报错。归入 corrupt（而非新增一档）是为了让既有 `status === 'corrupt'` 的守卫
+  // （glossary.load / ExportProcessor 回读校验 / findCorrupt*）不改一行就照旧 fail-fast，
+  // 只是错误原因由 reason 补充说明。
+  if (typeof parsed.value !== 'object' || Array.isArray(parsed.value)) {
+    const typeName = Array.isArray(parsed.value) ? '数组' : typeof parsed.value;
+    return {
+      status: 'corrupt',
+      reason: `JSON 顶层必须是对象（{ "key": "value" }），实际是 ${typeName}。`,
+    };
+  }
+  return { status: 'ok', data: parsed.value as T };
+}
+
+/**
+ * 严格加载「字典型」JSON 中间文件（untranslated / translations 等）：
+ *   - 不存在 / 空 → `{}`（视为「尚无条目」，安全继续）
+ *   - 损坏（存在且非空却解析失败）→ 抛错中止（绝不降级为 `{}`，否则下游会用空对象覆写、
+ *     销毁在途译文 / 把损坏误判为「无条目」而 CI 伪绿灯）
+ *   - 正常 → 解析结果
+ *
+ * 统一 Merge / Translate / CsvExport / CsvImport 共用的
+ * 「readFileSync → trim 判空 → safeParseJson → null 即损坏」骨架。corrupt 报错信息由调用方
+ * 按场景定制（各命令对「会销毁什么」的描述不同）。
+ */
+export function loadJsonDictOrThrow<T = Record<string, unknown>>(
+  filePath: string,
+  buildCorruptMessage: (filePath: string) => string,
+): T {
+  const cls = classifyJsonFile<T>(filePath);
+  if (cls.status === 'corrupt') {
+    // 附上 reason：可能是「顶层不是对象」的结构性说明（调用方一律按「JSON 格式错误」措辞，
+    // 单独看会让用户去找不存在的语法错），也可能是解析器给出的出错位置。两者都需要透出。
+    const base = buildCorruptMessage(filePath);
+    throw new Error(cls.reason ? `${base}\n👉 ${cls.reason}` : base);
+  }
+  if (cls.status === 'ok') {
+    return cls.data;
+  }
+  return {} as T;
+}
+
+export function safeLoadJsonFile<T extends object>(
+  filePath: string,
+  options: {
+    defaultValue?: T;
+    errorMessage?: string;
+    logSuccess?: boolean;
+    silent?: boolean;
+  } = {},
+): T {
+  const { defaultValue = {} as T, errorMessage, logSuccess = false, silent = false } = options;
+
+  try {
+    if (!fs.existsSync(filePath)) {
+      if (!silent) {
+        LoggerUtils.warn(`⚠️ 文件不存在: ${filePath}`);
+      }
+      return defaultValue;
+    }
+
+    const fileContent = fs.readFileSync(filePath, 'utf8');
+    // 把 silent 透传下去：本方法的 silent 契约是「整条读取路径不产生输出」，
+    // 而解析失败的日志发生在 tryParseJson 内部，不传就漏出（getMessages /
+    // migrateToBuckets 等注释里写明「silent 降级」的路径全都受此影响）。
+    const parsed = safeParseJson(fileContent, { silent });
+
+    if (parsed === null) {
+      if (!silent) {
+        LoggerUtils.error(
+          errorMessage
+            ? `❌ ${errorMessage}（JSON格式损坏）: ${filePath}`
+            : `❌ JSON格式损坏，无法加载: ${filePath}`,
+        );
+      }
+      return defaultValue;
+    }
+
+    if (logSuccess && !silent) {
+      const itemCount = Object.keys(parsed).length;
+      LoggerUtils.success(`📄 已加载 ${path.basename(filePath)}, 包含 ${itemCount} 个条目`);
+    }
+
+    return parsed as T;
+  } catch (error) {
+    if (!silent) {
+      LoggerUtils.error(
+        errorMessage ? `❌ ${errorMessage}: ${filePath}` : `❌ 加载JSON文件失败: ${filePath}`,
+        error,
+      );
+    }
+    return defaultValue;
+  }
+}
+
+export function ensureDirectoryExists(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+export function createOrEmptyFile(filePath: string, content: string = '{}'): void {
+  ensureDirectoryExists(path.dirname(filePath));
+  const contentWithNewline = content.endsWith('\n') ? content : content + '\n';
+  atomicWriteText(filePath, contentWithNewline);
+}
+
+/**
+ * 原子写入：先写到同目录的临时文件，fsync 落盘后 rename 替换目标。
+ *
+ * Why: 直接 writeFileSync 在写入过程中若进程崩溃 / 同名并发写，
+ *      目标文件会处于"半截"状态。rename 在大多数 POSIX 与 Windows
+ *      文件系统上都是原子的，能保证读端永远看到完整的旧或新内容。
+ *      fsync 显式刷新内核缓冲区到物理介质，避免 rename 后断电仍丢内容。
+ *      显式 utf8 编码可避免 Windows 下默认 ANSI 解码的 mojibake。
+ */
+export function atomicWriteText(filePath: string, content: string): void {
+  const dir = path.dirname(filePath);
+  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    const fd = fs.openSync(tmpPath, 'w');
+    try {
+      fs.writeFileSync(fd, content, 'utf8');
+      // FlushFileBuffers / fdatasync：rename 仅保证目录项原子切换，
+      // 文件内容真正落盘要靠 fsync。
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmpPath, filePath);
+  } catch (error) {
+    // 失败时清理临时文件，不向上吞没原始错误
+    try {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {
+      // 临时文件清理失败不影响主流程错误传播
+    }
+    throw error;
+  }
+}
+
+/**
+ * 统一的 JSON 写入：保证父目录存在、缩进一致、末尾换行。
+ *
+ * Why: 早期实现散落在多个 Processor 内联拼装 `JSON.stringify(data, null, 2) + '\n'`，
+ * 一旦换行/编码/缩进策略需要调整就要多处改动；统一入口避免漂移。
+ */
+export function writeJsonFile(
+  filePath: string,
+  data: unknown,
+  options: { indent?: number; ensureDir?: boolean } = {},
+): void {
+  const { indent = 2, ensureDir = true } = options;
+  if (ensureDir) {
+    ensureDirectoryExists(path.dirname(filePath));
+  }
+  const content = JSON.stringify(data, null, indent) + '\n';
+  atomicWriteText(filePath, content);
+}
+
+/**
+ * 写 translations.json / untranslated.json 这类「条目字典」文件：
+ * 落盘前按顶层 key 字母序排序，使顺序与「哪个步骤最后写」解耦。
+ *
+ * Why: pick 按源 locale 装配顺序写、merge 按「已有 + 末尾追加」写，两者顺序
+ * 不一致——merge 之后再跑 pick 会把追加的 key 重排回中部，产生大 no-op diff。
+ * 统一排序后，pick / merge / translate / csv-import 写出的顺序恒定一致。
+ * 内层值对象（{ zh, en, ... }）顺序保持不变。
+ *
+ * @param indent 缩进空格数，缺省 2。调用方传 `config.io.indent`，使中间字典文件与语言文件
+ *   同一套缩进——否则项目把 indent 配成 4 后，这两类文件每次落盘都互相打架出全量 diff。
+ */
+export function writeTranslationsFile(
+  filePath: string,
+  data: Record<string, unknown>,
+  indent?: number,
+): void {
+  // 必须是无原型对象：普通 `{}` 上 `sorted['__proto__'] = v` 走的是 Object.prototype 的
+  // __proto__ setter，值不会成为自有属性 —— 名为 `__proto__` 的 key（合法的 semanticId 末段）
+  // 在排序重建时被静默吞掉，落盘的 translations.json 比入参少一条且无任何报错。
+  // JSON.stringify 只枚举自有可枚举属性，null 原型不影响序列化结果。
+  const sorted: Record<string, unknown> = Object.create(null);
+  for (const key of Object.keys(data).sort()) {
+    sorted[key] = data[key];
+  }
+  writeJsonFile(filePath, sorted, { indent });
+}

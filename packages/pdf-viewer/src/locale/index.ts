@@ -12,6 +12,8 @@ declare module '@aix/hooks' {
 }
 
 export type { PdfViewerLocaleText } from './types';
+export { default as zhCN } from './zh-CN';
+export { default as enUS } from './en-US';
 
 export const locale: ComponentLocale<PdfViewerLocaleText> = {
   'zh-CN': zhCN,

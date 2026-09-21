@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { RunReport } from '../src/utils/run-report';
+import { FileProcessor } from '../src/core/FileProcessor';
+import { CoverageReporter } from '../src/core/CoverageReporter';
+import { LoggerUtils } from '../src/utils/logger';
+import { resolveConfig, type ResolvedConfig } from '../src/config';
+import type { I18nToolsConfig } from '../src/config/types';
 
 // 旧路径 node_modules/.cache/i18n-tools 已弃用——诊断报告语义不属 cache，
 // 现走 .i18n-tools/logs/，与 .next / .turbo / .vite 等工具的根目录命名空间一致。
@@ -296,5 +301,153 @@ describe('RunReport', () => {
     report.flush();
 
     expect(fs.readFileSync(giPath, 'utf-8')).toBe(customContent);
+  });
+});
+
+// 报告文件名是用户排障时唯一的定位线索，必须与他实际敲的 `--mode csv-export` 对得上；
+// 旧实现只 toLowerCase()，多词类名产出 `csvexport`，与任何 CLI mode 名都不匹配。
+describe('FileProcessor.getCommandName — 类名转真正的 kebab-case', () => {
+  class ProbeProcessor extends FileProcessor {
+    protected getOperationName(): string {
+      return '探针';
+    }
+    exposeCommandName(): string {
+      return this.getCommandName();
+    }
+  }
+  class CsvExportProbeProcessor extends ProbeProcessor {}
+
+  const buildConfig = (root: string): ResolvedConfig =>
+    resolveConfig({
+      root,
+      framework: { type: 'vue', tImport: '@/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+
+  let rootDir: string;
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-cmdname-'));
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  });
+
+  it('单词类名保持不变', () => {
+    expect(new ProbeProcessor(buildConfig(rootDir)).exposeCommandName()).toBe('probe');
+  });
+
+  it('多词类名断驼峰为 csv-export-probe，而非 csvexportprobe', () => {
+    expect(new CsvExportProbeProcessor(buildConfig(rootDir)).exposeCommandName()).toBe(
+      'csv-export-probe',
+    );
+  });
+});
+
+/**
+ * 人工项落 ManualEntry 时透传 dedupeKey：同一行多处跳过的 message 相同，
+ * 只有 dedupeKey 能把它们区分开，否则去重会把多条坍缩成一条、与 coverage.skipped 对不上账。
+ */
+describe('CoverageReporter — manualSkips 透传 dedupeKey', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-manual-dedupe-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  function render(manualSkips: Array<{ message: string; dedupeKey?: string }>): RunReport {
+    const config = makeConfig();
+    const report = new RunReport('generate', tmpDir);
+    const reporter = new CoverageReporter(config, false, report);
+    reporter.setExtractionSnapshots({
+      skippedComparisons: [],
+      skippedNestedChinese: [],
+      manualSkips: manualSkips.map((s) => ({ category: 'html-template' as const, ...s })),
+    });
+    reporter.recordAndRender([], [], null);
+    return report;
+  }
+
+  it('同一行多处跳过（message 相同、dedupeKey 不同）不坍缩成一条', () => {
+    const report = render([
+      { message: 'src/a.vue:10 含 HTML 的模板串已跳过', dedupeKey: '0' },
+      { message: 'src/a.vue:10 含 HTML 的模板串已跳过', dedupeKey: '1' },
+    ]);
+
+    expect(report.groupManualByCategory()['html-in-template']).toHaveLength(2);
+    // 与 coverage.skipped 对得上账
+    expect(report.getCoverage()?.skipped).toBe(2);
+  });
+
+  it('[反向] 无 dedupeKey 的完全相同项仍按原口径去重', () => {
+    const report = render([
+      { message: 'src/a.vue:10 含 HTML 的模板串已跳过' },
+      { message: 'src/a.vue:10 含 HTML 的模板串已跳过' },
+    ]);
+
+    expect(report.groupManualByCategory()['html-in-template']).toHaveLength(1);
+  });
+
+  it('非 HTML 模板 / Vue JSX 文本各自成档，不并入 html-in-template', () => {
+    const config = makeConfig();
+    const report = new RunReport('generate', tmpDir);
+    const reporter = new CoverageReporter(config, false, report);
+    reporter.setExtractionSnapshots({
+      skippedComparisons: [],
+      skippedNestedChinese: [],
+      manualSkips: [
+        { category: 'non-html-template', message: 'src/Pug.vue:1 <template lang="pug">' },
+        { category: 'jsx-text-in-vue', message: 'src/Tsx.vue:2 JSX 子节点文本' },
+      ],
+    });
+    reporter.recordAndRender([], [], null);
+
+    const groups = report.groupManualByCategory();
+    expect(groups['non-html-template']).toHaveLength(1);
+    expect(groups['jsx-text-in-vue']).toHaveLength(1);
+    expect(groups['html-in-template']).toBeUndefined();
+    // 两条都进覆盖率分母，覆盖率不会因跳过而虚高
+    expect(report.getCoverage()?.skipped).toBe(2);
+    expect(report.getCoverage()?.totalChineseSegments).toBe(2);
+    expect(Object.keys(report.groupCoverageManualByCategory()).sort()).toEqual([
+      'jsx-text-in-vue',
+      'non-html-template',
+    ]);
+  });
+});
+
+describe('ManualCategory 文案表', () => {
+  it('新增分类有独立的 label 与 suggestion（不复用 html-in-template 文案）', () => {
+    for (const c of ['non-html-template', 'jsx-text-in-vue'] as const) {
+      expect(RunReport.MANUAL_LABELS[c]).toBeTruthy();
+      expect(RunReport.MANUAL_DEFAULT_SUGGESTIONS[c]).toBeTruthy();
+      expect(RunReport.MANUAL_DEFAULT_SUGGESTIONS[c]).not.toBe(
+        RunReport.MANUAL_DEFAULT_SUGGESTIONS['html-in-template'],
+      );
+    }
+    expect(RunReport.MANUAL_DEFAULT_SUGGESTIONS['non-html-template']).toContain('pug');
   });
 });

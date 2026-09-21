@@ -29,6 +29,8 @@ export async function loadPdfJsLib(workerSrc?: string): Promise<PdfJs> {
 }
 
 export interface UsePdfLoaderOptions {
+  /** 自定义 pdf.js worker 地址，每次 load 时求值，不传则用 CDN 默认值 */
+  getWorkerSrc?: () => string | undefined;
   /** 加载成功回调 */
   onLoad?: (pdf: PDFDocumentProxy) => void;
   /** 加载失败回调 */
@@ -74,7 +76,7 @@ export function usePdfLoader(options: UsePdfLoaderOptions = {}): UsePdfLoaderRet
     error.value = null;
 
     try {
-      const lib = await loadPdfJsLib();
+      const lib = await loadPdfJsLib(options.getWorkerSrc?.());
 
       // 取消之前的加载任务
       if (currentLoadingTask) {

@@ -36,7 +36,7 @@
   &--primary {
     border-color: var(--aix-colorPrimary);
     background-color: var(--aix-colorPrimary);
-    color: var(--aix-colorTextLightSolid);
+    color: var(--aix-colorTextLight);
 
     &:hover:not(.aix-<%= it.componentName %>--disabled) {
       border-color: var(--aix-colorPrimaryHover);

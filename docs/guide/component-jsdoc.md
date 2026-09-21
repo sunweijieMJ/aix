@@ -38,33 +38,42 @@ export interface ButtonProps {
 
 ## Events 注释
 
-在组件文件顶部添加 `@event` 注释：
+在 `types.ts` 的 Emits 接口里，给每个调用签名写 JSDoc。事件名、参数声明与说明都从这里读取：
 
-```vue
-<script setup lang="ts">
-/**
- * 按钮组件
- *
- * @event click - 点击按钮时触发
- */
-import type { ButtonProps, ButtonEmits } from './types';
-
-const props = withDefaults(defineProps<ButtonProps>(), {
-  type: 'default',
-  size: 'medium',
-});
-
-const emit = defineEmits<ButtonEmits>();
-</script>
+```typescript
+export interface ButtonEmits {
+  /** 点击按钮时触发 */
+  (e: 'click', event: MouseEvent): void;
+}
 ```
 
-**格式**：`@event <事件名> - <说明>`
+生成的参数列会保留形参名与类型（`event: MouseEvent`），所以形参名要有意义。
 
 ## Slots 注释
 
-**重要**：Slots 注释必须使用 **HTML 注释**放在 `<template>` 中，而不是 `<script>` 中。
+### 方法 0: `defineSlots` 类型字面量（推荐，带作用域参数时必须）
 
-### 方法 1: 在 template 顶部（推荐）
+```vue
+<script setup lang="ts">
+defineSlots<{
+  /** 列表上方区域 */
+  header?: () => unknown;
+  /** 自定义叶子项 */
+  item?: (props: MenuItemSlotProps) => unknown;
+  /** 带连字符的插槽名要加引号 */
+  'group-title'?: (props: { item: MenuItemData }) => unknown;
+}>();
+</script>
+```
+
+插槽名、作用域参数（`props: MenuItemSlotProps`）和说明都从类型字面量读取。
+只有 `<template v-for="name in names" #[name]="sp"><slot :name="name" v-bind="sp" /></template>`
+这种把任意具名插槽原样转发给子组件的写法，插槽名在编译期不可枚举，不进 `defineSlots`，在 README 里手写说明。
+
+没有 `defineSlots` 的组件，参数列只能拿到模板 `<slot :a :b-c>` 的绑定名（渲染成 `{ a, bC }`，没有类型），
+说明用 **HTML 注释**放在 `<template>` 中，而不是 `<script>` 中：
+
+### 方法 1: 在 template 顶部
 
 ```vue
 <!--
@@ -190,19 +199,89 @@ export interface ButtonEmits {
 }
 ```
 
+## Expose 注释
+
+`defineExpose` 用 `satisfies` 挂上接口，接口成员的类型与 JSDoc 会进 Expose 表；
+没有 `satisfies` 时，会找包内名为 `<组件名>Expose` 的接口，且要求对象字面量不含展开元素、每个键都是该接口的成员，否则不出表。
+裸对象字面量没有类型信息，不进 API 表。
+
+```typescript
+export interface PopperExpose {
+  /** 显示浮动元素 */
+  show: () => void;
+}
+```
+
+```vue
+<script setup lang="ts">
+defineExpose({ show } satisfies PopperExpose);
+</script>
+```
+
+## 类型别名与可选值
+
+Props 的类型列取源码声明文本。声明为**本包内**类型别名时会展开一层；封闭的字符串字面量联合另存为可选值，
+混有 `(string & {})` 这类非字面量成员的开放联合不给可选值：
+
+```typescript
+export type ButtonSize = 'small' | 'medium' | 'large';
+export type MenuTheme = 'gray' | 'white' | (string & {});
+
+export interface ButtonProps {
+  /** @default 'medium' */
+  size?: ButtonSize; // 可选值 small / medium / large
+}
+export interface MenuProps {
+  /** @default 'gray' */
+  theme?: MenuTheme; // 开放联合，无可选值
+}
+```
+
+表格展示展开后的文本，MCP 把可选值作为枚举提供给 AI。
+跨包导入的别名（如 `@floating-ui/vue` 的 `Placement`）保持原名。
+
+## 参与生成的组件
+
+`src/index.ts` 导出了哪些 .vue 组件，API 表就有哪些，不需要额外配置。两种导出写法都识别：
+
+```typescript
+import Menu from './Menu.vue';
+import MenuItem from './components/MenuItem.vue';
+
+export { Menu, MenuItem };
+export { default as SubMenu } from './components/SubMenu.vue';
+```
+
+组件名取导出名（`index.vue` 导出为 `VideoPlayer` 就叫 VideoPlayer），
+多组件包的表格以组件名为前缀（`### MenuItem Props`）。
+入口没有导出任何 .vue 的包退回包根 `src/*.vue`。
+
 ## 文档生成流程
 
-1. **编写组件** - 添加 JSDoc 注释
-2. **生成 API** - 运行 `pnpm docs:gen`
-   - 从组件提取 API → `packages/*/README.md`
-3. **同步文档** - 运行 `pnpm docs:sync`
-   - 从 README 注入 API → `docs/components/*.md`
+```text
+组件源码（types.ts + .vue 的类型声明与 JSDoc）
+  └─ pnpm docs:gen（scripts/docs/gen-docs.ts，解析结果只在内存里）
+       ├─ packages/<pkg>/README.md        ## API、## 类型定义（已有该段时）
+       ├─ docs/components/<pkg>.md        ## API、## 类型定义（已有该段时）
+       └─ 校验文档页 / sidebar / 组件总览三处登记一致
+  └─ MCP Server extract 调用 scripts/docs/print-api.ts 拿同一份解析结果
+```
+
+日常只需运行 `pnpm docs:gen`（末尾会顺带刷新 MCP 数据）。
+CI 的 Docs Check 会重跑生成并要求 README 与文档页零 diff。
+
+`@aix/icons` 的 580 个图标组件由脚本生成，不参与 API 生成，
+其文档页的 API 段直接同步 README 里的手写表格，并在页面上标注来源。
 
 ## 常见问题
 
 ### Q: 为什么生成的文档中 Events/Slots 说明是 `-`？
 
-A: 需要在组件文件顶部添加 `@event` 和 `@slot` 注释。`vue-docgen-api` 无法从类型定义推断事件和插槽的说明。
+A: Emits 接口的调用签名上没有 JSDoc，或者插槽既没有 `defineSlots` 里的 JSDoc、模板里也没有 `<!-- @slot -->` 注释。
+
+### Q: 子组件的 Props 没有出现在 API 表里？
+
+A: 它没有从 `src/index.ts` 导出。只有对外导出的组件才进 API 表，内部子组件不该出现在文档里。
 
 ### Q: 如何添加更详细的说明？
 

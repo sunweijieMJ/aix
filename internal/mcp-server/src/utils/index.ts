@@ -3,6 +3,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import { glob } from 'glob';
 import type { ComponentInfo, PackageInfo } from '../types/index';
 import { log } from './logger';
+import { toSubComponentName } from './sub-component';
 
 /**
  * 读取并解析 package.json 文件
@@ -175,6 +176,57 @@ export function extractTags(text: string): string[] {
 }
 
 /**
+ * 组件查询结果
+ *
+ * subComponent 非空表示命中的是包内的某个子组件（如 @aix/popper 里的 Tooltip）。
+ * 调用方必须据此把 props / emits / slots 收窄到该子组件：同一个包里
+ * placement 有 4 份、teleportTo 有 5 份，默认值各不相同，
+ * 不收窄就等于把一堆自相矛盾的条目一起丢给调用方。
+ */
+export interface ResolvedComponent {
+  component: ComponentInfo;
+  /** 命中的子组件名；按包名/包显示名查询时为 null，表示要整包的 API */
+  subComponent: string | null;
+}
+
+/**
+ * 按组件名、包名或同包内的子组件名定位组件
+ */
+export function resolveComponent(
+  components: ComponentInfo[],
+  name: string,
+): ResolvedComponent | null {
+  if (!name || !components || components.length === 0) {
+    return null;
+  }
+
+  const normalizedName = name.toLowerCase();
+
+  const matched = components.find(
+    (c) =>
+      c.name.toLowerCase() === normalizedName ||
+      c.packageName.toLowerCase() === normalizedName ||
+      c.packageName.toLowerCase().endsWith(`/${normalizedName}`),
+  );
+  if (matched) {
+    // 显示名同时也是子组件名时按子组件收窄——@aix/popper 的 "Popper" 就是这种情况。
+    // 问 Popper 要的是这个组件自己的 API，而不是同包 6 个子组件的并集
+    // （那里 placement 有 4 份、默认值互相打架）。要整包请用包名 @aix/popper
+    const sub = matched.subComponents?.find((s) => s.toLowerCase() === normalizedName) ?? null;
+    return { component: matched, subComponent: sub };
+  }
+
+  // 退而查子组件：@aix/popper 里的 Tooltip 不是顶层条目，
+  // 但按名字问它是很自然的用法
+  for (const component of components) {
+    const sub = component.subComponents?.find((s) => s.toLowerCase() === normalizedName);
+    if (sub) return { component, subComponent: sub };
+  }
+
+  return null;
+}
+
+/**
  * 通用组件查找函数
  * 根据组件名称或包名查找组件
  */
@@ -182,25 +234,25 @@ export function findComponentByName(
   components: ComponentInfo[],
   name: string,
 ): ComponentInfo | null {
-  if (!name || !components || components.length === 0) {
-    return null;
-  }
+  return resolveComponent(components, name)?.component ?? null;
+}
 
-  const normalizedName = name.toLowerCase();
-
-  return (
-    components.find(
-      (c) =>
-        c.name.toLowerCase() === normalizedName ||
-        c.packageName.toLowerCase() === normalizedName ||
-        c.packageName.toLowerCase().endsWith(`/${normalizedName}`),
-    ) || null
-  );
+/**
+ * 把带 group 的 API 条目收窄到指定子组件
+ *
+ * subComponent 为 null（按包名查询）时原样返回整包的条目。
+ */
+export function filterBySubComponent<T extends { group?: string }>(
+  items: T[] | undefined,
+  subComponent: string | null,
+): T[] {
+  const list = items ?? [];
+  if (!subComponent) return list;
+  return list.filter((item) => toSubComponentName(item.group) === subComponent);
 }
 
 // 重新导出工具模块
-export * from './cache';
-
+export * from './sub-component';
 export * from './logger';
 export * from './validation';
 export * from './monitoring';

@@ -5,7 +5,7 @@
 import path from 'node:path';
 import chalk from 'chalk';
 import type { ComponentConfig } from './types.js';
-import { toPascalCase, getComponentDir, ensureDir, writeFile } from './utils.js';
+import { toPascalCase, getComponentDir, getRepoRoot, ensureDir, writeFile } from './utils.js';
 import { renderTemplates, type TemplateContext, type GeneratedFileInfo } from './renderer.js';
 
 /**
@@ -34,7 +34,7 @@ export async function generateComponent(
     // Dry-run 模式: 只显示将要生成的文件
     console.log(chalk.yellow('🔍 Dry-run 模式 - 以下文件将被创建:\n'));
     for (const file of files) {
-      console.log(chalk.gray(`  ${file.type.padEnd(8)} ${file.path}`));
+      console.log(chalk.gray(`  ${file.type.padEnd(8)} ${displayPath(componentDir, file)}`));
     }
     console.log(chalk.yellow(`\n总计 ${files.length} 个文件`));
     return;
@@ -46,9 +46,9 @@ export async function generateComponent(
 
     // 写入文件
     for (const file of files) {
-      const fullPath = path.join(componentDir, file.path);
+      const fullPath = path.join(outputRoot(componentDir, file), file.path);
       await writeFile(fullPath, file.content);
-      console.log(chalk.green(`✓ 创建文件: ${file.path}`));
+      console.log(chalk.green(`✓ 创建文件: ${displayPath(componentDir, file)}`));
     }
 
     // 显示成功信息
@@ -88,14 +88,25 @@ async function createDirectories(
   for (const file of files) {
     const dir = path.dirname(file.path);
     if (dir !== '.') {
-      directories.add(dir);
+      directories.add(path.join(outputRoot(componentDir, file), dir));
     }
   }
 
   // 确保目录存在
   for (const dir of directories) {
-    await ensureDir(path.join(componentDir, dir));
+    await ensureDir(dir);
   }
+}
+
+function outputRoot(componentDir: string, file: GeneratedFileInfo): string {
+  return file.root === 'repo' ? getRepoRoot() : componentDir;
+}
+
+/** 日志里的路径：包内文件相对包目录，仓库级文件相对仓库根 */
+function displayPath(componentDir: string, file: GeneratedFileInfo): string {
+  return file.root === 'repo'
+    ? file.path
+    : path.join(path.relative(getRepoRoot(), componentDir), file.path);
 }
 
 /**
@@ -109,4 +120,14 @@ function printSuccessMessage(componentName: string): void {
   console.log(chalk.white(`  3. pnpm install       # 安装依赖`));
   console.log(chalk.white(`  4. pnpm test          # 运行测试`));
   console.log(chalk.white(`  5. pnpm storybook:dev # 查看组件文档`));
+  console.log(
+    chalk.white(
+      `  6. pnpm docs:gen      # 生成 README 与 docs/components/${componentName}.md 的 API 段`,
+    ),
+  );
+  console.log(
+    chalk.white(
+      `  7. 把 docs/components/${componentName}.md 挂进 docs/.vitepress/config.ts 的 sidebar 与 docs/components/index.md（docs:gen 会校验）`,
+    ),
+  );
 }

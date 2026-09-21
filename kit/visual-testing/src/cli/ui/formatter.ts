@@ -116,6 +116,9 @@ export function formatInitSuccess(configPath: string): string {
   lines.push(`  1. Edit ${chalk.cyan(configPath)} to add targets`);
   lines.push(`  2. Run ${chalk.cyan("'visual-test sync'")} to download baselines`);
   lines.push(`  3. Run ${chalk.cyan("'visual-test test'")} to start testing`);
+  lines.push(
+    `  4. Optional: ${chalk.cyan("'visual-test fidelity --figma <url> --url <page>'")} to check design fidelity`,
+  );
   lines.push('');
   return lines.join('\n');
 }

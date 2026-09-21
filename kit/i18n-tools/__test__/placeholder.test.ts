@@ -1,6 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import ts from 'typescript';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import {
+  finalizeLocaleMessage,
+  parseTemplatePlaceholders,
+  toSingleBracePlaceholders,
+} from '../src/utils/message-shape';
+import {
+  createJsxFragmentFromTemplate,
+  createStringOrTemplateNode,
+} from '../src/utils/restore-node-factory';
+import { LoggerUtils } from '../src/utils/logger';
 import { extractPlaceholderNames } from '../src/utils/placeholder-utils';
 import { VueI18nLibraryImpl } from '../src/strategies/vue/libraries/vue-i18n';
 import { VueI18nextLibrary } from '../src/strategies/vue/libraries/vue-i18next';
@@ -143,9 +152,9 @@ describe('字面量花括号处理（finalizeLocaleMessage / escape-unescape）'
     describe(libName, () => {
       for (const { msg, names } of cases) {
         it(`往返无损: ${msg}`, () => {
-          const finalized = CommonASTUtils.finalizeLocaleMessage(msg, names, lib);
+          const finalized = finalizeLocaleMessage(msg, names, lib);
           const single = lib.usesDoubleBracePlaceholders
-            ? CommonASTUtils.toSingleBracePlaceholders(finalized)
+            ? toSingleBracePlaceholders(finalized)
             : finalized;
           expect(lib.unescapeLiteralText(single)).toBe(msg);
         });
@@ -155,26 +164,26 @@ describe('字面量花括号处理（finalizeLocaleMessage / escape-unescape）'
 
   it('双花括号库：只转真占位符，不误转文本里的 {config}', () => {
     const lib = new ReactI18nextLibrary();
-    const out = CommonASTUtils.finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
+    const out = finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
     expect(out).toBe('共 {{count}} 个{config}项'); // count→双；config 保持单（i18next 字面量）
   });
 
   it("vue-i18n：纯文本字面量花括号转义为 {'{'} / {'}' }", () => {
     const lib = new VueI18nLibraryImpl();
-    const out = CommonASTUtils.finalizeLocaleMessage('包含{大括号}的文本', [], lib);
+    const out = finalizeLocaleMessage('包含{大括号}的文本', [], lib);
     expect(out).toBe("包含{'{'}大括号{'}'}的文本");
   });
 
   it("react-intl：纯文本字面量花括号转义为 ICU '{' / '}'", () => {
     const lib = new ReactIntlLibrary();
-    const out = CommonASTUtils.finalizeLocaleMessage('包含{大括号}的文本', [], lib);
+    const out = finalizeLocaleMessage('包含{大括号}的文本', [], lib);
     expect(out).toBe("包含'{'大括号'}'的文本");
   });
 
   it('doctor 占位符提取不把转义后的字面量误判为占位符', () => {
     // vue-i18n 转义后的值里只应识别出真占位符 count，不应出现 大括号 / config
     const lib = new VueI18nLibraryImpl();
-    const value = CommonASTUtils.finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
+    const value = finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
     const names = extractPlaceholderNames(value);
     expect(names.has('count')).toBe(true);
     expect(names.has('config')).toBe(false);
@@ -195,18 +204,19 @@ const printNode = (node: ts.Node): string => {
   return printer.printNode(ts.EmitHint.Unspecified, node, sf);
 };
 
-describe('CommonASTUtils.createStringOrTemplateNode 重复占位符', () => {
+describe('createStringOrTemplateNode 重复占位符', () => {
   it('同名占位符重复出现 → 重建为模板字面量，保留变量插值', () => {
     const messageText = '欢迎 {name1}，再次问候 {name1}';
     const values = {
       name1: { node: ts.factory.createIdentifier('name'), text: 'name' },
     };
 
-    const node = CommonASTUtils.createStringOrTemplateNode(messageText, values);
+    const node = createStringOrTemplateNode(messageText, values);
 
-    // 不应退化为纯字符串字面量
-    expect(ts.isStringLiteral(node)).toBe(false);
-    expect(ts.isTemplateExpression(node)).toBe(true);
+    // 不应退化为纯字符串字面量 / 判失配
+    expect(node).not.toBeNull();
+    expect(ts.isStringLiteral(node!)).toBe(false);
+    expect(ts.isTemplateExpression(node!)).toBe(true);
 
     // 直接核对 AST：head + 两个 span（同名变量各插值一次），字面段保留原中文
     const tpl = node as ts.TemplateExpression;
@@ -220,20 +230,21 @@ describe('CommonASTUtils.createStringOrTemplateNode 重复占位符', () => {
     expect(tpl.templateSpans[1]!.literal.text).toBe('');
 
     // 打印产物含两处 ${name} 插值（非字面 {name1}）
-    const printed = printNode(node);
+    const printed = printNode(node!);
     expect(printed.match(/\$\{name\}/g)?.length).toBe(2);
     expect(printed).not.toContain('{name1}');
   });
 
-  it('占位符与 values 真不匹配时仍按唯一名判失配 → 返回字面串', () => {
+  it('占位符与 values 真不匹配时仍按唯一名判失配 → 返回 null 保留原调用', () => {
     const messageText = 'a {x} b {y}';
     const values = {
       x: { node: ts.factory.createIdentifier('x'), text: 'x' },
       // 缺 y
     };
-    const node = CommonASTUtils.createStringOrTemplateNode(messageText, values);
-    expect(ts.isStringLiteral(node)).toBe(true);
-    expect((node as ts.StringLiteral).text).toBe(messageText);
+    // 失配时不得再退化为字面串（会把占位符字面化写进源码、静默删除运行时变量），
+    // 而是返回 null 让调用方保留原调用/组件。
+    const node = createStringOrTemplateNode(messageText, values);
+    expect(node).toBeNull();
   });
 });
 
@@ -250,5 +261,88 @@ describe('中文占位符名（字符集与生成端对齐）', () => {
 
   it('extractPlaceholderNames：单花括号库采集中文占位符名', () => {
     expect(extractPlaceholderNames('共{数量}个', false)).toEqual(new Set(['数量']));
+  });
+});
+
+/**
+ * JSX 片段工厂与模板字面量工厂同口径：占位符唯一名数与 values 项数不一致时返回 null，
+ * 由调用方保留原调用，避免多出的变量被静默丢弃。
+ */
+describe('createJsxFragmentFromTemplate 占位符/values 数量守卫', () => {
+  const ident = (name: string): { node: ts.Expression; text: string } => ({
+    node: ts.factory.createIdentifier(name),
+    text: name,
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('values 多于占位符 → 返回 null（与模板字面量工厂同口径保留原调用）', () => {
+    const values = { count: ident('count'), name: ident('name') };
+    expect(createJsxFragmentFromTemplate('共 {count} 项', values)).toBeNull();
+    // 姊妹工厂的既有行为作为对照锚点
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    expect(createStringOrTemplateNode('共 {count} 项', values)).toBeNull();
+  });
+
+  it('数量匹配时照常重建片段', () => {
+    const fragment = createJsxFragmentFromTemplate('共 {count} 项', { count: ident('count') });
+    expect(fragment).not.toBeNull();
+    const printed = ts
+      .createPrinter()
+      .printNode(
+        ts.EmitHint.Unspecified,
+        fragment!,
+        ts.createSourceFile('a.tsx', '', ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX),
+      );
+    expect(printed).toContain('{count}');
+  });
+
+  it('同名占位符重复出现时按唯一名比对，不误判失配', () => {
+    const fragment = createJsxFragmentFromTemplate('{name} 你好，{name}', { name: ident('name') });
+    expect(fragment).not.toBeNull();
+  });
+});
+
+/**
+ * 占位符 token 形态：restore 侧切分（parseTemplatePlaceholders）与写盘定稿
+ * （finalizeLocaleMessage）共用同一形态，名两侧空白与 i18next 的 `-` 前缀都归一掉。
+ * 两侧结论一旦不一致，同一条文案会在一端被当占位符、另一端被当字面量花括号转义。
+ */
+describe('占位符 token 归一（parse / finalize 同口径）', () => {
+  it('parseTemplatePlaceholders：名两侧空白被 trim', () => {
+    const { literalParts, placeholderNames } = parseTemplatePlaceholders('共 { count } 项');
+    expect(placeholderNames).toEqual(['count']);
+    expect(literalParts).toEqual(['共 ', ' 项']);
+  });
+
+  it('parseTemplatePlaceholders：`{{- name}}` 归一为 name，且不残留花括号', () => {
+    const { literalParts, placeholderNames } = parseTemplatePlaceholders('你好 {{- name}}！');
+    expect(placeholderNames).toEqual(['name']);
+    expect(literalParts).toEqual(['你好 ', '！']);
+  });
+
+  it('parseTemplatePlaceholders：`{{name}}` 与 `{name}` 结论一致', () => {
+    expect(parseTemplatePlaceholders('共 {{count}} 项').placeholderNames).toEqual(['count']);
+    expect(parseTemplatePlaceholders('共 {count} 项').placeholderNames).toEqual(['count']);
+  });
+
+  it('finalizeLocaleMessage：`{ count }` 与 `{count}` 定稿结果相同', () => {
+    const lib = new VueI18nLibraryImpl();
+    expect(finalizeLocaleMessage('共 { count } 项', ['count'], lib)).toBe('共 {count} 项');
+    expect(finalizeLocaleMessage('共 {count} 项', ['count'], lib)).toBe('共 {count} 项');
+  });
+
+  it('finalizeLocaleMessage：双花括号库下带空白的占位符同样识别为真占位符', () => {
+    const lib = new ReactI18nextLibrary();
+    expect(finalizeLocaleMessage('共 { count } 项', ['count'], lib)).toBe('共 {{count}} 项');
+  });
+
+  it('非占位符名的花括号仍按字面量转义（守卫不扩大化）', () => {
+    const lib = new VueI18nLibraryImpl();
+    expect(finalizeLocaleMessage('包含{ 大括号 }的文本', [], lib)).toBe(
+      "包含{'{'} 大括号 {'}'}的文本",
+    );
   });
 });

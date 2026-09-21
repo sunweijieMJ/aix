@@ -142,6 +142,42 @@ describe('CsvImportProcessor', () => {
     expect(readUntranslated().a['en-US']).toBe(''); // 未变
   });
 
+  it('同一 key 在 CSV 中出现多次 → 后者覆盖前者（行为不变）且告警一次', async () => {
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn');
+    writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': '' } });
+    const input = writeCsv('dup.csv', [
+      ['key', 'zh-CN', 'en-US', 'reason', 'note'],
+      ['a', '甲', 'First', '', ''],
+      ['a', '甲', 'Second', '', ''],
+    ]);
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(readUntranslated().a['en-US']).toBe('Second');
+    const dupWarns = warnSpy.mock.calls.filter((c) => /重复 key/.test(String(c[0])));
+    expect(dupWarns).toHaveLength(1);
+    expect(String(dupWarns[0]![0])).toContain('a');
+  });
+
+  it('全部数据行字段数都与表头不符 → 抛错，而非静默 exit 0', async () => {
+    writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': '' } });
+    // 表头合法（有 key 列），但每条数据记录都多一个字段——手工编辑多打逗号的典型形态
+    const input = path.join(tmpDir, 'broken.csv');
+    fs.writeFileSync(input, 'key,zh-CN,en-US\na,甲,Jia,oops\nb,乙,Yi,oops\n');
+
+    await expect(
+      new CsvImportProcessor(makeConfig(), false, {
+        input,
+        dryRun: false,
+        ci: true,
+      }).execute(),
+    ).rejects.toThrow(/无一行可用|字段数/);
+  });
+
   it('缺少 key 列时抛错', async () => {
     writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': '' } });
     const input = writeCsv('bad.csv', [
@@ -321,6 +357,54 @@ describe('CsvImportProcessor 变更计数', () => {
     expect(lines.some((l) => /保持不变\s+1 处/.test(l))).toBe(true);
   });
 
+  /**
+   * 重复 key 的「将更新」按 (key, lang) 去重：同一 key 多行覆盖的是同一格，
+   * 按行累加会把一处改动报成两处（重复 key 告警另有一条，不受影响）。
+   */
+  it('同一 key 多行覆盖同一格 → 只计一处更新', async () => {
+    writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': '' } });
+    const input = writeCsv('dup-count.csv', [
+      ['key', 'zh-CN', 'en-US'],
+      ['a', '甲', 'First'],
+      ['a', '甲', 'Second'],
+    ]);
+    const infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: true,
+      ci: true,
+    }).execute();
+
+    const lines = infoSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => /将更新\s+1 处/.test(l))).toBe(true);
+  });
+
+  it('同一 key 后一行把值改回原值 → 净变更为 0，不重写文件', async () => {
+    writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': 'Jia' } });
+    const input = writeCsv('restore.csv', [
+      ['key', 'zh-CN', 'en-US'],
+      ['a', '甲', 'Changed'],
+      ['a', '甲', 'Jia'],
+    ]);
+    const target = path.join(localeDir, 'untranslated.json');
+    const before = fs.statSync(target).mtimeMs;
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(fs.statSync(target).mtimeMs).toBe(before);
+    expect(JSON.parse(fs.readFileSync(target, 'utf8')).a['en-US']).toBe('Jia');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('跳过写盘'));
+    // 不写盘就不该打印「目标文件」，否则会被读成两个文件都被改了
+    expect(infoSpy.mock.calls.flat().join('\n')).not.toMatch(/目标文件/);
+  });
+
   it('整表原样回流：updated=0 → 不重写文件', async () => {
     writeUntranslated({
       a: { 'zh-CN': '甲', 'en-US': 'Jia' },
@@ -404,5 +488,96 @@ describe('CsvImportProcessor — 非对象字典条目守卫（审计 ⑦）', (
 
     // 破坏的字典未被写穿（非对象 entry 未被赋值）
     expect(JSON.parse(fs.readFileSync(untPath, 'utf-8'))).toEqual({ a: 'oops-a-string' });
+  });
+});
+
+/**
+ * B3：人工回流路径此前完全绕过 isValidTranslation 与占位符校验 —— `---`、被翻译掉的
+ * 占位符名原样进字典并随 merge 写进 locale，translate/merge 两条自动路径的三道闸
+ * 在人工路径一道也没有。csv-import 侧至少告警（写回仍按人的编辑意图执行），
+ * 无效值最终由 merge 写 locale 前拒收。
+ */
+describe('CsvImportProcessor — 无效译文 / 占位符失配告警（B3）', () => {
+  let tmpDir: string;
+  let localeDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csv-import-invalid-'));
+    localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  const warnings = (): string => warnSpy.mock.calls.flat().map(String).join('\n');
+
+  it('B3: 无效值与占位符失配各告警一次，值仍按编辑意图写回', async () => {
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({
+        'a.b': { 'zh-CN': '共{count}条', 'en-US': '' },
+        'a.c': { 'zh-CN': '确认', 'en-US': '' },
+      }),
+    );
+    const input = path.join(tmpDir, 'in.csv');
+    fs.writeFileSync(
+      input,
+      serializeCsv([
+        ['key', 'zh-CN', 'en-US'],
+        ['a.b', '共{count}条', '{数量} items'],
+        ['a.c', '确认', '---'],
+      ]),
+    );
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(warnings()).toMatch(/译文无效[\s\S]*a\.c/);
+    expect(warnings()).toMatch(/占位符与源文案不一致[\s\S]*a\.b/);
+    const written = JSON.parse(fs.readFileSync(path.join(localeDir, 'untranslated.json'), 'utf-8'));
+    expect(written['a.b']['en-US']).toBe('{数量} items');
+    expect(written['a.c']['en-US']).toBe('---');
+  });
+
+  it('B3: 译文合法且占位符一致 → 不产生这两条告警（无回归）', async () => {
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'a.b': { 'zh-CN': '共{count}条', 'en-US': '' } }),
+    );
+    const input = path.join(tmpDir, 'in.csv');
+    fs.writeFileSync(
+      input,
+      serializeCsv([
+        ['key', 'zh-CN', 'en-US'],
+        ['a.b', '共{count}条', '{count} items'],
+      ]),
+    );
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(warnings()).not.toMatch(/译文无效|占位符与源文案不一致/);
   });
 });

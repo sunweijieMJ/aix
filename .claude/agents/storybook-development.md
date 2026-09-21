@@ -38,112 +38,61 @@ model: inherit
 
 ```
 aix/
-├── .storybook/               # Storybook 全局配置
-│   ├── main.ts              # 主配置
-│   ├── preview.ts           # 预览配置
-│   └── theme.ts             # 自定义主题
+├── .storybook/                  # Storybook 全局配置（只有这三个文件）
+│   ├── main.ts                 # 框架 / addons / vite（含 workspace 源码别名与 dev proxy）
+│   ├── preview.ts              # 全局 locale + theme context、工具栏同步
+│   └── vitest.setup.ts         # addon-vitest 的 setup，story play 在浏览器里跑时用
 ├── packages/
-│   ├── button/
-│   │   └── stories/
-│   │       └── Button.stories.ts
-│   ├── select/
-│   │   └── stories/
-│   │       └── Select.stories.ts
-│   └── theme/
-│       └── src/
-│           └── index.css    # 主题样式
+│   ├── button/stories/Button.stories.ts
+│   ├── ai-chat/stories/         # 38 个 story，本仓最完整的参考
+│   └── theme/src/vars/index.css # 主题 CSS 变量，被 preview.ts 全局引入
 └── package.json
 ```
 
+> stories glob 是 `../packages/**/*.stories.@(js|jsx|ts|tsx|mdx)`——**任意深度**，
+> 不限于 `packages/*/stories/`。
+
 ### Storybook 配置文件
 
-#### .storybook/main.ts
+> ⚠️ 本仓是 **Storybook 10.5**。网上大量 SB6/7 教程里的
+> `addon-essentials` / `addon-interactions` / `docs: { autodocs: 'tag' }` /
+> `parameters.actions.argTypesRegex` **在本版本均已移除**，照抄会直接报错或静默失效。
+> 配置以 `.storybook/main.ts` 和 `.storybook/preview.ts` 实际内容为准，下面只讲要点。
+
+#### `.storybook/main.ts` 要点
+
+| 项 | 本仓实际值 |
+|----|-----------|
+| framework | `@storybook/vue3-vite`，且 `options.docgen: false` |
+| addons | `addon-links`、`addon-docs`、`addon-vitest`（**仅此三个**）|
+| stories glob | `../packages/**/*.stories.@(js\|jsx\|ts\|tsx\|mdx)` |
+| workspace 别名 | `createWorkspaceAlias()` 把 `@aix/*` 指向**源码**而非构建产物，保证热更新 |
+| dev proxy | `/proxy-dify`、`/proxy-deepseek`，密钥在 proxy 侧注入，不进前端 bundle |
+
+没有 `addon-a11y`。无障碍检查走 [accessibility](accessibility.md) agent 与
+`/a11y-checker` skill，不要在 story 里写 `parameters.a11y` 期待它生效。
+
+#### `.storybook/preview.ts` 要点
+
+preview 通过 `setup()` 安装了两个**全局 context**，story 里直接可用，不需要自己再包 provider：
 
 ```typescript
-import type { StorybookConfig } from '@storybook/vue3-vite';
-import { mergeConfig } from 'vite';
+import { createLocale } from '../packages/hooks/src';
+import { createTheme } from '../packages/theme/src';
+import '../packages/theme/src/vars/index.css';   // 主题 CSS 变量，全局注入
 
-const config: StorybookConfig = {
-  // Stories 文件位置
-  stories: ['../packages/*/stories/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
-
-  // 插件
-  addons: [
-    '@storybook/addon-essentials',
-    '@storybook/addon-links',
-    '@storybook/addon-interactions',
-    '@storybook/addon-a11y',
-  ],
-
-  // 框架
-  framework: {
-    name: '@storybook/vue3-vite',
-    options: {},
-  },
-
-  // Vite 配置
-  async viteFinal(config) {
-    return mergeConfig(config, {
-      resolve: {
-        alias: {
-          '@aix/theme': '../packages/theme/src',
-        },
-      },
-    });
-  },
-
-  docs: {
-    autodocs: 'tag',
-  },
-};
-
-export default config;
+const { localeContext, install: installLocale } = createLocale('zh-CN');
+const { themeContext, install: installTheme } = createTheme({
+  initialMode: 'light', persist: true, watchSystem: false,
+});
+setup((app) => { app.use({ install: installLocale }); app.use({ install: installTheme }); });
 ```
 
-#### .storybook/preview.ts
+decorator 会把 Storybook 工具栏的 `globals.locale` / `globals.theme` 同步到这两个
+context，所以**切换工具栏即可验证多语言与暗色主题**——这是本仓 story 最该覆盖的两个维度。
 
-```typescript
-import type { Preview } from '@storybook/vue3';
-import '@aix/theme'; // 导入主题样式
-
-const preview: Preview = {
-  parameters: {
-    actions: { argTypesRegex: '^on[A-Z].*' },
-    controls: {
-      matchers: {
-        color: /(background|color)$/i,
-        date: /Date$/,
-      },
-    },
-    viewport: {
-      viewports: {
-        mobile: {
-          name: 'Mobile',
-          styles: { width: '375px', height: '667px' },
-        },
-        tablet: {
-          name: 'Tablet',
-          styles: { width: '768px', height: '1024px' },
-        },
-        desktop: {
-          name: 'Desktop',
-          styles: { width: '1440px', height: '900px' },
-        },
-      },
-    },
-  },
-
-  // 全局装饰器
-  decorators: [
-    (story) => ({
-      components: { story },
-      template: '<div style="padding: 20px;"><story /></div>',
-    }),
-  ],
-};
-
-export default preview;
-```
+> 类型从 `@storybook/vue3-vite` 导入（`Preview`、`setup`）；story 文件里的
+> `Meta` / `StoryObj` 从 `@storybook/vue3` 导入。
 
 ---
 
@@ -154,13 +103,21 @@ export default preview;
 ```typescript
 // packages/button/stories/Button.stories.ts
 import type { Meta, StoryObj } from '@storybook/vue3';
-import { Button } from '../src';
+import { fn } from 'storybook/test';        // SB10 路径，不是 '@storybook/test'
+import Button from '../src/Button.vue';     // 直接指向 SFC，避免过包入口
 
 // Meta 配置
 const meta: Meta<typeof Button> = {
-  title: 'Components/Button',        // Storybook 中的路径
-  component: Button,                 // 组件
-  tags: ['autodocs'],               // 自动生成文档
+  title: 'Components/Button',       // 分组/组件名，命名见下方说明
+  component: Button,
+  tags: ['autodocs'],               // 自动生成文档（SB8+ 就是打在 meta 上的 tag，
+                                    // 不再是 main.ts 里的 docs.autodocs）
+  parameters: {
+    docs: { description: { component: 'AIX Button 组件……' } },
+  },
+  args: {
+    onClick: fn(),                  // 用 fn() spy；argTypesRegex 在 SB8 已移除
+  },
   argTypes: {                       // 参数配置
     type: {
       control: 'select',
@@ -181,8 +138,7 @@ const meta: Meta<typeof Button> = {
       description: '是否禁用',
     },
     onClick: {
-      action: 'clicked',
-      description: '点击事件',
+      description: '点击事件',       // spy 在上面的 args 里用 fn() 提供
     },
   },
 };
@@ -644,78 +600,78 @@ export const Basic: Story = {
 
 ---
 
-## 🔧 插件使用
+## 🔧 插件与全局能力
 
-### 1. Actions
+本仓只装了 `addon-links` / `addon-docs` / `addon-vitest` 三个 addon。
+SB6/7 时代的 `addon-essentials`（Actions / Viewport / Backgrounds 打包在内）
+与 `addon-a11y` **都没装**，对应写法一律不生效：
 
-记录用户交互事件：
+| 想做的事 | ❌ 过时写法 | ✅ 本仓做法 |
+|---------|-----------|-----------|
+| 记录事件 | `argTypes: { onClick: { action: 'clicked' } }` | `args: { onClick: fn() }`（`from 'storybook/test'`）|
+| 自动绑定所有 on* | `parameters.actions.argTypesRegex` | SB8 已移除，逐个用 `fn()` |
+| 切换语言 | 自己包 provider | 工具栏 locale 下拉（preview.ts 已接 `createLocale`）|
+| 切换主题 | `parameters.backgrounds` | 工具栏 theme 下拉（preview.ts 已接 `createTheme`）|
+| 响应式验证 | `parameters.viewport` | 浏览器窗口，或 `@kit/visual-testing` 的响应式探测 |
+| 无障碍检查 | `parameters.a11y` | [accessibility](accessibility.md) agent / `/a11y-checker` skill |
+
+### 交互测试（addon-vitest）
+
+`addon-vitest` 让 story 的 `play` 函数在**真实 Chromium**里跑（根 `vitest.config.ts` 的
+`storybook` project，playwright browser mode，`testTimeout: 60_000`）：
 
 ```typescript
-argTypes: {
-  onClick: { action: 'clicked' },
-  onChange: { action: 'changed' },
-  onSubmit: { action: 'submitted' },
-}
-```
+import { expect, userEvent, waitFor } from 'storybook/test';
 
-### 2. Viewport
-
-测试响应式布局：
-
-```typescript
-export const Responsive: Story = {
-  parameters: {
-    viewport: {
-      defaultViewport: 'mobile',
-    },
+export const Interaction: Story = {
+  play: async ({ canvas, step }) => {
+    await step('点击提交', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: '提交' }));
+      await waitFor(() => expect(canvas.getByText('已提交')).toBeInTheDocument());
+    });
   },
 };
 ```
 
-### 3. Accessibility (a11y)
-
-检查可访问性：
-
-```typescript
-export const Accessible: Story = {
-  parameters: {
-    a11y: {
-      config: {
-        rules: [
-          {
-            id: 'color-contrast',
-            enabled: true,
-          },
-        ],
-      },
-    },
-  },
-};
+```bash
+pnpm test:stories    # 只跑 story 交互测试（--project storybook）
+pnpm test:unit       # 只跑单测（--project '!storybook'）
+pnpm test            # turbo 编排的包级测试，不含 storybook project
 ```
 
-### 4. Backgrounds
-
-测试不同背景：
-
-```typescript
-export const OnDarkBackground: Story = {
-  parameters: {
-    backgrounds: {
-      default: 'dark',
-      values: [
-        { name: 'dark', value: '#333' },
-        { name: 'light', value: '#fff' },
-      ],
-    },
-  },
-};
-```
-
----
+> `play` 里的异步时序坑不少（滚动容器禁指针、监听器装配晚于首帧、ResizeObserver
+> 合帧）。写不稳的交互测试前先看 `packages/ai-chat/stories/` 里的真实用例。
 
 ## 🎯 最佳实践
 
 ### 1. Story 命名规范
+
+#### `meta.title` 的分组
+
+侧边栏结构完全由 `title` 决定。本仓现有 52 个 story 的实际分布：
+
+| 前缀 | 数量 | 用于 |
+|------|------|------|
+| `AI Chat/…` | 38 | ai-chat。多数再分一层：`组件`(20) / `场景演示`(13) / `调试工具`(2)，另有 3 个直挂 `AI Chat/<名称>` |
+| `Components/<名称>` | 10 | 通用组件（Popper 再套一层 `Components/Popper/<名称>`）|
+| `Media/<名称>` | 3 | audio / subtitle / video |
+| `Button`（无前缀） | 1 | **历史遗留，不要跟随** |
+
+新增 story 挑一个已有顶层分组挂进去，不要发明新前缀，也不要像 Button 那样裸挂在根。
+组件数量多的包（如 ai-chat）可以再加一层子分组。
+
+```typescript
+// ✅ 正确
+title: 'Components/Select'
+title: 'Components/Popper/Tooltip'
+title: 'AI Chat/组件/ModelSelector'
+
+// ❌ 错误
+title: 'Select'              // 裸挂根部，侧边栏会散
+title: '组件/Select'          // 自造前缀，和现有分组对不上
+```
+
+#### 导出名
 
 ```typescript
 // ✅ 正确：描述性名称
@@ -732,20 +688,18 @@ export const Test: Story = {};
 
 ### 2. 组织 Stories
 
+顶层分组用**已有的那四个**（见上文 `meta.title` 分组表），不要新造：
+
 ```typescript
-// 按功能组织
-const meta: Meta = {
-  title: 'Components/Button',  // 基础组件
-};
-
-const meta: Meta = {
-  title: 'Form/Button',  // 表单类组件
-};
-
-const meta: Meta = {
-  title: 'Examples/LoginForm',  // 示例场景
-};
+title: 'Components/Select'            // 通用组件
+title: 'Components/Popper/Tooltip'    // 同一包内多组件，再套一层包名
+title: 'Media/VideoPlayer'            // 音视频
+title: 'AI Chat/组件/Bubble'          // ai-chat 的子组件
+title: 'AI Chat/场景演示/工具调用'     // ai-chat 的场景演示
 ```
+
+同一个包里既有"组件"又有"完整场景演示"时，按 ai-chat 的做法再分一层子分组
+（`组件` / `场景演示` / `调试工具`），而不是新开一个顶层前缀。
 
 ### 3. 使用参数装饰器
 
@@ -791,30 +745,30 @@ export const Primary: Story = {
 
 ---
 
-## 🧪 视觉测试
+## 🧪 视觉测试与还原度校验
 
-### 1. Chromatic
+Chromatic **没有接入**（`pnpm chromatic` 不存在）。本仓用自研的 `@kit/visual-testing`，
+两条独立流程：
 
-```bash
-# 安装
-pnpm add -D chromatic
+| 流程 | 命令 | 基线 | 回答的问题 |
+|------|------|------|-----------|
+| **视觉回归** | `visual-test test` | 上一次截图 | 什么变了 |
+| **设计还原度** | `visual-test fidelity` | Figma 节点树 + 位图 | 离设计差在哪个属性 |
 
-# 运行视觉测试
-pnpm chromatic --project-token=<token>
-```
+它从 Storybook 的 `/index.json` **自动发现所有 story**，不需要逐个配置测试目标——
+这意味着 story 写得全，视觉覆盖就自动跟上。`fidelity` 输出的是「选择器 + 期望值 +
+实际值」的结构化差异清单，专门给 AI 自检回路消费（读报告 → 改代码 → 重跑）。
 
-### 2. Snapshot 测试
+它还带两项静态比对覆盖不到的探测：
 
-```typescript
-// packages/button/__test__/Button.stories.test.ts
-import { test } from '@playwright/test';
+- **响应式健壮性**：在更窄视口重新测量，抓写死宽度、横向溢出、内容裁切
+- **交互反馈**：真实 hover 每个可交互元素，报告 hover 后毫无视觉变化的
 
-test('Button story snapshots', async ({ page }) => {
-  await page.goto('http://localhost:6006/?path=/story/components-button--default');
-  await page.waitForLoadState('networkidle');
-  await expect(page).toHaveScreenshot('button-default.png');
-});
-```
+详见 `kit/visual-testing/README.md`；实现在 `kit/visual-testing/src/core/fidelity/`。
+（该 README 里指向的 `docs/fidelity-architecture.md` 目前是空的，别照它找。）
+
+> 组件级的交互断言不要用独立 Playwright 脚本去访问 6006 端口——用 story 的 `play`
+> 函数，由 `addon-vitest` 在真实浏览器里跑（见上文「交互测试」）。
 
 ---
 
@@ -822,61 +776,45 @@ test('Button story snapshots', async ({ page }) => {
 
 ### 必需的 Stories
 
-- [ ] Default - 默认状态
-- [ ] 所有 Props 变体 - 每个 Props 的不同值
-- [ ] States - 不同状态 (hover, active, disabled)
-- [ ] Sizes - 所有尺寸对比
-- [ ] Types - 所有类型对比
+- [ ] **Default** - 默认状态
+- [ ] **主要 Props 变体** - type / size / variant 等枚举的全覆盖
+- [ ] **状态变体** - disabled / loading / error / empty
+- [ ] **Slots 用法** - 默认插槽 + 具名插槽
 
-### 可选的 Stories
+### 建议补充
 
-- [ ] With Icon - 带图标
-- [ ] Loading - 加载状态
-- [ ] Error - 错误状态
-- [ ] Complex Scenario - 复杂场景示例
-- [ ] Responsive - 响应式布局
+- [ ] **暗色主题** - 工具栏切 theme 验证，不要只在亮色下看
+- [ ] **多语言** - 工具栏切 locale 验证，尤其是文案变长后的布局
+- [ ] **交互测试** - 关键链路用 `play` 覆盖
+- [ ] **边界数据** - 超长文本、空数据、大量数据
 
 ### 文档要求
 
-- [ ] Component description - 组件描述
-- [ ] Props documentation - Props 文档
-- [ ] Events documentation - 事件文档
-- [ ] Slots documentation - 插槽文档
-- [ ] Usage examples - 使用示例
+- [ ] `meta.parameters.docs.description.component` 写清组件用途
+- [ ] 每个 Prop / Event 在 `argTypes` 里有 `description`
+- [ ] 枚举型 Prop 在 `argTypes.table.defaultValue` 标出默认值
 
 ---
 
 ## 🚀 运行 Storybook
 
-### 开发模式
-
 ```bash
-# 启动 Storybook
-pnpm storybook:dev
+pnpm storybook:dev              # 开发模式，端口 6006
+pnpm storybook:build            # 构建静态站点 → dist/storybook
+pnpm storybook:preview          # 本地预览构建产物（npx serve dist/storybook -p 6006）
 
-# 指定端口
-pnpm storybook:dev --port 6007
+pnpm test:stories               # 跑 story 的 play 交互测试
+pnpm build:docs-all             # storybook:build + docs:build，一次出全部文档产物
 ```
 
-### 构建
-
-```bash
-# 构建静态站点
-pnpm storybook:build
-
-# 预览构建结果
-pnpm http-server storybook-static
-```
+> 产物目录是 **`dist/storybook`**（由 `--output-dir` 指定），不是 Storybook 默认的
+> `storybook-static`。
 
 ### 部署
 
-```bash
-# 部署到 Vercel
-vercel storybook-static
-
-# 部署到 Netlify
-netlify deploy --dir=storybook-static
-```
+由 `.github/workflows/deploy-docs.yml` 负责，不要手动 `vercel` / `netlify` 推。
+GitHub Pages 场景需要 `/aix` 前缀，`main.ts` 通过 `DEPLOY_TARGET=github` 环境变量
+切换 `base`。
 
 ---
 

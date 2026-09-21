@@ -42,6 +42,7 @@ export interface MarkdownRendererProps {
 </script>
 
 <script setup lang="ts">
+/** Markdown 渲染器：流式安全的增量渲染，可注入自定义块渲染器与 markdown-it 插件。 */
 import { useNamespace } from '@aix/hooks';
 import {
   ref,

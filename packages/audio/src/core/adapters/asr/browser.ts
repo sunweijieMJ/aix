@@ -2,7 +2,7 @@
  * BrowserASR - 浏览器原生 Web Speech API 适配器
  * 兼容性最广（Chrome/Edge），但 Firefox/iOS Safari 不支持，作为兜底方案
  */
-import type { ASROptions, ASRResult } from '../../../types';
+import type { ASRResult } from '../../../types';
 import { BaseASRAdapter, type ASRAudioSourceMode } from './base';
 
 // Web Speech API 本地类型补充（lib.dom 未完整导出）
@@ -42,11 +42,16 @@ export class BrowserASR extends BaseASRAdapter {
   readonly audioSource: ASRAudioSourceMode = 'internal';
 
   private recognition: SpeechRecognition | null = null;
-  private isSupported = false;
 
-  constructor(options: ASROptions) {
-    super(options);
-    this.isSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  /**
+   * 惰性判定而非在构造函数里探测：适配器会在 setup 阶段被创建，
+   * SSR 渲染时没有 window，构造即访问会让整个页面渲染失败。
+   */
+  private get isSupported(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+    );
   }
 
   async connect(): Promise<void> {

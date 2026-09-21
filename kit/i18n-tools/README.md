@@ -56,7 +56,8 @@ export default defineConfig({
   io: {
     sourceDir: 'src',
     localesDir: 'src/i18n',
-    exportDir: 'public/locale',  // 可选，未配置即禁用 export
+    exportDir: 'public/locale',  // 可选；未配置时 automatic 跳过 export 步骤，
+                                 // 单独跑 export 需配置它或传 --output
     customDir: undefined,        // 可选定制目录
     format: 'nested',            // JSON 落盘格式
     prettify: true,              // 是否过 Prettier
@@ -117,18 +118,21 @@ i18n-tools [选项]
 | `--path` | `-p` | 要处理的文件或目录路径（generate / restore / automatic）；非交互模式下必填 | - |
 | `--custom` | `-c` | 操作定制目录 | `false` |
 | `--interactive` | `-i` | 交互模式 | 未指定 mode 且未传 `--ci` 时开启 |
-| `--skip-llm` | - | 跳过 LLM，使用本地 ID 生成 | `false` |
+| `--skip-llm` | - | 不调用 LLM：generate 改用本地 ID 生成；automatic 一并跳过 translate 步骤（translate 模式不受影响） | `false` |
+| `--overwrite` | - | restore：就地改写源文件（默认写副本到 `<root>/restored/`） | `false` |
+| `--output` | - | 输出位置，按模式有两种用途：`export` 覆盖 `io.exportDir`；`csv-export` 指定 CSV 输出路径/目录、`csv-import` 指定输入 CSV 文件 | export：`io.exportDir`；csv：`<localesDir>/i18n.csv` |
 | `--help` | `-h` | 显示帮助 | - |
 
 #### CI / Review 选项
 
 | 选项 | 说明 | 适用模式 |
 |------|------|---------|
-| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review）；csv-import / prune 下表示仅预览不写回 | `generate` / `csv-import` / `prune` |
+| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review）；restore / csv-import / prune 下表示仅预览不写盘 | `generate` / `restore` / `csv-import` / `prune` |
 | `--apply-plan <path \| latest>` | 从指定 plan 回放，跳过 LLM 与 AST 解析；传 `latest` 自动找最近一次 | `generate` |
 | `--keep-plan` | apply 成功后保留 plan 目录（默认会自动清理） | `generate` |
 | `--plan-output-dir <dir>` | 自定义 dry-run 输出根目录（绕开 Windows 长路径等问题） | `generate` |
-| `--coverage-threshold <num>` | 覆盖率低于该百分比（0-100）则以退出码 2 退出 | `generate` / `automatic` |
+| `--coverage-threshold <num>` | 覆盖率低于该百分比（0-100）则以退出码 2 退出；`--apply-plan` 回放时判定 plan 内 dry-run 结算的覆盖率 | `generate`（含 `--apply-plan`）/ `automatic` |
+| `--include-stale-target` | prune：一并删除「target 有、source 无」的残留 key（判据同 doctor 的 `stale-target-key`），只删对应 target 文件 | `prune` |
 | `--ci` | doctor：发现 error 级问题时非零退出；csv-import / prune：跳过 y/N 确认直接执行 | `doctor` / `csv-import` / `prune` |
 
 #### CSV 选项
@@ -138,7 +142,8 @@ i18n-tools [选项]
 | `--source <untranslated\|translations>` | 导出数据源：`untranslated`（待翻，默认）/ `translations`（审核已翻） | `csv-export` |
 | `--filter <all\|untranslated\|translated>` | 按所选语言列过滤行（判据 `isValidTranslation`），默认 `all` | `csv-export` |
 | `--langs <a,b>` | 限定目标语言（逗号分隔）；不传 = 全部 `targets` | `csv-export` / `csv-import` |
-| `--output <path>` | export：输出路径/目录（默认 `<localesDir>/i18n.csv`）；import：输入 CSV 文件 | `csv-export` / `csv-import` |
+
+> `--output` 不只服务 CSV，见[基本选项](#基本选项)。
 
 ### 操作模式
 
@@ -246,15 +251,21 @@ npx i18n-tools -m doctor --ci
 4. **merge** - 将翻译结果合并回主文件
    - 输入：`untranslated.json`
    - 输出：`en-US.json`（目标语言文件）
+   - 条目里既非 `source` 也不在当前 `targets` 的语种（如同事分支上多配的语言）原样透传回
+     字典文件并提示一次，但不会为它写出语言文件——避免覆盖写回时静默抹掉别人的译文
 
 5. **export** - 导出最终语言包
    - 输入：主目录 + 定制目录的语言文件
-   - 输出：`public/locale/` 下的最终语言包
+   - 输出：`io.exportDir` 下的最终语言包（如 `public/locale/`）
+   - 输出目录来源：`--output <dir>` > `io.exportDir`。两者都没有时，`automatic`
+     流程跳过 export 步骤；单独跑 `--mode export` 则报错，需配置 `io.exportDir`
+     或传 `--output`
 
 6. **restore** - 将国际化调用还原为中文
    - 输入：已国际化的源文件 + `zh-CN.json`
-   - 输出：CLI 模式**就地覆盖**原文件（调试用，建议配合 git 使用）；
-     程序化调用默认输出到 `<root>/restored/`（`overwrite: false`）
+   - 输出：默认写副本到 `<root>/restored/`，不动原文件；
+     传 `--overwrite` 才就地覆盖（调试用，建议配合 git 使用），
+     传 `--dry-run` 只预览将还原的调用与将清理的导入
 
 > 💡 中间的 **translate（AI 翻译）可换成人工翻译**：`pick` 后用 `csv-export` 导出 → 人工翻译/审核 → `csv-import` 回流写回 `untranslated.json` → 照常 `merge`。详见下节。
 
@@ -310,10 +321,12 @@ interface I18nToolsConfig {
   io?: {
     sourceDir?: string;         // 源码扫描根，默认 'src'
     localesDir?: string;        // 主语言文件目录，默认 'src/i18n'
-    exportDir?: string;         // 发布目录（可选）
+    exportDir?: string;         // 发布目录（可选）；未配置时 automatic 跳过 export，
+                                //   单独跑 export 需传 --output
     customDir?: string;         // 定制 override 目录（可选）
     include?: string[];         // 文件 glob（默认含 vue/tsx/jsx/ts/js）
-    exclude?: string[];         // 默认含 node_modules + test/spec/stories
+    exclude?: string[];         // 默认含 node_modules + test/spec/stories；
+                                //   ⚠️ 一旦配置即整体替换默认值（见下方说明）
     format?: 'flat' | 'nested'; // JSON 落盘格式，默认 'nested'
     indent?: number;            // JSON 缩进字符数，默认 2
     prettify?: boolean;         // 是否过 Prettier，默认 true
@@ -403,6 +416,10 @@ interface I18nToolsConfig {
   };
 }
 ```
+
+> ⚠️ **`io.exclude` 是替换而非合并**：一旦显式配置，默认排除项（测试 / 故事 / 构建产物等）
+> 全部失效，只有 `node_modules` 与 `.git` 会被强制并入。想在默认基础上追加，请把默认项
+> 一并写进你的数组。
 
 ### LLM 任务配置
 
@@ -526,6 +543,10 @@ export default defineConfig({
 
 **匹配优先级**：rules 数组顺序优先（先匹配先归属），同一 key 最多归属一个桶。`match` 与 `matchKey` 互斥，loader 会校验。
 
+**存量桶告警**：读取时若在 `localesDir` 下发现桶名既不在 `rules[].name` 也不是 `defaultBucket`
+的文件，会告警一次并按存量桶处理——其内容仍并入语言包，且重写时被备份为 `.bak`。若那是你
+自建的备份 / 存档目录，请移出 `localesDir`。
+
 ### 翻译词表（glossary）
 
 为固定术语提供"权威译文"——命中词表的原文直接采用既定译文，跳过 LLM 翻译。适合品牌词、UI 控件标签等高频固定术语。
@@ -619,6 +640,10 @@ npx i18n-tools -m generate --apply-plan latest
 - **元数据完整**：plan 包含 `toolVersion`（生成时的 @kit/i18n-tools 版本）和
   `llmModel`（本次使用的模型名，或 `local` 表示跳过 LLM），给 reviewer 提供
   判断"是否需要用新版本重跑"的依据
+- **覆盖率随行**：plan 的 `coverage` 字段记录 dry-run 结算的覆盖率账本，apply 回放时
+  打印同款覆盖率面板，并据此执行 `--coverage-threshold` / `ci.coverageThreshold` 卡点
+  ——两段式工作流下真正落盘的是 apply，门禁必须跟到这一步。由旧版本生成、无该字段的
+  plan 仍可回放，只打一条提示并跳过阈值判定
 - **latest 简写 + 自动清理**：
   - dry-run 写盘时同时落 `.i18n-tools/plans/.last.json` 指向最新目录，
     `--apply-plan latest` 一行命令直达；指针损坏时回退到目录扫描（按 mtime 倒序）
@@ -651,6 +676,9 @@ CI 卡点：
 ```bash
 # 覆盖率低于 95% 则以退出码 2 退出
 npx i18n-tools -m generate --coverage-threshold 95
+
+# dry-run + apply 两段式：阈值在 apply 回放时按 plan 里的覆盖率快照判定
+npx i18n-tools -m generate --apply-plan latest --coverage-threshold 95
 ```
 
 退出码语义：
@@ -678,6 +706,7 @@ npx i18n-tools -m doctor --ci     # CI 模式（有 error 即非零退出）
 | `missing-key` | **error** | 源码 `t('xxx')` 引用了 locale 不存在的 key（运行时显示 key 字符串） |
 | `missing-target-key` | warning | source 有、target locale 完全缺失的 key（切语言时回退源文/显示 key；跑 `translate` 或人工补译） |
 | `orphan-key` | warning | locale 中的 key 源码无引用（清理候选；动态 key 可能误报，不自动删） |
+| `stale-target-key` | warning | target locale 有该 key 但 source 已无（译文残留；`prune --include-stale-target` 可清理） |
 | `untranslated` | warning | target locale 的 value 与 source 完全相同且含中文（疑似漏译） |
 | `placeholder-mismatch` | error / warning | 译文与源占位符名集不一致：漏占位符（如译文丢了 `{count}`）= error；多出 = warning |
 | `locale-lint` | info / warning | 复用 `LocaleValueLinter.analyze`：语义重复 key、含 HTML、超长 value、跨模块复用候选、硬编码比较等 |
@@ -693,9 +722,19 @@ npx i18n-tools -m doctor --ci     # CI 模式（有 error 即非零退出）
 i18n-tools --mode prune --dry-run   # 预览将删哪些孤儿 key，不改文件
 i18n-tools --mode prune             # 确认(y/N)后从所有 locale 删除
 i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
+
+# 连 target-only 残留译文一起清（先 --dry-run 看清单）
+i18n-tools --mode prune --include-stale-target --dry-run
+i18n-tools --mode prune --include-stale-target --ci
 ```
 
 - 删除范围：源语言 + 所有目标语言的 locale 文件（含分桶布局），以及中间文件 `translations.json` / `untranslated.json`，一并清掉孤儿 key，保持状态一致。命中 `keys.dynamicKeyAllowlist` 的 key 跳过不删。
+- `--include-stale-target`（默认关）：额外清理「target 有、source 无」的残留 key
+  （源侧 key 被删/改名而译文没跟着清理，doctor 报 `stale-target-key`）。这类 key 不在
+  source locale 里，永远进不了孤儿名单，是唯一清得掉它们的入口。只删对应 target 文件，
+  不碰 source 与中间字典；两道保守过滤：源码仍在引用的 key（属 doctor 的 `missing-key`，
+  删译文只会让运行时更糟）与命中 `keys.dynamicKeyAllowlist` 的 key 一律保留。
+  与孤儿删除共用同一套 `--dry-run` 预览 / 确认 / `--ci` 流程。
 - 无 `.bak`：写回为原子写，恢复请用 git。
 
 ### 落盘日志（.i18n-tools/）
@@ -742,7 +781,7 @@ i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
 
 ### Vue
 
-**支持的文件类型**：`.vue`、`.ts`、`.js`
+**支持的文件类型**：`.vue`、`.tsx`、`.jsx`、`.ts`、`.js`
 
 **支持的 i18n 库：**
 
@@ -760,6 +799,19 @@ i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
 | 静态属性 | `<div title="中文">` | `<div :title="$t('key')">` |
 | 动态属性 | `:placeholder="'中文'"` | `:placeholder="$t('key')"` |
 | script 代码 | `const msg = '中文'` | `const msg = t('key')` |
+
+**模板与脚本语言：**
+
+- `<template>` 仅支持 HTML（无 `lang` 或 `lang="html"`）。`lang="pug"` 等预处理语法整块跳过
+  不提取，并计入「待人工处理」——编译器会把整块 pug 当成一个文本节点，按 HTML 规则改写会
+  把整段模板换成一句 `$t()` 且不可还原。
+- `<script>` 支持 `lang="ts"`（默认）与 `lang="tsx"` / `lang="jsx"`：后者按 JSX 语法解析，
+  提取 / 转换 / 还原三端同源，不会把 `<div a="x">` 误当成类型断言。
+- 独立的 `.tsx` / `.jsx` 文件（渲染函数组件）与 `.ts` / `.js` 同样按整文件脚本处理：
+  模块顶层注入 `import { t } from <tImport>`，JSX 属性替换成 `title={t('key')}`。
+- **JSX 子节点文本不提取**（`<div>提交</div>`），整类记入「待人工处理」的
+  `jsx-text-in-vue` 并计入覆盖率分母：替换成 `{t('key')}` 后还原端只能得到 `{中文}`，
+  往返不可逆。把文案挪到变量初值或 JSX 属性上即可被自动接管。
 
 ### React
 
@@ -793,8 +845,11 @@ import {
   AutomaticProcessor,
 } from '@kit/i18n-tools';
 
-// 加载配置
+// 加载配置：找不到配置文件时返回 null（不抛错），调用方必须判空
 const config = await loadConfig('./i18n.config.ts');
+if (!config) {
+  throw new Error('未找到 i18n 配置文件');
+}
 
 // 使用处理器
 const processor = new GenerateProcessor(config, false);
@@ -959,9 +1014,12 @@ export default defineConfig({
 
 ### Q: restore 模式会覆盖原文件吗？
 
-**CLI 的 `--mode restore` 会就地覆盖原文件**（还原是调试用途，配合 git 可随时找回）。
-程序化调用 `RestoreProcessor.execute(targets, outputDir, overwrite)` 的默认行为相反：
-`overwrite` 默认 `false`，还原结果输出到 `<root>/restored/`，不动原文件。
+**默认不会。** `--mode restore` 把还原结果写到 `<root>/restored/`，原文件保持不动；
+显式传 `--overwrite` 才就地覆盖（还原是调试用途，配合 git 可随时找回）。
+落盘前想先看一眼就用 `--dry-run`：内存里跑完还原，逐文件报告「将还原 N 处调用 /
+将清理哪些 import 与 hook 声明」，零写盘。
+程序化调用 `RestoreProcessor.execute(targets, outputDir, overwrite, { dryRun })`
+的默认值与 CLI 一致（`overwrite: false`、`dryRun: false`）。
 
 另注意：restore 还原的是**全部** `t()`/`$t()` 调用，不区分"本轮 generate 生成"还是
 历史存量——对含存量国际化调用的目录执行 restore，存量调用也会一并还原为中文

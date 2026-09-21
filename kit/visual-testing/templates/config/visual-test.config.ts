@@ -56,17 +56,17 @@ export default defineConfig({
 
   // 基准图来源配置
   baseline: {
-    provider: 'local', // 'local' | 'figma-mcp'
-    // Figma 配置（使用 figma-mcp 或 figma-api 时需要）
+    provider: 'local', // 'local' | 'figma-api' | 'figma-mcp'（已废弃）
+    // Figma 配置（figma-api provider 与 fidelity 命令需要；token 也可只设环境变量 FIGMA_TOKEN）
     // figma: {
     //   accessToken: process.env.FIGMA_TOKEN,
     //   fileKey: 'your-figma-file-key',
     // },
   },
 
-  // LLM 分析配置
+  // LLM 分析配置（默认关闭；开启需要对应厂商的 API Key）
   llm: {
-    enabled: true, // 是否启用 LLM 分析
+    enabled: false, // 是否启用 LLM 分析
     model: 'gpt-4o', // 默认模型 (claude-* 自动使用 Anthropic，其他使用 OpenAI)
     // apiKey: process.env.OPENAI_API_KEY,  // 默认从环境变量读取
     // baseURL: 'https://...',             // 可选：自定义 API 端点（Azure、代理等）
@@ -117,6 +117,19 @@ export default defineConfig({
   // CI 配置
   ci: {
     failOnDiff: true, // 有差异时 CI 失败
-    failOnSeverity: 'major', // 失败的最低严重级别
+    gate: 'pixel', // 'pixel'：像素比对未通过即失败（确定性）| 'severity'：按 LLM/规则 severity 判定
+    failOnSeverity: 'major', // gate = 'severity' 时的最低严重级别
+  },
+
+  // 设计还原度校验（visual-test fidelity）
+  fidelity: {
+    // rootSelector: '#app > *',          // 默认依次尝试 [data-figma=<rootId>]、#app > *、body > *
+    viewport: 'frame', // 跟随 Figma Frame 尺寸，或 { width, height }
+    tokens: {
+      cssFile: 'public/assets/theme.css', // 期望色 → CSS 变量名映射来源
+      prefix: '--aix-',
+    },
+    // tolerances: { position: 2, size: 2, colorDeltaE: 3 }, // 见 README「容差与 severity」
+    output: { dir: '.visual-test/fidelity', formats: ['md', 'json'] },
   },
 });

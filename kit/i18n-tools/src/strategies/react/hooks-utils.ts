@@ -1,12 +1,13 @@
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { parseSourceFile } from '../../utils/ast-core';
+import { hasLocalDeclarationWithin, isIdentifierValueReference } from '../../utils/scope-analysis';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
  * 需要把翻译变量纳入依赖数组的 hooks 列表。
  *
  * Why 抽成共享常量：generate 阶段 addTranslationVarToHooksDependencies（add）与
- * restore 阶段 ReactImportManager.cleanupHookDependencies（remove）必须使用同一份
+ * restore 阶段 react-restore-cleanup 的 cleanupHookDependencies（remove）必须使用同一份
  * 列表，否则 round-trip 非对称——例如 add 端含 useLayoutEffect 而 remove 端漏掉，
  * 会在 restore 后留下指向已删除变量的悬空依赖（TS2304 / ReferenceError）。
  */
@@ -43,10 +44,17 @@ export function resolveHookName(node: ts.CallExpression): string | undefined {
 export class HooksUtils {
   /**
    * 为使用翻译变量的hooks添加到依赖项数组（由 library 适配器驱动）
+   *
+   * filePath 决定解析用的 ScriptKind（与 ReactComponentInjector.inject 同义）：纯 .ts 若按
+   * TSX 解析，`<T>expr` 类型断言会被当成 JSX，hook 与依赖数组定位随之失准。缺省回退 temp.tsx。
    */
-  static addTranslationVarToHooksDependencies(code: string, library: ReactI18nLibrary): string {
+  static addTranslationVarToHooksDependencies(
+    code: string,
+    library: ReactI18nLibrary,
+    filePath?: string,
+  ): string {
     const varName = library.translationVarName;
-    const sourceFile = ts.createSourceFile('temp.tsx', code, ts.ScriptTarget.Latest, true);
+    const sourceFile = parseSourceFile(code, filePath ?? 'temp.tsx');
     const hooksToFix: {
       node: ts.CallExpression;
       needsVar: boolean;
@@ -88,20 +96,15 @@ export class HooksUtils {
           );
 
           if (!hasVar) {
-            const depsStart = depsArg.getStart(sourceFile) + 1;
-            const depsEnd = depsArg.getEnd() - 1;
-            const existingDeps = code.slice(depsStart, depsEnd).trim();
+            // 插入点必须取「最后一个依赖项节点的结束位置」：末元素后可能跟行注释
+            // （`[dep // 说明\n]`），插到注释之后会让 `, t]);` 整段落进注释、文件语法错误。
+            // 末元素已有尾随逗号（`[dep, ]`）无需特判：插入结果 `[dep, t, ]` 合法。
+            const elements = depsArg.elements;
+            const lastElement = elements[elements.length - 1];
+            const insertPos = lastElement ? lastElement.getEnd() : depsArg.getStart(sourceFile) + 1;
+            const insertText = lastElement ? `, ${varName}` : varName;
 
-            let newDeps: string;
-            if (!existingDeps) {
-              newDeps = varName;
-            } else if (existingDeps.endsWith(',')) {
-              newDeps = `${existingDeps} ${varName}`;
-            } else {
-              newDeps = `${existingDeps}, ${varName}`;
-            }
-
-            code = code.slice(0, depsStart) + newDeps + code.slice(depsEnd);
+            code = code.slice(0, insertPos) + insertText + code.slice(insertPos);
           }
         }
       }
@@ -139,7 +142,7 @@ export class HooksUtils {
         if (
           ts.isIdentifier(node.expression) &&
           node.expression.text === varName &&
-          !CommonASTUtils.hasLocalDeclarationWithin(node.expression, varName, firstArg)
+          !hasLocalDeclarationWithin(node.expression, varName, firstArg)
         ) {
           usesVar = true;
           return;
@@ -156,8 +159,8 @@ export class HooksUtils {
       if (
         ts.isIdentifier(node) &&
         node.text === varName &&
-        CommonASTUtils.isIdentifierValueReference(node) &&
-        !CommonASTUtils.hasLocalDeclarationWithin(node, varName, firstArg)
+        isIdentifierValueReference(node) &&
+        !hasLocalDeclarationWithin(node, varName, firstArg)
       ) {
         usesVar = true;
         return;

@@ -2,7 +2,10 @@ import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
 import type { MessageInfo } from '../../../utils/types';
 import { ReactASTUtils } from '../react-ast-utils';
-import { CommonASTUtils } from '../../../utils/common-ast-utils';
+import { extractObjectLiteralProperties, objectLiteralHasSpread } from '../../../utils/ast-core';
+import { isAlreadyInternationalizedByScaffold } from '../../../utils/ast-guards';
+import { finalizeLocaleMessage } from '../../../utils/message-shape';
+import { formatValuesMapping } from '../../../utils/string-escape';
 
 /**
  * react-i18next 库适配器实现
@@ -20,6 +23,8 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   readonly hookDeclaration = 'const { t } = useTranslation();';
   // react-i18next 默认插值语法是双花括号 `{{name}}`
   readonly usesDoubleBracePlaceholders = true;
+  // `ns:key` 的 namespace 只剥恰为已配前缀的部分（stripNamespacePrefix），冒号可为 key 自身字符。
+  readonly supportsNamespace = false;
   readonly translationVarName = 't';
   readonly jsxComponentName = 'Trans';
   readonly hocPropsType = 'WithTranslation';
@@ -45,10 +50,10 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     const fn = isGlobalScope ? this.globalFunctionName : this.translationVarName;
 
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       if (includeDefaultMessage && defaultMessage) {
         const escaped = JSON.stringify(this.localizeDefaultMessage(defaultMessage, values));
-        return `${fn}('${key}', { defaultValue: ${escaped}, ${CommonASTUtils.formatValuesMapping(values, { wrap: false })} })`;
+        return `${fn}('${key}', { defaultValue: ${escaped}, ${formatValuesMapping(values, { wrap: false })} })`;
       }
       return `${fn}('${key}', ${mapping})`;
     }
@@ -75,7 +80,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
    * 占位符被当字面花括号，缺 key 时不插值。
    */
   private localizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
-    return CommonASTUtils.finalizeLocaleMessage(defaultMessage, values?.values() ?? [], this);
+    return finalizeLocaleMessage(defaultMessage, values?.values() ?? [], this);
   }
 
   generateJSXComponent(
@@ -95,7 +100,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       props += ` defaults={${escaped}}`;
     }
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       props += ` values={${mapping}}`;
     }
     return `<Trans ${props} />`;
@@ -108,18 +113,19 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     return `withTranslation()(${componentName})`;
   }
 
-  getImportSpecifiers(usage: {
-    hasJsxComponent: boolean;
-    hasHook: boolean;
-    hasHOC: boolean;
-  }): string[] {
-    const specifiers: string[] = [];
-    if (usage.hasJsxComponent) specifiers.push('Trans');
-    if (usage.hasHook) specifiers.push('useTranslation');
+  getImportSpecifiers(usage: { hasJsxComponent: boolean; hasHook: boolean; hasHOC: boolean }): {
+    values: string[];
+    types: string[];
+  } {
+    const values: string[] = [];
+    const types: string[] = [];
+    if (usage.hasJsxComponent) values.push('Trans');
+    if (usage.hasHook) values.push('useTranslation');
     if (usage.hasHOC) {
-      specifiers.push('withTranslation', 'WithTranslation');
+      values.push('withTranslation');
+      types.push('WithTranslation');
     }
-    return specifiers;
+    return { values, types };
   }
 
   generateGlobalDeclaration(): string {
@@ -247,7 +253,14 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
     // 函数组件经 withTranslation 把 t 作为 prop 解构传入（`({ t }: WithTranslation) => …`）时，
     // t 已是本地形参绑定；若漏判会再注入 `const { t } = useTranslation()` 与形参同作用域双声明。
-    if (ReactASTUtils.componentParamBindsVar(node, this.translationVarName)) {
+    // 必须带上 HOC 口径：业务自己的 `({ t }: { t: Tab })` 不是翻译函数，当成已有绑定会让替换出的
+    // t('k') 调到业务对象上（该形态由提取端的冲突守卫整体跳过）。
+    if (
+      ReactASTUtils.componentParamBindsVar(node, this.translationVarName, {
+        hocPropsType: this.hocPropsType,
+        isHOCCall: (expression) => this.isHOCCall(expression),
+      })
+    ) {
       return true;
     }
     // react-i18next 的 isTranslationAvailableInScope 本就只认本地 useTranslation 解构出的
@@ -256,7 +269,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {
-    return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
+    return isAlreadyInternationalizedByScaffold(node, {
       isI18nCall: (expression) => this.isTranslationExpression(expression),
       componentTags: ['Trans'],
     });
@@ -273,15 +286,15 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     const messageInfo: MessageInfo = {};
 
     if (ts.isStringLiteral(arg)) {
-      messageInfo.id = ReactI18nextLibrary.stripNamespacePrefix(arg.text);
+      messageInfo.id = this.stripNamespacePrefix(arg.text);
     }
 
     const valuesArg = node.arguments[1];
     if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
-      if (CommonASTUtils.objectLiteralHasSpread(valuesArg)) {
+      if (objectLiteralHasSpread(valuesArg)) {
         messageInfo.hasUnresolvableValues = true;
       }
-      const props = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
+      const props = extractObjectLiteralProperties(valuesArg, sourceFile);
       // react-i18next 约定：values.defaultValue 实为默认翻译文本，上提到 defaultMessage，
       // 不参与占位符替换。仅在为字符串时上提，其他形态保持 undefined。
       if (typeof props.defaultValue === 'string') {
@@ -291,6 +304,13 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       if (Object.keys(props).length > 0) {
         messageInfo.values = props;
       }
+    } else if (valuesArg) {
+      // 第二参数是标识符 / 函数调用等非对象字面量形态（`t('k', opts)`）：无法静态解析
+      // values。不置位会让 createStringOrTemplateNode 在 values 为空时把占位符字面化写进
+      // 源码，运行时变量被静默删除。置位 → RestoreTransformer 保留原调用。
+      // 注意 i18next 的 `t('k', 'default text')`（字符串 defaultValue 签名）也走到这里被
+      // 保守保留——这是有意的：工具自产代码不用该形态，手写形态宁可不还原也不猜语义。
+      messageInfo.hasUnresolvableValues = true;
     }
 
     return messageInfo;
@@ -303,14 +323,26 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   ): MessageInfo {
     const messageInfo: MessageInfo = {};
     for (const attribute of openingElement.attributes.properties) {
-      if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name)) continue;
+      // 展开属性（`<Trans {...descriptor} />`）与命名空间属性名：无法静态解析，置位保留原
+      // 组件。工具自产的 <Trans> 只有 i18nKey/defaults/values 三个裸属性，不受影响。
+      if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name)) {
+        messageInfo.hasUnresolvableValues = true;
+        continue;
+      }
 
       const attrName = attribute.name.text;
+      // 三个已知属性之外的任何属性（count / components / tOptions / ns / shouldUnescape…）
+      // 都参与运行时渲染，整节点替换会把它们连同其引用的变量一并丢弃。置位保留原组件，
+      // 与调用形态 `t('k', opts)` 的 hasUnresolvableValues 同口径。
+      if (attrName !== 'i18nKey' && attrName !== 'defaults' && attrName !== 'values') {
+        messageInfo.hasUnresolvableValues = true;
+        continue;
+      }
       const initializer = attribute.initializer;
       if (!initializer) continue;
 
       if (attrName === 'i18nKey' && ts.isStringLiteral(initializer)) {
-        messageInfo.id = ReactI18nextLibrary.stripNamespacePrefix(initializer.text);
+        messageInfo.id = this.stripNamespacePrefix(initializer.text);
       } else if (attrName === 'defaults') {
         // 生成端经 JSX 表达式容器注入 `defaults={"你好"}`（见本类 generateComponent 的
         // `defaults={${JSON.stringify(...)}}`），initializer 是 JsxExpression 而非裸 StringLiteral。
@@ -325,28 +357,38 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
         ) {
           messageInfo.defaultMessage = initializer.expression.text;
         }
-      } else if (
-        attrName === 'values' &&
-        ts.isJsxExpression(initializer) &&
-        initializer.expression &&
-        ts.isObjectLiteralExpression(initializer.expression)
-      ) {
-        if (CommonASTUtils.objectLiteralHasSpread(initializer.expression)) {
+      } else if (attrName === 'values') {
+        if (
+          ts.isJsxExpression(initializer) &&
+          initializer.expression &&
+          ts.isObjectLiteralExpression(initializer.expression)
+        ) {
+          if (objectLiteralHasSpread(initializer.expression)) {
+            messageInfo.hasUnresolvableValues = true;
+          }
+          messageInfo.values = extractObjectLiteralProperties(initializer.expression, sourceFile);
+        } else {
+          // values={sharedValues} 等非对象字面量形态：无法静态解析，置位保留原组件，
+          // 避免占位符字面化、运行时变量静默丢失（与 extractCallInfo 同口径）。
           messageInfo.hasUnresolvableValues = true;
         }
-        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
-          initializer.expression,
-          sourceFile,
-        );
       }
     }
     return messageInfo;
   }
 
-  /** 剥离 namespace 前缀：`common:button.submit` → `button.submit` */
-  private static stripNamespacePrefix(id: string): string {
-    const colonIndex = id.indexOf(':');
-    return colonIndex === -1 ? id : id.substring(colonIndex + 1);
+  /**
+   * 剥离本实例配置的 namespace 前缀：namespace='common' 时 `common:button.submit` → `button.submit`。
+   *
+   * 只剥恰为 `${this.namespace}:` 的前缀，而非无条件砍掉第一个冒号之前的内容：未配置
+   * namespace 时 key 里的冒号是 key 自身的一部分（`a:b`），砍掉会让 restore 拿 `b` 去查
+   * locale —— 查不到就漏还原，撞上同名 key 则还原成别的文案。其它 namespace 的 key
+   * （`other:x`）同样保留原样：本实例的 locale 表里本就没有它，剥了只会造成假命中。
+   */
+  private stripNamespacePrefix(id: string): string {
+    if (!this.namespace) return id;
+    const prefix = `${this.namespace}:`;
+    return id.startsWith(prefix) ? id.substring(prefix.length) : id;
   }
 
   // i18next 单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。

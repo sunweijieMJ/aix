@@ -103,7 +103,6 @@ export interface Issue {
 
 export interface FixPlan {
   totalFixes: number;
-  estimatedHours: number;
   byPriority: {
     critical: FixPlanItem[];
     major: FixPlanItem[];

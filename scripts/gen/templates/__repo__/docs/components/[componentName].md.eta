@@ -1,0 +1,40 @@
+---
+title: <%= it.pascalName %>
+outline: deep
+---
+
+<script setup>
+import { <%= it.pascalName %> } from '@aix/<%= it.componentName %>'
+</script>
+
+# <%= it.pascalName %>
+
+<%= it.description %>
+
+## 何时使用
+
+<!-- 什么场景该用它、和相近组件的区别 -->
+
+## 安装
+
+```bash
+pnpm add @aix/<%= it.componentName %>
+```
+
+## 代码演示
+
+### 基础用法
+
+<div class="demo-block">
+  <<%= it.pascalName %>>内容</<%= it.pascalName %>>
+</div>
+
+```vue
+<template>
+  <<%= it.pascalName %>>内容</<%= it.pascalName %>>
+</template>
+```
+
+## API
+
+<!-- 本段由 pnpm docs:gen 生成，不要手写 -->

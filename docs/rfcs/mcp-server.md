@@ -8,6 +8,22 @@
 
 基于 [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol) 的高性能组件库服务器，为 AI 助手提供智能组件库上下文支持。
 
+## 实现偏离
+
+本文是立项时的设计稿。实施过程中多处按实际收益做了简化，以下按现状为准，
+其余章节保留原始设计以供追溯；使用与维护请看 `internal/mcp-server/README.md`。
+
+| 设计稿 | 实际实现 | 取舍理由 |
+|--------|----------|----------|
+| TypeScript AST 直接解析组件源码 | 在仓库内调用文档管线（`scripts/docs/print-api.ts`）拿源码解析结果；拿不到的包退回解析 README 表格 | 源码解析已由文档管线统一完成，MCP 复用同一份结构化数据，避免两套解析器各自漂移 |
+| 倒排索引 + TF-IDF 搜索引擎 | 字段加权的关键词匹配（名称 100、包名 80、描述 60 …，前缀匹配打五折） | 组件数量在百级，简单匹配足够且更易维护 |
+| L1 内存 + L2 文件双层缓存 | 无缓存，启动时一次性把索引读进内存 | 进程生命周期内不再读盘，缓存层没有命中机会 |
+| stdio + WebSocket 双传输 | 仅 stdio | 主流 MCP 客户端都走 stdio |
+| 9 个工具 | 13 个工具（组件 8、工具包 3、图标 2） | 增加了 `kit/` `internal/` 工具包查询与图标 SVG 获取 |
+| `serve-ws` / `clean` 命令 | 无；新增 `sync-version` | 随传输层与缓存一并取消 |
+| `components.json` / `categories.json` | `components-index.json`、`packages-index.json`、`icons-index.json`、`icons-svg.json`、`docs-index.json`、`metadata.json` | 体积大的内容拆出去按需加载 |
+| 适配任意 Vue / React 组件库 | 面向本仓库；`constants/library.ts` 仅承载名称、scope 等标识 | 未出现第二个使用方 |
+
 ## 动机
 
 ### 背景

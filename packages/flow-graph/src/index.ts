@@ -42,6 +42,7 @@ export type { FlowGraphLocale } from './locale';
 export type {
   EdgeData,
   EdgeTypesMap,
+  FlowBaseNodeSlotScope,
   FlowConnection,
   FlowEdge,
   FlowGraphBottomBarSlotProps,

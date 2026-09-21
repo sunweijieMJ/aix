@@ -32,9 +32,13 @@ description: 组件开发清单，Props/Emits/样式规范检查
 
 - [ ] `pnpm type-check` 通过
 - [ ] `pnpm lint` 通过
-- [ ] 单元测试覆盖率 > 80%
+- [ ] `pnpm test` 通过，且 `pnpm test:coverage` 不低于棘轮阈值（见下）
 - [ ] 有 Storybook story
-- [ ] 有 API 文档
+- [ ] 有 API 文档（改了 JSDoc 后跑 `pnpm docs:gen`）
+
+> ℹ️ **CI 门禁不是 80%**，而是根 `vitest.config.ts` 里「当前水位 - 1 个点」的**防退化棘轮**
+> （作用是不许再掉）。80% 是长期目标，不是当前门禁。机制与当前阈值见
+> [testing.md](../agents/testing.md) 的「CI 门禁是『防退化棘轮』」章节。
 
 ## 无障碍 / 性能
 

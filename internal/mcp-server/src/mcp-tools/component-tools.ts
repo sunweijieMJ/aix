@@ -3,43 +3,41 @@
  */
 
 import { join } from 'node:path';
+import { z } from 'zod';
 import { COMPONENT_LIBRARY_CONFIG, MCP_TOOLS } from '../constants';
 import type {
   ComponentExample,
   ComponentIndex,
   ComponentInfo,
-  SearchResult,
+  ComponentSummary,
+  DocsIndex,
+  EmitDefinition,
+  PropDefinition,
+  SearchResultSummary,
+  SlotDefinition,
   ToolArguments,
 } from '../types/index';
-import { findComponentByName, log } from '../utils';
+import { toComponentSummary } from '../types/index';
+import { filterBySubComponent, findComponentByName, log, resolveComponent } from '../utils';
 import { createSearchIndex } from '../utils/search-index';
-import { BaseTool } from './base';
+import { BaseTool, clampLimit, requireString } from './base';
 
 /**
  * 列出所有组件
  */
 export class ListComponentsTool extends BaseTool {
   name = MCP_TOOLS.LIST_COMPONENTS;
-  description = `列出所有可用的 ${COMPONENT_LIBRARY_CONFIG.displayName} 组件`;
+  description = `列出所有可用的 ${COMPONENT_LIBRARY_CONFIG.displayName} 组件（仅摘要，Props 和示例请用 get-component-info / get-component-props / get-component-examples 获取）`;
   inputSchema = {
-    type: 'object',
-    properties: {
-      category: {
-        type: 'string',
-        description: '按分类过滤组件',
-      },
-      tag: {
-        type: 'string',
-        description: '按标签过滤组件',
-      },
-    },
+    category: z.string().optional().describe('按分类过滤组件'),
+    tag: z.string().optional().describe('按标签过滤组件'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
     super();
   }
 
-  async execute(args: ToolArguments): Promise<ComponentInfo[]> {
+  async execute(args: ToolArguments): Promise<ComponentSummary[]> {
     let components = this.componentIndex.components;
     const category = typeof args.category === 'string' ? args.category : null;
     const tag = typeof args.tag === 'string' ? args.tag : null;
@@ -58,34 +56,54 @@ export class ListComponentsTool extends BaseTool {
       );
     }
 
-    return components;
+    return components.map(toComponentSummary);
   }
 }
+
+/**
+ * 组件详情
+ *
+ * 示例正文不在里面：ai-chat 的 60 条示例就占 30KB，占了整个响应的 85%，
+ * 而这些内容已经有 get-component-examples 按需取。同 get-package-info
+ * 默认只给 API 章节目录是一个道理。
+ */
+type ComponentDetail = Omit<ComponentInfo, 'examples'> & {
+  examplesCount: number;
+  /** 按子组件名查询时给出，此时 props / emits / slots 已收窄到该子组件 */
+  subComponent?: string;
+};
 
 /**
  * 获取单个组件信息
  */
 export class GetComponentInfoTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_INFO;
-  description = '获取指定组件的详细信息';
+  description =
+    '获取指定组件的详细信息（含 Props / Emits / Slots）。传子组件名时 API 只返回该子组件的；示例只返回数量，正文请用 get-component-examples 获取';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
     super();
   }
 
-  async execute(args: ToolArguments): Promise<ComponentInfo | null> {
+  async execute(args: ToolArguments): Promise<ComponentDetail | null> {
     const name = args.name as string;
-    return findComponentByName(this.componentIndex.components, name);
+    const resolved = resolveComponent(this.componentIndex.components, name);
+    if (!resolved) return null;
+
+    const { component, subComponent } = resolved;
+    const { examples, ...rest } = component;
+
+    return {
+      ...rest,
+      props: filterBySubComponent(component.props, subComponent),
+      emits: filterBySubComponent(component.emits, subComponent),
+      slots: filterBySubComponent(component.slots, subComponent),
+      examplesCount: examples?.length ?? 0,
+      ...(subComponent ? { subComponent } : {}),
+    };
   }
 }
 
@@ -94,26 +112,37 @@ export class GetComponentInfoTool extends BaseTool {
  */
 export class GetComponentPropsTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_PROPS;
-  description = '获取指定组件的 Props 类型定义';
+  description =
+    '获取指定组件的 Props / Emits / Slots 定义。传子组件名（如 Tooltip）只返回该子组件的，传包名返回整包的';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
     super();
   }
 
-  async execute(args: ToolArguments): Promise<ComponentInfo['props'] | null> {
+  async execute(args: ToolArguments): Promise<{
+    props: PropDefinition[];
+    emits: EmitDefinition[];
+    slots: SlotDefinition[];
+    subComponent?: string;
+  } | null> {
     const name = args.name as string;
-    const component = findComponentByName(this.componentIndex.components, name);
-    return component?.props || null;
+    const resolved = resolveComponent(this.componentIndex.components, name);
+    if (!resolved) return null;
+
+    // 必须按 group 收窄：@aix/popper 一个包里有 6 个子组件，
+    // placement 有 4 份、teleportTo 有 5 份，默认值互不相同。
+    // 整包返回等于让调用方在一堆自相矛盾的同名条目里猜
+    const { component, subComponent } = resolved;
+
+    return {
+      props: filterBySubComponent(component.props, subComponent),
+      emits: filterBySubComponent(component.emits, subComponent),
+      slots: filterBySubComponent(component.slots, subComponent),
+      ...(subComponent ? { subComponent } : {}),
+    };
   }
 }
 
@@ -124,19 +153,8 @@ export class GetComponentExamplesTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_EXAMPLES;
   description = '获取指定组件的使用示例';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-      language: {
-        type: 'string',
-        enum: ['tsx', 'jsx', 'ts', 'js', 'vue'],
-        description: '示例代码语言',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名'),
+    language: z.enum(['tsx', 'jsx', 'ts', 'js', 'vue']).optional().describe('示例代码语言'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
@@ -166,27 +184,11 @@ export class GetComponentExamplesTool extends BaseTool {
  */
 export class SearchComponentsTool extends BaseTool {
   name = MCP_TOOLS.SEARCH_COMPONENTS;
-  description = '按关键词搜索组件（支持模糊搜索和智能排序）';
+  description =
+    '按关键词搜索组件（支持模糊搜索和智能排序，返回摘要，详情请用 get-component-info 获取）';
   inputSchema = {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: '搜索关键词',
-      },
-      limit: {
-        type: 'number',
-        description: '返回结果数量限制',
-        default: 10,
-        maximum: 100,
-      },
-      fuzzy: {
-        type: 'boolean',
-        description: '是否启用模糊搜索',
-        default: true,
-      },
-    },
-    required: ['query'],
+    query: z.string().describe('搜索关键词'),
+    limit: z.number().optional().describe('返回结果数量限制（1-100，默认 10）'),
   };
 
   private searchIndex = createSearchIndex();
@@ -198,11 +200,11 @@ export class SearchComponentsTool extends BaseTool {
     this.buildSearchIndex();
   }
 
-  async execute(args: ToolArguments): Promise<SearchResult[]> {
-    const query = args.query as string;
-    const limit = Math.min(typeof args.limit === 'number' ? args.limit : 10, 100);
+  async execute(args: ToolArguments): Promise<SearchResultSummary[]> {
+    const query = requireString(args, 'query');
+    const limit = clampLimit(args.limit);
 
-    if (!query.trim() || limit === 0) return [];
+    if (!query) return [];
 
     // 确保索引已构建
     if (!this.indexBuilt) {
@@ -213,9 +215,9 @@ export class SearchComponentsTool extends BaseTool {
       // 使用内存索引搜索
       const indexedResults = this.searchIndex.search(query, limit);
 
-      // 转换为兼容格式
-      const results: SearchResult[] = indexedResults.map((result) => ({
-        component: result.component,
+      // 压成摘要返回
+      const results: SearchResultSummary[] = indexedResults.map((result) => ({
+        component: toComponentSummary(result.component),
         score: result.score,
         matchedFields: result.matchedFields,
       }));
@@ -250,8 +252,8 @@ export class SearchComponentsTool extends BaseTool {
    * 降级搜索方法：简单的字符串匹配
    * 组件数量通常 <100，简单匹配已足够
    */
-  private fallbackSimpleSearch(query: string, limit: number): SearchResult[] {
-    const results: SearchResult[] = [];
+  private fallbackSimpleSearch(query: string, limit: number): SearchResultSummary[] {
+    const results: SearchResultSummary[] = [];
     const queryLower = query.toLowerCase();
 
     for (const component of this.componentIndex.components) {
@@ -274,7 +276,7 @@ export class SearchComponentsTool extends BaseTool {
       }
 
       if (score > 0) {
-        results.push({ component, score, matchedFields });
+        results.push({ component: toComponentSummary(component), score, matchedFields });
       }
     }
 
@@ -289,14 +291,7 @@ export class GetComponentDependenciesTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_DEPENDENCIES;
   description = '获取指定组件的依赖关系';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名（也接受同包内的子组件名）'),
   };
 
   constructor(private componentIndex: ComponentIndex) {
@@ -324,10 +319,7 @@ export class GetComponentDependenciesTool extends BaseTool {
 export class GetCategoriesAndTagsTool extends BaseTool {
   name = MCP_TOOLS.GET_CATEGORIES_AND_TAGS;
   description = '获取所有可用的组件分类和标签';
-  inputSchema = {
-    type: 'object',
-    properties: {},
-  };
+  inputSchema = {};
 
   constructor(private componentIndex: ComponentIndex) {
     super();
@@ -359,21 +351,20 @@ export class GetComponentChangelogTool extends BaseTool {
   name = MCP_TOOLS.GET_COMPONENT_CHANGELOG;
   description = '获取指定组件的变更日志';
   inputSchema = {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: '组件名称或包名',
-      },
-      version: {
-        type: 'string',
-        description: '指定版本（可选）',
-      },
-    },
-    required: ['name'],
+    name: z.string().describe('组件名称或包名'),
+    version: z.string().optional().describe('只返回指定版本'),
   };
 
-  constructor(private componentIndex: ComponentIndex) {
+  /**
+   * @param componentIndex - 组件索引
+   * @param dataDir - 数据目录，用于加载文档快照
+   * @param repoRoot - workspace 根；null 表示脱离仓库运行，只能读快照
+   */
+  constructor(
+    private componentIndex: ComponentIndex,
+    private dataDir = '',
+    private repoRoot: string | null = null,
+  ) {
     super();
   }
 
@@ -388,39 +379,50 @@ export class GetComponentChangelogTool extends BaseTool {
     const component = findComponentByName(this.componentIndex.components, name);
     if (!component) return null;
 
+    const empty = {
+      changelog: [],
+      packageName: component.packageName,
+      currentVersion: component.version,
+    };
+
     try {
-      // 从组件源路径读取 CHANGELOG.md
-      const { readFile } = await import('node:fs/promises');
-
-      const changelogPath = join(component.sourcePath, 'CHANGELOG.md');
-      let changelogContent;
-
-      try {
-        changelogContent = await readFile(changelogPath, 'utf8');
-      } catch {
-        // 如果没有 CHANGELOG.md，返回空的变更日志
-        return {
-          changelog: [],
-          packageName: component.packageName,
-          currentVersion: component.version,
-        };
-      }
-
-      // 解析变更日志
-      const changelog = this.parseChangelog(changelogContent, version);
+      const raw = await this.readChangelog(component);
+      if (!raw) return empty;
 
       return {
-        changelog,
+        changelog: this.parseChangelog(raw, version),
         packageName: component.packageName,
         currentVersion: component.version,
       };
     } catch (error) {
       log.error(`Error getting changelog for ${component.name}:`, error);
-      return {
-        changelog: [],
-        packageName: component.packageName,
-        currentVersion: component.version,
-      };
+      return empty;
+    }
+  }
+
+  /**
+   * 读取 CHANGELOG 原文
+   *
+   * 有仓库时读磁盘（拿得到最新内容），否则退回 extract 时打进 data/ 的快照。
+   * 发布到 npm 的包里没有 packages/ 源码，快照是那种场景下唯一的数据来源。
+   */
+  private async readChangelog(component: ComponentInfo): Promise<string | null> {
+    const { readFile } = await import('node:fs/promises');
+
+    if (this.repoRoot) {
+      try {
+        return await readFile(join(this.repoRoot, component.sourcePath, 'CHANGELOG.md'), 'utf8');
+      } catch {
+        // 仓库里没有就继续找快照
+      }
+    }
+
+    try {
+      const content = await readFile(join(this.dataDir, 'docs-index.json'), 'utf8');
+      const docs = JSON.parse(content) as DocsIndex;
+      return docs.docs?.[component.packageName]?.changelog ?? null;
+    } catch {
+      return null;
     }
   }
 

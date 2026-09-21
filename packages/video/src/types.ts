@@ -1,6 +1,7 @@
 import videojs from 'video.js';
 import type { Ref } from 'vue';
 import type { NetworkStatus } from './composables/useNetworkStatus';
+import type { PlayerState } from './composables/usePlayerState';
 
 // 重新导出 composables 类型
 export type { ControlsOptions } from './composables/useControls';
@@ -87,9 +88,9 @@ export interface VideoPlayerProps {
    * @default true
    */
   fluid?: boolean;
-  /** 宽度 */
+  /** 宽度，数字按 px 处理；未设时由 fluid / responsive 决定 */
   width?: number | string;
-  /** 高度 */
+  /** 高度，数字按 px 处理；未设时由 fluid / responsive 决定 */
   height?: number | string;
   /** 宽高比（如 '16:9'） */
   aspectRatio?: string;
@@ -104,7 +105,8 @@ export interface VideoPlayerProps {
    */
   transparent?: boolean;
   /**
-   * 是否跨域
+   * 是否给 video 元素加 `crossorigin="anonymous"`；跨域截帧 / 取像素需要它，
+   * 但源站未回 CORS 头时会导致加载失败，此时关掉
    * @default true
    */
   crossOrigin?: boolean;
@@ -252,6 +254,14 @@ export interface SdkLoaderConfig {
 // ========================
 // 自定义控制栏相关类型定义
 // ========================
+
+/** `controls` 插槽的作用域 */
+export interface VideoPlayerControlsSlotScope {
+  /** 播放器当前状态快照 */
+  playerState: PlayerState;
+  /** 播放器控制方法集合 */
+  controls: ControlMethods;
+}
 
 /**
  * 控制方法接口

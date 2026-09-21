@@ -4,7 +4,7 @@
 
 import { createRequire } from 'node:module';
 import type { Command } from 'commander';
-import inquirer from 'inquirer';
+import { checkbox, confirm, input, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import path from 'node:path';
 
@@ -102,14 +102,10 @@ async function runInit(opts: InitOptions): Promise<void> {
 
   // 非交互模式跳过确认
   if (!opts.yes) {
-    const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
-      {
-        type: 'confirm',
-        name: 'confirmed',
-        message: '确认安装?',
-        default: true,
-      },
-    ]);
+    const confirmed = await confirm({
+      message: '确认安装?',
+      default: true,
+    });
     if (!confirmed) {
       logger.info('已取消');
       return;
@@ -184,31 +180,21 @@ async function collectConfigInteractively(
     disabled: !available.includes(p) ? ('即将支持' as const) : false,
   }));
 
-  const { platforms } = await inquirer.prompt<{ platforms: AIPlatform[] }>([
-    {
-      type: 'checkbox',
-      name: 'platforms',
-      message: '选择 AI 工具 (可多选)',
-      choices: platformChoices,
-      validate: (input: AIPlatform[]) => input.length > 0 || '至少选择一个平台',
-    },
-  ]);
+  const platforms = await checkbox<AIPlatform>({
+    message: '选择 AI 工具 (可多选)',
+    choices: platformChoices,
+    validate: (selection) => selection.length > 0 || '至少选择一个平台',
+  });
 
   // 2. 选择框架
-  const { framework } = await inquirer.prompt<{
-    framework: FrameworkPreset | '';
-  }>([
-    {
-      type: 'select',
-      name: 'framework',
-      message: '选择框架',
-      choices: [
-        { name: 'Vue 3', value: 'vue3' },
-        { name: 'React', value: 'react' },
-        { name: '不选择框架', value: '' },
-      ],
-    },
-  ]);
+  const framework = await select<FrameworkPreset | ''>({
+    message: '选择框架',
+    choices: [
+      { name: 'Vue 3', value: 'vue3' },
+      { name: 'React', value: 'react' },
+      { name: '不选择框架', value: '' },
+    ],
+  });
 
   // 3. 选择领域
   const domainChoices = ALL_DOMAINS.map((d) => ({
@@ -216,27 +202,18 @@ async function collectConfigInteractively(
     value: d,
   }));
 
-  const { domains } = await inquirer.prompt<{ domains: DomainPreset[] }>([
-    {
-      type: 'checkbox',
-      name: 'domains',
-      message: '选择领域模块 (可多选，可跳过)',
-      choices: domainChoices,
-    },
-  ]);
+  const domains = await checkbox<DomainPreset>({
+    message: '选择领域模块 (可多选，可跳过)',
+    choices: domainChoices,
+  });
 
   // 4. 变量收集
   const variables: Record<string, string> = {};
   if (framework === 'vue3') {
-    const { prefix } = await inquirer.prompt<{ prefix: string }>([
-      {
-        type: 'input',
-        name: 'prefix',
-        message: '组件 CSS 类名前缀',
-        default: 'app',
-      },
-    ]);
-    variables.componentPrefix = prefix;
+    variables.componentPrefix = await input({
+      message: '组件 CSS 类名前缀',
+      default: 'app',
+    });
   }
 
   // 5. 规则精选（按 resourceType 分组展示）
@@ -285,14 +262,10 @@ async function collectRuleSelections(config: InitConfig): Promise<string[]> {
     return [];
   }
 
-  const { wantCustomize } = await inquirer.prompt<{ wantCustomize: boolean }>([
-    {
-      type: 'confirm',
-      name: 'wantCustomize',
-      message: `共加载 ${allRules.length} 条规则，是否需要精选? (默认全部安装)`,
-      default: false,
-    },
-  ]);
+  const wantCustomize = await confirm({
+    message: `共加载 ${allRules.length} 条规则，是否需要精选? (默认全部安装)`,
+    default: false,
+  });
 
   if (!wantCustomize) return [];
 
@@ -307,14 +280,10 @@ async function collectRuleSelections(config: InitConfig): Promise<string[]> {
       checked: true,
     }));
 
-    const { selected } = await inquirer.prompt<{ selected: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'selected',
-        message: `${label} — 取消勾选不需要的`,
-        choices,
-      },
-    ]);
+    const selected = await checkbox<string>({
+      message: `${label} — 取消勾选不需要的`,
+      choices,
+    });
 
     const selectedSet = new Set(selected);
     for (const rule of rules) {

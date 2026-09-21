@@ -111,7 +111,7 @@ cp remove-yalc.ts /path/to/your-project/scripts/
   "devDependencies": {
     "tsx": "latest",
     "chalk": "^5.3.0",
-    "inquirer": "^10.2.0"
+    "@inquirer/prompts": "^8.7.2"
   }
 }
 
@@ -205,11 +205,11 @@ pnpm add:yalc
 
 ## 🐛 故障排查
 
-### 问题 1: inquirer 报错
+### 问题 1: @inquirer/prompts 报错
 
 **错误：**
 ```
-Cannot find module 'inquirer'
+Cannot find module '@inquirer/prompts'
 ```
 
 **解决：**

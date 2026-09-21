@@ -13,19 +13,26 @@ import type { MarkdownRenderContext } from '../src/utils/markdownWalker';
 // 2) hljs 后到时，已 committed（冻结 memo）的代码块自动补上高亮（渲染器版本号破除块级 memo）；
 // 3) 版本号与流式 chunk 无关：流式追加期间 committed 块不重渲染（核心增量优化不被破坏）；
 // 4) mermaid 惰性：无 mermaid 围栏的内容全程不 import mermaid，首个围栏渲染时才加载。
-const state = vi.hoisted(() => {
-  let resolveHljs!: (mod: unknown) => void;
-  return {
-    hljsPromise: new Promise((r) => {
-      resolveHljs = r;
-    }),
-    resolveHljs,
-    hljsResolved: false,
-    mermaidImported: false,
-  };
-});
+const state = vi.hoisted(() => ({
+  hljsReady: false,
+  hljsStub: {
+    getLanguage: (name: string) => (name === 'js' ? {} : null),
+    highlight: (code: string) => ({ value: `<span class="hljs-keyword">${code}</span>` }),
+    highlightAuto: (code: string) => ({ value: code }),
+  },
+  mermaidImported: false,
+}));
 
-vi.mock('highlight.js', () => state.hljsPromise);
+// 「hljs 未就绪」窗口由模块属性访问门控，而非挂起的 import：mock 工厂返回 pending Promise
+// 只对首次 import 生效，同一文件内第二次 import（每个新引擎都会重新 loadCodeRenderers）会拿到
+// 真实的 highlight.js，窗口随即失效。门控落在 default getter 上才对每次 import 都成立——
+// 未就绪时抛错，被 loadCodeRenderers 的 catch 收敛为空渲染器集合（与「未安装 hljs」同一路径）。
+vi.mock('highlight.js', () => ({
+  get default() {
+    if (!state.hljsReady) throw new Error('highlight.js 尚未就绪');
+    return state.hljsStub;
+  },
+}));
 vi.mock('mermaid', () => {
   state.mermaidImported = true;
   return {
@@ -40,16 +47,16 @@ vi.mock('mermaid', () => {
 });
 
 describe('MarkdownRenderer 渐进加载（基础先行 + 增强增量生效）', () => {
-  beforeEach(() => __resetMarkdownEngineCache());
-
-  // 注意：本文件内测试顺序有依赖——hljs deferred 是文件级共享 mock，
-  // 前两个测试在「hljs 未就绪」窗口内断言，第二个测试中途才 resolve 它。
+  beforeEach(() => {
+    __resetMarkdownEngineCache();
+    state.hljsReady = false;
+  });
 
   it('基础引擎就绪即渲染富文本骨架，不等待 hljs；代码块先以纯 pre>code 呈现', async () => {
     const w = mount(MarkdownRenderer, {
       props: { content: '# 标题\n\n```js\nconst x = 1\n```' },
     });
-    // hljs import 仍挂起，富文本（标题 + 代码块）必须已可渲染
+    // hljs 仍被门控挡下，富文本（标题 + 代码块）必须已可渲染
     await vi.waitFor(() => {
       expect(w.html()).toContain('<h1>标题</h1>');
       expect(w.find('pre').exists()).toBe(true);
@@ -82,26 +89,21 @@ describe('MarkdownRenderer 渐进加载（基础先行 + 增强增量生效）',
       },
     });
     // 基础引擎就绪（不等 hljs）：引擎实例 resolve 即为基础就绪同步点，三个块均已渲染，
-    // 代码块（非末块 → committed）为纯 pre>code。engine.ready 此刻仍挂起（loadCodeRenderers 等 hljs deferred）。
+    // 代码块（非末块 → committed）为纯 pre>code。
     const engine = await loadMarkdownEngine();
+    // 首轮增强已 settle（命中缓存的这次调用合流进在途轮次，不额外消耗重试额度）：
+    // hljs 被门控挡下 → 代码渲染器维持空集，下面两条断言在门控关闭期间恒成立。
+    await engine!.ready;
     await flushPromises();
     expect(w.findAll('p').length).toBe(2);
     expect(w.find('code.hljs').exists()).toBe(false);
 
-    // hljs 此刻才就绪
-    state.resolveHljs({
-      default: {
-        getLanguage: (name: string) => (name === 'js' ? {} : null),
-        highlight: (code: string) => ({ value: `<span class="hljs-keyword">${code}</span>` }),
-        highlightAuto: (code: string) => ({ value: code }),
-      },
-    });
-    state.hljsResolved = true;
+    // hljs 此刻才就绪：开门后命中缓存即触发引擎的增强重试（retryEnhancements）
+    state.hljsReady = true;
+    void loadMarkdownEngine();
     // committed 的代码块必须自动补上高亮（无 content 变化，仅渲染器版本号 bump）。
-    // engine.ready 在 hljs 合入（version bump）后兑现 → 确定性同步点，替代 wall-clock 超时。
-    await engine!.ready;
-    await flushPromises();
-    expect(w.find('code.hljs').exists()).toBe(true);
+    // 重试是 fire-and-forget（无对外句柄），故等待目标态而非固定时长。
+    await vi.waitFor(() => expect(w.find('code.hljs').exists()).toBe(true));
     expect(w.html()).toContain('hljs-keyword');
 
     // —— 版本号与流式无关：增强合入完成后，流式追加 chunk 不得重渲染 committed 首块 ——

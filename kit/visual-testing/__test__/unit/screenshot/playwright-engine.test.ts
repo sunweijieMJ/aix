@@ -28,6 +28,7 @@ const { mockPage, mockContext, mockBrowser } = vi.hoisted(() => {
   };
   const _mockContext = {
     newPage: vi.fn().mockResolvedValue(_mockPage),
+    addCookies: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
   };
   const _mockBrowser = {
@@ -72,6 +73,13 @@ function createConfig(overrides: Partial<VisualTestConfig> = {}): VisualTestConf
         disableAnimations: true,
         hideSelectors: [],
       },
+      deviceScaleFactor: 1,
+      context: {
+        cookies: [],
+        locale: 'zh-CN',
+        timezoneId: 'Asia/Shanghai',
+        reducedMotion: 'reduce',
+      },
       browsers: [{ type: 'chromium', headless: true }],
     },
     comparison: { threshold: 0.01, antialiasing: true },
@@ -96,7 +104,7 @@ function createConfig(overrides: Partial<VisualTestConfig> = {}): VisualTestConf
     },
     targets: [],
     report: { formats: ['json'], conclusion: false },
-    ci: { failOnDiff: true, failOnSeverity: 'major' },
+    ci: { failOnDiff: true, gate: 'pixel', failOnSeverity: 'major' },
     performance: {
       timeout: 120_000,
       concurrent: { maxBrowsers: 3, maxTargets: 10, poolSize: 5 },
@@ -134,9 +142,14 @@ describe('PlaywrightScreenshotEngine', () => {
         headless: true,
         channel: undefined,
       });
-      expect(mockBrowser.newContext).toHaveBeenCalledWith({
-        viewport: { width: 1280, height: 720 },
-      });
+      expect(mockBrowser.newContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          viewport: { width: 1280, height: 720 },
+          deviceScaleFactor: 1,
+          locale: 'zh-CN',
+          reducedMotion: 'reduce',
+        }),
+      );
     });
 
     it('should skip already initialized browser types', async () => {

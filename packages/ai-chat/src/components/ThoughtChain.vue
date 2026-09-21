@@ -71,6 +71,7 @@
                 </component>
               </div>
             </div>
+            <!-- @slot 单个步骤的正文，作用域 item / index；默认按 Markdown 渲染 item.content -->
             <slot name="item-content" :item="item" :index="i">
               <MarkdownRenderer v-if="item.content" :content="item.content" />
             </slot>
@@ -97,6 +98,7 @@ export interface ThoughtChainProps {
 </script>
 
 <script setup lang="ts">
+/** 思维链：多个步骤按时序纵向排列，每步带状态与可选结果。 */
 import { useNamespace } from '@aix/hooks';
 import { reactive, ref, useSlots, watch } from 'vue';
 import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';
@@ -111,6 +113,11 @@ const props = withDefaults(defineProps<ThoughtChainProps>(), {
 });
 const ns = useNamespace('thought-chain');
 const slots = useSlots();
+
+defineSlots<{
+  /** 单个步骤的正文，作用域 item / index；默认按 Markdown 渲染 item.content */
+  'item-content'?: (props: { item: ThoughtChainItem; index: number }) => unknown;
+}>();
 
 // 链级折叠：仅 collapsible+defaultCollapsed 时初始折叠。
 // title 必须参与判定：折叠入口挂在头部（`v-if="title"`），无 title 时头部整个不渲染，

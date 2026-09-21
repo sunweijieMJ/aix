@@ -5,12 +5,32 @@ export type ErrorCode =
   | 'E_NO_TEMPLATE_CONFIG'
   | 'E_INVALID_TEMPLATE_CONFIG'
   | 'E_VERSION_INCOMPATIBLE'
+  | 'E_TEMPLATE_SYNTAX'
+  | 'E_UNKNOWN_FEATURE'
+  /** --param 的 key 不在模板 params 声明中、格式不是 key=value、或值为空 */
+  | 'E_INVALID_PARAM'
+  /** CLI 选项取值不合法（如 `--pm bun`），区别于 `--param` 的 E_INVALID_PARAM */
+  | 'E_INVALID_OPTION'
+  /** 用户级配置（`~/.config/create-app/templates.json`）存在但内容不合法 */
+  | 'E_INVALID_USER_CONFIG'
+  /** `override add` 所需的内核 / 基础设施缺失（应由模板的 overrides 特性提供） */
+  | 'E_MISSING_OVERRIDE_KERNEL'
+  /** config.ts 声明的 substitution 在模板中零命中（真源改名后未同步） */
+  | 'E_SUBSTITUTION_MISS'
+  /** config.ts 的 features.dirs / files 指向模板中不存在的路径（清单腐化） */
+  | 'E_STALE_MANIFEST_PATH'
   // 项目相关
   | 'E_INVALID_PROJECT_NAME'
+  /** 当前目录不是项目根（没有 package.json），`override` 子命令必须在根目录跑 */
+  | 'E_NOT_PROJECT_ROOT'
   | 'E_DIR_NOT_EMPTY'
   | 'E_DIR_WRITE_FAILED'
+  /** 生成后的依赖安装（pnpm/npm/yarn install）失败——可预期的常见失败，区别于 E_UNKNOWN */
+  | 'E_INSTALL_FAILED'
   // 用户操作
   | 'E_USER_CANCEL'
+  /** stdin 非 TTY（CI / 管道 / `< /dev/null`）但仍有必填项要靠问答补齐 */
+  | 'E_NON_INTERACTIVE'
   // 环境
   | 'E_NODE_VERSION'
   | 'E_UNKNOWN';

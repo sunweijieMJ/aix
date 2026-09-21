@@ -5,6 +5,7 @@
     :aria-describedby="isOpen ? tooltipId : undefined"
     v-on="referenceListeners"
   >
+    <!-- @slot 触发元素 -->
     <slot />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
@@ -14,9 +15,10 @@
         :id="tooltipId"
         ref="floatingElRef"
         role="tooltip"
-        class="aix-tooltip"
+        :class="['aix-tooltip', popperClass]"
         :style="mergedStyles"
       >
+        <!-- @slot 自定义提示内容（优先于 content prop） -->
         <slot name="content">{{ content }}</slot>
         <div ref="arrowElRef" class="aix-popper__arrow" :style="arrowStyles" />
       </div>
@@ -25,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+/** 文字提示：悬停触发的轻量提示气泡。 */
 import { useId, useZIndex } from '@aix/hooks';
 import { computed, nextTick, ref, watch } from 'vue';
 import { usePopper } from '../composables/usePopper';

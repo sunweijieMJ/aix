@@ -13,6 +13,13 @@ import { IdGenerator } from '../src/utils/id-generator';
 import { IdReuseResolver } from '../src/core/IdReuseResolver';
 import { isModeExplicitlySet } from '../src/utils/command-utils';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
+import {
+  classifyJsonFile,
+  loadJsonDictOrThrow,
+  safeLoadJsonFile,
+  writeTranslationsFile,
+} from '../src/utils/json-io';
+import { previewText } from '../src/utils/text-normalize';
 
 // =============================================================================
 // file-utils
@@ -122,7 +129,7 @@ describe('flattenObject 读路径使用 keys.separator', () => {
       llm: { shared: { apiKey: 'x', model: 'm' } },
     } as I18nToolsConfig);
 
-    const msgs = LanguageFileManager.getMessages(config, false);
+    const msgs = new LanguageFileManager(config, false).getMessages();
     // 修复前会得到 'a.b'（默认分隔符），与 readLocaleFile('/') 的 key 集不一致
     expect(Object.keys(msgs['zh-CN']!)).toEqual(['a/b']);
     expect(msgs['zh-CN']!['a/b']).toBe('你好');
@@ -144,8 +151,12 @@ describe('flattenObject 读路径使用 keys.separator', () => {
       llm: { shared: { apiKey: 'x', model: 'm' } },
     } as I18nToolsConfig);
 
-    const viaGetMessages = Object.keys(LanguageFileManager.getMessages(config, false)['zh-CN']!);
-    const viaReadLocale = Object.keys(LanguageFileManager.readLocaleFile(config, false) ?? {});
+    const viaGetMessages = Object.keys(
+      new LanguageFileManager(config, false).getMessages()['zh-CN']!,
+    );
+    const viaReadLocale = Object.keys(
+      new LanguageFileManager(config, false).readLocaleFile() ?? {},
+    );
     expect(viaGetMessages).toEqual(viaReadLocale);
     expect(viaReadLocale).toEqual(['views/order/title']);
   });
@@ -201,7 +212,7 @@ describe('桶式迁移：空 source {} 时 target 仍按规则分桶', () => {
       JSON.stringify({ 'order.list': 'List', 'user.name': 'Name' }),
     );
 
-    LanguageFileManager.getMessages(makeConfig(), false);
+    new LanguageFileManager(makeConfig(), false).getMessages();
 
     // 修复后：en-US/order.json 存在且含 order.list（修复前该 key 被错落进 common）
     const orderBucket = path.join(localeDir, 'en-US', 'order.json');
@@ -251,9 +262,9 @@ describe('translations/untranslated 落盘按 key 排序', () => {
     return resolveConfig(user);
   }
 
-  it('FileUtils.writeTranslationsFile：顶层 key 字母序，内层值对象顺序不变', () => {
+  it('writeTranslationsFile：顶层 key 字母序，内层值对象顺序不变', () => {
     const p = path.join(tmpDir, 't.json');
-    FileUtils.writeTranslationsFile(p, {
+    writeTranslationsFile(p, {
       'm.x': { zh: '乙', en: 'B' },
       'a.x': { zh: '甲', en: 'A' },
     });
@@ -657,7 +668,7 @@ describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留�
       JSON.stringify({ 'order.list': '列表', 'user.name': '名称' }),
     );
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toEqual({ 'order.list': '列表', 'user.name': '名称' });
     // 只读兜底：不得产生迁移副作用
     expect(fs.existsSync(path.join(localeDir, 'zh-CN.json.bak'))).toBe(false);
@@ -672,14 +683,14 @@ describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留�
       JSON.stringify({ 'user.name': '新值' }),
     );
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toEqual({ 'user.name': '新值' });
   });
 
   it('遗留单文件损坏时返回 null（与单文件模式口径一致，不静默当空）', () => {
     fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), '{ 损坏的 json');
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toBeNull();
   });
 
@@ -693,7 +704,290 @@ describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留�
       JSON.stringify({ 'user.name': '值' }),
     );
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toEqual({ 'user.name': '值' });
+  });
+});
+
+// =============================================================================
+// json-io — 顶层非字典守卫
+// =============================================================================
+/**
+ * 回归：全部调用方（locale/bucket 文件、glossary、translations/untranslated）消费的都是
+ * 「key → value」字典。语法合法但顶层是数组/字符串/数字时若判 ok 放行，
+ * `Object.entries("hello")` 会把字符串按字符拆成条目一路加工到落盘，全程不报错。
+ * 归入 corrupt（而非新增一档 status）是为了让既有 `status === 'corrupt'` 守卫照旧 fail-fast。
+ */
+describe('classifyJsonFile / loadJsonDictOrThrow — 顶层必须是对象', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-json-toplevel-'));
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const write = (content: string): string => {
+    const p = path.join(tmpDir, 'x.json');
+    fs.writeFileSync(p, content, 'utf8');
+    return p;
+  };
+
+  it.each([
+    ['数组', '["a","b"]'],
+    ['字符串', '"hello"'],
+    ['数字', '42'],
+    ['布尔', 'true'],
+  ])('顶层是%s → corrupt，且 reason 说明顶层必须是对象', (_label, content) => {
+    const cls = classifyJsonFile(write(content));
+    expect(cls.status).toBe('corrupt');
+    expect(cls.status === 'corrupt' && cls.reason).toMatch(/顶层必须是对象/);
+  });
+
+  it('loadJsonDictOrThrow 抛错时带上调用方文案 + 具体原因', () => {
+    expect(() => loadJsonDictOrThrow(write('"hello"'), (p) => `坏了: ${p}`)).toThrow(
+      /坏了: .*[\s\S]*顶层必须是对象/,
+    );
+  });
+
+  it('对照：顶层是对象照常 ok；null / 空文件仍归 empty（不回归）', () => {
+    expect(classifyJsonFile(write('{"a":"1"}'))).toEqual({ status: 'ok', data: { a: '1' } });
+    expect(classifyJsonFile(write('null')).status).toBe('empty');
+    expect(classifyJsonFile(write('   ')).status).toBe('empty');
+  });
+});
+
+// =============================================================================
+// json-io — silent 读取契约与解析错因
+// =============================================================================
+// silent 传到 tryParseJson，探测型读取（getMessages / migrateToBuckets / findCorrupt*）
+// 不再每探测一次刷一条裸报错；解析错因随 classifyJsonFile 的返回值带出。
+describe('json-io — silent 读取契约与解析错因', () => {
+  const withCorruptFile = <T>(fn: (file: string) => T): T => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-json-io-'));
+    const file = path.join(dir, 'broken.json');
+    fs.writeFileSync(file, '{ "a": 1,, }', 'utf-8');
+    try {
+      return fn(file);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('safeLoadJsonFile({ silent: true }) 对损坏文件零输出', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const result = withCorruptFile((file) => safeLoadJsonFile(file, { silent: true }));
+    expect(result).toEqual({});
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('不传 silent 时仍照旧打印（既有行为不回退）', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    withCorruptFile((file) => safeLoadJsonFile(file));
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('classifyJsonFile({ silent: true }) 不打印但把错因随返回值带出', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    const cls = withCorruptFile((file) => classifyJsonFile(file, { silent: true }));
+    expect(cls.status).toBe('corrupt');
+    expect(cls.status === 'corrupt' && cls.reason).toBeTruthy();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('loadJsonDictOrThrow 的报错信息包含解析器给出的错因', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    const message = withCorruptFile((file) => {
+      try {
+        loadJsonDictOrThrow(file, (p) => `坏了: ${p}`);
+        return '';
+      } catch (e) {
+        return (e as Error).message;
+      }
+    });
+    expect(message).toContain('坏了:');
+    // 语法错因（解析器 message）经 reason 透出，用户能定位「坏在哪」
+    expect(message).toContain('👉');
+    expect(errorSpy).toHaveBeenCalled(); // 该路径未 silent，控制台仍有原始错误
+  });
+});
+
+// =============================================================================
+// IdReuseResolver — 无前缀域的 key 复用
+// =============================================================================
+// 前缀派生结果为空串（文件不在 anchor 下 / take·transform 过滤掉全部段 / custom 返回 []）
+// 时，同一原文也要能复用「同样无前缀」的历史 key，否则每轮 generate 都重新分配。
+describe('IdReuseResolver — 无前缀域的 key 复用', () => {
+  const withProject = <T>(locale: Record<string, string>, fn: (root: string) => T): T => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-reuse-'));
+    fs.mkdirSync(path.join(root, 'src', 'i18n'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'src', 'i18n', 'zh-CN.json'), JSON.stringify(locale), 'utf-8');
+    try {
+      return fn(root);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  const resolverFor = (root: string): IdReuseResolver =>
+    new IdReuseResolver(
+      resolveConfig({ root, framework: { type: 'vue' }, io: { format: 'flat' } }),
+      false,
+    );
+
+  it('复用无前缀历史 key（anchor 之外的文件）', () => {
+    withProject({ submitBtn: '提交' }, (root) => {
+      const resolver = resolverFor(root);
+      const outside = path.join(root, 'lib', 'foo.vue');
+      // 前置事实：该文件派生不出前缀
+      expect(resolver.getIdGenerator().getDirectoryPrefix(outside)).toBe('');
+      expect(resolver.pickReusableKey('提交', outside)).toBe('submitBtn');
+    });
+  });
+
+  it('不跨域复用带前缀的历史 key（acrossDirectories=false 时仍隔离）', () => {
+    withProject({ 'pages.order.submitBtn': '提交' }, (root) => {
+      const resolver = resolverFor(root);
+      const outside = path.join(root, 'lib', 'foo.vue');
+      expect(resolver.pickReusableKey('提交', outside)).toBeUndefined();
+    });
+  });
+
+  it('同前缀域内的既有行为不变', () => {
+    withProject({ 'pages.submitBtn': '提交' }, (root) => {
+      const resolver = resolverFor(root);
+      const inside = path.join(root, 'src', 'pages', 'foo.vue');
+      expect(resolver.pickReusableKey('提交', inside)).toBe('pages.submitBtn');
+    });
+  });
+});
+
+// =============================================================================
+// 文本工具 — containsChinese / isValidTranslation / previewText
+// =============================================================================
+describe('文本工具 — containsChinese / isValidTranslation / previewText', () => {
+  it('containsChinese 单参签名', () => {
+    expect(FileUtils.containsChinese('你好 world')).toBe(true);
+    expect(FileUtils.containsChinese('hello')).toBe(false);
+    expect(FileUtils.containsChinese('')).toBe(false);
+  });
+
+  it('isValidTranslation 纯标点仍无效、正常译文仍有效', () => {
+    expect(FileUtils.isValidTranslation('...')).toBe(false);
+    expect(FileUtils.isValidTranslation('{}')).toBe(false);
+    expect(FileUtils.isValidTranslation('  ')).toBe(false);
+    expect(FileUtils.isValidTranslation('Hello')).toBe(true);
+    expect(FileUtils.isValidTranslation('第1项')).toBe(true);
+    expect(FileUtils.isValidTranslation(null)).toBe(false);
+  });
+
+  it('previewText：单行化 + 80 截断', () => {
+    expect(previewText('a\n  b\tc')).toBe('a b c');
+    const long = '汉'.repeat(81);
+    expect(previewText(long)).toBe(`${'汉'.repeat(80)}…`);
+    expect(previewText('汉'.repeat(80))).toBe('汉'.repeat(80));
+  });
+});
+
+// =============================================================================
+// 四轮审计 P3：IO 侧一致性（A10 / A11 / A14）
+// =============================================================================
+/**
+ * A10：translations.json / untranslated.json 与语言文件必须同一套缩进，否则项目把
+ * io.indent 配成 4 之后，这两类文件每次落盘都互相打架出全量 diff。
+ * A11：扩展名匹配不区分大小写（source-key-scanner 的 hasExtension 已 toLowerCase，
+ * 两侧口径分裂会让 `Foo.VUE` 一边被扫、一边扫不到）。
+ * A14：readBucketedLocaleWithBucketMap 与 readBucketedLocaleFlat 同为 null 原型累加器，
+ * 否则 `__proto__` 这个合法末段 key 在前者里被 setter 静默吞掉。
+ */
+describe('IO 一致性（四轮审计 P3）', () => {
+  let tmpDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'io-consistency-'));
+    localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('A10：pick 写出的字典文件跟随 config.io.indent', async () => {
+    fs.writeFileSync(path.join(localeDir, 'zh.json'), JSON.stringify({ 'a.x': '甲' }));
+    fs.writeFileSync(path.join(localeDir, 'en.json'), JSON.stringify({}));
+    const config = resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat', indent: 4 },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+    await new PickProcessor(config, false).execute();
+
+    const raw = fs.readFileSync(path.join(localeDir, 'untranslated.json'), 'utf8');
+    expect(raw).toMatch(/\n {4}"a\.x"/);
+  });
+
+  it('A10：writeTranslationsFile 未传 indent 时保持 2 空格默认', () => {
+    const p = path.join(tmpDir, 't.json');
+    writeTranslationsFile(p, { 'a.x': { zh: '甲' } });
+    expect(fs.readFileSync(p, 'utf8')).toMatch(/\n {2}"a\.x"/);
+  });
+
+  it('A11：matchesExtensions 不区分大小写（.VUE 与 .vue 同一个文件）', () => {
+    expect(FileUtils.matchesExtensions('Foo.VUE', ['.vue'])).toBe(true);
+    expect(FileUtils.matchesExtensions('Foo.vue', ['.VUE'])).toBe(true);
+    expect(FileUtils.matchesExtensions('Foo.ts', ['.vue'])).toBe(false);
+    // 类型声明文件仍被排除
+    expect(FileUtils.matchesExtensions('types.d.ts', ['.ts'])).toBe(false);
+  });
+
+  it('A14：readBucketedLocaleWithBucketMap 保住 __proto__ 末段 key', () => {
+    const config = resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      buckets: {
+        rules: [{ name: 'pages', matchKey: (k: string) => k.startsWith('pages.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-locale',
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+    fs.mkdirSync(path.join(localeDir, 'zh'), { recursive: true });
+    // 手写 JSON 文本：对象字面量里的 `__proto__:` 是原型设值语法，写不出这个自有属性
+    fs.writeFileSync(
+      path.join(localeDir, 'zh', 'common.json'),
+      '{"__proto__":"原型名 key","normal":"普通"}',
+    );
+
+    const { flat, keyBucketMap } = new LanguageFileManager(
+      config,
+      false,
+    ).readBucketedLocaleWithBucketMap('zh');
+
+    expect(Object.keys(flat).sort()).toEqual(['__proto__', 'normal']);
+    expect(flat['__proto__']).toBe('原型名 key');
+    expect(keyBucketMap['__proto__']).toBe('common');
   });
 });

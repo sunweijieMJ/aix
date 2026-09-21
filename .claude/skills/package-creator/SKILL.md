@@ -1,392 +1,159 @@
 ---
 name: package-creator
-description: Use ONLY when creating a brand-new **package** (top-level packages/<name>/ directory with its own package.json/tsconfig/rollup.config.js) in the AIX monorepo. Trigger phrases - "新建一个 XX 组件包"、"创建一个新包"、"scaffold a new package". DO NOT use for adding a component inside an existing package — use component-generator for that. Generates standard packages/<name>/ structure with package.json / tsconfig / rollup.config.js / src + __test__ + stories templates.
+description: Use ONLY when creating a brand-new **package** (top-level packages/<name>/ directory with its own package.json/tsconfig/rollup.config.js) in the AIX monorepo. Trigger phrases - "新建一个 XX 组件包"、"创建一个新包"、"scaffold a new package". DO NOT use for adding a component inside an existing package — use component-generator for that. Wraps the repo's real scaffold script `pnpm gen`; do not hand-write package files.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:
   author: aix
-  version: "1.0.0"
+  version: "2.0.0"
   category: scaffold
 ---
 
 # 包创建器 Skill
 
-## 功能概述
+## 核心原则：不要手写脚手架文件
 
-在 monorepo 中快速创建一个新的组件包，自动生成：
-- 标准目录结构
-- package.json 配置
-- tsconfig.json 配置
-- tsconfig.build.json 配置
-- rollup.config.js 配置
-- 基础组件文件
-- Storybook story 文件（可选）
-- 测试文件（可选）
+本仓有真实的生成器 **`pnpm gen`**（`scripts/gen/`，20 个 `.eta` 模板）。
+它是新建包的**单一事实来源**。
 
-## 使用方式
+> ❌ 不要用 Write 工具逐个创建 `package.json` / `tsconfig.json` / `rollup.config.js`。
+> 手写的副本一定会和 `scripts/gen/templates/` 漂移——本 Skill 的上一版就是这么烂掉的
+> （模板写 `version: 0.0.0`，文档抄成了 `0.0.1`）。
+>
+> ✅ 调用 `pnpm gen`，然后基于产物做增量修改。
 
-```bash
-# 方式 1: 基础用法
-/package-creator Select --description="下拉选择器"
-
-# 方式 2: 完整配置
-/package-creator Dropdown --description="下拉菜单组件" --with-story --with-test
-
-# 方式 3: 交互式模式
-/package-creator
-```
-
-### 参数说明
-
-| 参数 | 说明 | 默认值 | 示例 |
-|------|------|-------|------|
-| 包名称 | 包名称（kebab-case） | 必需 | `Select`, `DatePicker` |
-| `--description` | 包描述 | 必需 | `--description="下拉选择器"` |
-| `--with-story` | 是否生成 Storybook story | `true` | `--with-story` |
-| `--with-test` | 是否生成测试文件 | `true` | `--with-test` |
+---
 
 ## 执行流程
 
-### 步骤 1: 收集信息
+### 步骤 1: 确认包名（kebab-case，硬性校验）
 
-解析用户输入或使用 AskUserQuestion 工具询问：
+`scripts/gen/validators.ts` 强制 `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`：
 
-**必需信息:**
-- 包名称 (PascalCase，如 `Select`, `DatePicker`)
-- 包描述 (用于 package.json 的 description 字段)
+| 输入 | 结果 |
+|------|------|
+| `select` | ✅ → `packages/select/`，组件 `Select.vue` |
+| `date-picker` | ✅ → `packages/date-picker/`，组件 `DatePicker.vue` |
+| `Select` / `DatePicker` | ❌ 被拒：「组件名称必须是 kebab-case 格式」 |
+| `src` / `lib` / `es` / `dist` / `test` / `tests` / `node_modules` | ❌ 保留名称 |
+| 已存在的包名 | ❌ 提前报错，不会覆盖 |
 
-**可选信息:**
-- `--with-story`: 是否生成 Storybook story（默认 true）
-- `--with-test`: 是否生成测试文件（默认 true）
+用户如果给的是 PascalCase（"创建一个 DatePicker 包"），**先转成 kebab-case 再传给 `pnpm gen`**，
+不要原样透传。
 
-### 步骤 2: 检查包是否已存在
-
-使用 Bash 工具检查目录是否存在：
-
-```bash
-ls packages/{package-name}
-```
-
-如果已存在，提示用户并退出。
-
-### 步骤 3: 创建目录结构
-
-```
-packages/
-  └── {package-name}/
-      ├── src/
-      │   ├── {ComponentName}.vue       # 组件主文件
-      │   └── index.ts                  # 导出文件
-      ├── __test__/
-      │   └── {ComponentName}.test.ts   # 测试文件
-      ├── stories/
-      │   └── {ComponentName}.stories.ts  # Story 文件
-      ├── package.json
-      ├── tsconfig.json
-      ├── tsconfig.build.json
-      ├── rollup.config.js
-      ├── vitest.config.ts              # 必需！根 vitest projects 按此文件发现包，缺失则测试被静默跳过
-      ├── eslint.config.ts
-      └── stylelint.config.ts
-```
-
-### 步骤 4: 生成配置文件
-
-#### package.json
-
-```json
-{
-  "name": "@aix/{package-name}",
-  "version": "0.0.1",
-  "description": "{description}",
-  "license": "MIT",
-  "type": "module",
-  "main": "./lib/index.cjs",
-  "module": "./es/index.js",
-  "types": "./es/index.d.ts",
-  "style": "./es/index.css",
-  "sideEffects": [
-    "*.css",
-    "*.scss",
-    "*.sass"
-  ],
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./es/index.d.ts",
-        "default": "./es/index.js"
-      },
-      "require": {
-        "types": "./lib/index.d.cts",
-        "default": "./lib/index.cjs"
-      }
-    },
-    "./style": {
-      "types": "./es/style.d.ts",
-      "default": "./es/index.css"
-    },
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "lib",
-    "es"
-  ],
-  "scripts": {
-    "dev": "rollup -c -w",
-    "lint:script": "eslint . --max-warnings 0",
-    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
-    "lint": "pnpm run lint:script && pnpm run lint:style",
-    "type-check": "vue-tsc --noEmit -p tsconfig.json",
-    "test": "vitest --run",
-    "build": "pnpm run clean && pnpm run build:types && pnpm run build:js",
-    "build:js": "rollup -c",
-    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es -p tsconfig.build.json",
-    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
-  },
-  "peerDependencies": {
-    "vue": "^3.3.0"
-  },
-  "devDependencies": {
-    "@kit/eslint-config": "workspace:^",
-    "@kit/stylelint-config": "workspace:^",
-    "@kit/typescript-config": "workspace:^",
-    "@kit/vitest-config": "workspace:^",
-    "eslint": "catalog:",
-    "rimraf": "catalog:",
-    "stylelint": "catalog:",
-    "tsx": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:",
-    "vue-tsc": "catalog:"
-  }
-}
-```
-
-> **关键字段说明**：
-> - **双格式输出**：`main` → `lib/`（CJS），`module` → `es/`（ESM），与 `rollup.config.js` 输出一致
-> - **types** 指向 `es/` 下由 `vue-tsc` 生成的 `.d.ts`
-> - **sideEffects** 必须列出样式文件，避免 Tree-shaking 时被错误移除
-> - **exports 只暴露主入口与 `./style`**：不要加 `./es/*` / `./lib/*` 通配。通配会把 `vue-tsc`
->   逐模块产出的 `.d.ts` 一并暴露，而它们带无扩展名相对引用，在 `moduleResolution: node16`
->   下报 TS2834；且 attw 对通配 entrypoint 整段跳过，发布门禁看不见这类破损
-> - **exports 必须用嵌套双包形式**：`import.types` 指向 `es/index.d.ts`、`require.types` 指向
->   `lib/index.d.cts`。写成扁平的 `{types, import, require}` 会让 CJS 消费方拿到 ESM 的 `.d.ts`
->   （masquerading），而 `lib/*.d.cts` 正是根 `rollup.config.js` 的 dts 段专门为此生成的
-> - **`./style` 必须带 `types` 条件**指向 `es/style.d.ts`（构建期由 `emitStyleDts` 生成），
->   否则消费方开启 `noUncheckedSideEffectImports` 时 `import '@aix/<name>/style'` 无法解析
-> - **build 顺序必须是 `build:types` → `build:js`**：`build:js` 里的 dts bundle 段依赖
->   `es/*.d.ts` 已存在，顺序颠倒会导致类型产物缺失
-
-#### tsconfig.json（类型检查用）
-
-与现存组件包一致（如 `packages/button/tsconfig.json`），继承 `base-library.json`（注意：`vue.json` 预设不存在）。
-注意它是 **noEmit** 的检查配置，且必须 include `stories/` 与 `__test__/`，否则这两处代码不会被 `type-check` 覆盖：
-
-```json
-{
-  "extends": "@kit/typescript-config/base-library.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "composite": false,
-    "declaration": false,
-    "declarationMap": false,
-    "emitDeclarationOnly": false
-  },
-  "include": ["src/**/*", "stories/**/*", "__test__/**/*", "*.config.ts"],
-  "exclude": ["node_modules", "dist", "es", "lib"]
-}
-```
-
-#### tsconfig.build.json（声明产出用，必需）
-
-`build:types` 通过 `-p tsconfig.build.json` 使用它。与 `tsconfig.json` 分开，是为了让类型检查能覆盖
-测试与 story，而产物只包含 `src/`：
-
-```json
-{
-  "extends": "@kit/typescript-config/base-library.json",
-  "compilerOptions": {
-    "declarationDir": "es",
-    "rootDir": "src",
-    "outDir": "es",
-    "tsBuildInfoFile": "tsconfig.tsbuildinfo"
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "es", "lib", "__test__", "stories"]
-}
-```
-
-#### rollup.config.js
-
-显式传 `['esm', 'cjs']`（省略第二参数会默认追加 UMD，产出不发布的 dist/ 死产物）：
-
-```javascript
-import { createRollupConfig } from '../../rollup.config.js';
-
-export default createRollupConfig(import.meta.dirname, ['esm', 'cjs']);
-```
-
-#### vitest.config.ts（必需）
-
-根 `vitest.config.ts` 的 projects 以 `packages/*/vitest.config.ts` 发现包，缺失该文件的包在根口径测试中被静默跳过：
-
-```typescript
-import { createVueConfig } from '@kit/vitest-config';
-import { defineConfig } from 'vitest/config';
-
-export default defineConfig(createVueConfig());
-```
-
-#### eslint.config.ts（必需）
-
-```typescript
-import { config } from '@kit/eslint-config/vue-app';
-import type { Linter } from 'eslint';
-
-export default config as Linter.Config[];
-```
-
-#### stylelint.config.ts（必需）
-
-```typescript
-export default {
-  extends: ['@kit/stylelint-config/component-library'],
-};
-```
-
-### 步骤 5: 生成组件模板
-
-创建基础组件文件、Story 文件和测试文件（参考 component-generator 的模板）。
-
-### 步骤 6: 更新 pnpm workspace
-
-包会自动被 pnpm workspace 识别（因为在 packages/ 目录下）。
-
-### 步骤 7: 安装依赖
+### 步骤 2: 先 dry-run
 
 ```bash
-pnpm install
+pnpm gen <kebab-name> -d "<描述>" --dry-run -y
 ```
 
-### 步骤 8: 构建验证
+`--dry-run` 在任何写盘动作之前就 return（见 `generator.ts`），安全。
+把文件清单给用户确认后再实际执行。
+
+### 步骤 3: 执行生成
 
 ```bash
-cd packages/{package-name}
-pnpm build
+pnpm gen <kebab-name> -d "<描述>"          # 交互式，逐项确认
+pnpm gen <kebab-name> -d "<描述>" -y       # 快速模式，用默认配置
 ```
 
-### 步骤 9: 展示结果
+**CLI 选项**（以 `pnpm gen --help` 为准）：
+
+| 选项 | 作用 | 默认 |
+|------|------|------|
+| `-d, --description <desc>` | 包描述，写进 package.json | 交互式询问 |
+| `--deps <a,b>` | 依赖包，逗号分隔 | `@aix/theme,@aix/hooks` |
+| `--i18n` | 生成 `src/locale/`（zh-CN / en-US / types） | 关 |
+| `--no-scss` | 不生成独立 `src/index.scss` | 生成 |
+| `--no-composables` | 不生成 `use<Pascal>.ts` | 生成 |
+| `--dry-run` | 只列文件，不写盘 | — |
+| `-y, --yes` | 跳过所有确认 | — |
+
+> 组件有任何面向用户的文案时**务必加 `--i18n`**。事后补 locale 比一开始就带上贵得多。
+
+### 步骤 4: 产物清单
+
+`pnpm gen <name> --i18n -y` 实测生成 **19 个文件**（不带 `--i18n` 则 15 个）：
 
 ```
-✅ 组件包创建成功！
-
-📦 包信息:
-   名称: @aix/{package-name}
-   描述: {description}
-   路径: packages/{package-name}/
-
-📁 生成的文件:
-   ✓ package.json
-   ✓ tsconfig.json
-   ✓ tsconfig.build.json
-   ✓ rollup.config.js
-   ✓ vitest.config.ts
-   ✓ eslint.config.ts
-   ✓ stylelint.config.ts
-   ✓ src/{ComponentName}.vue
-   ✓ src/index.ts
-   ✓ stories/{ComponentName}.stories.ts
-   ✓ __test__/{ComponentName}.test.ts
-
-💡 下一步:
-   1. 开发组件: cd packages/{package-name}
-   2. 运行 Storybook: pnpm storybook:dev
-   3. 运行测试: pnpm test
-   4. 构建包: pnpm build
-```
-
-## 遵守的规范
-
-### 1. 包命名规范
-
-- 包名称使用 kebab-case: `select`, `date-picker`
-- 组件名称使用 PascalCase: `Select`, `DatePicker`
-- NPM 包名: `@aix/{package-name}`
-
-### 2. 版本管理
-
-- 初始版本: `0.0.1`
-- 使用 changesets 管理版本
-
-### 3. 文件组织
-
-```
-packages/{package-name}/
-├── src/                  # 源代码
-│   ├── *.vue            # 组件文件
-│   └── index.ts         # 导出文件
-├── __test__/           # 测试文件
-├── stories/             # Storybook stories
-├── dist/                # 构建输出（gitignore）
+packages/<name>/
+├── src/
+│   ├── <Pascal>.vue          # 组件主文件（注意：不是 index.vue）
+│   ├── index.ts              # 导出入口（具名导出 + default install 插件）
+│   ├── types.ts              # Props/Emits 接口，带 @default JSDoc
+│   ├── use<Pascal>.ts        # composable（--no-composables 可关）
+│   ├── index.scss            # 组件样式（--no-scss 可关）
+│   └── locale/               # 仅 --i18n：index.ts / types.ts / zh-CN.ts / en-US.ts
+├── __test__/<Pascal>.test.ts
+├── stories/<Pascal>.stories.ts
 ├── package.json
-├── tsconfig.json
-├── tsconfig.build.json
-└── rollup.config.js
+├── tsconfig.json             # noEmit 检查配置，include stories/ 与 __test__/
+├── tsconfig.build.json       # 声明产出，只 include src/
+├── rollup.config.js
+├── vitest.config.ts          # 必需：根 vitest projects 按此文件发现包
+├── eslint.config.ts
+├── stylelint.config.ts
+└── README.md
 ```
 
-### 4. 导出规范
-
-与全库统一（见 docs/guide/development-standards.md §3.3）：**默认导出 install 插件**（支持 `app.use()`），组件本体与类型走具名导出：
-
-```typescript
-// src/index.ts
-import type { App } from 'vue';
-import ComponentName from './ComponentName.vue';
-
-export type { ComponentNameProps, ComponentNameEmits } from './types';
-
-// 支持单独导入
-export { ComponentName };
-
-// 支持插件方式安装
-export default {
-  install(app: App) {
-    app.component('AixComponentName', ComponentName);
-  },
-};
-```
-
-## 示例
-
-### 创建 Select 组件包
+### 步骤 5: 收尾（`pnpm gen` 不做的事）
 
 ```bash
-# 1. 创建包
-/package-creator Select --description="下拉选择器组件" --with-story --with-test
-
-# 2. 进入包目录
-cd packages/select
-
-# 3. 开发组件
-# 编辑 src/Select.vue
-
-# 4. 查看 Storybook
-pnpm storybook:dev
-
-# 5. 运行测试
-pnpm test
-
-# 6. 构建
-pnpm build
-
-# 7. 发布
-pnpm changeset
-pnpm version-packages
-pnpm publish
+pnpm install                    # 让 workspace 识别新包并链接依赖
+pnpm build:filter @aix/<name>   # 注意是 build:filter，不是 build --filter
+pnpm lint:publish               # 发布形态体检（新包最容易在这里暴露问题）
 ```
+
+还需要人工决定的：
+
+- [ ] 该包是否要进 `docs/components/`（组件文档站）
+- [ ] 首次发布前 `pnpm changeset`
+- [ ] 若依赖了生成时没勾的包，用 `pnpm add @aix/<dep> --filter @aix/<name>`
+
+---
+
+## 改模板前必读：package.json 关键字段为什么长这样
+
+以下约束**已编码在 `scripts/gen/templates/package.json.eta` 里**，改模板或手工调整新包的
+package.json 时别踩：
+
+- **双格式输出**：`main` → `lib/`（CJS），`module` → `es/`（ESM），与 `rollup.config.js` 一致
+- **`types`** 指向 `es/` 下由 `vue-tsc` 生成的 `.d.ts`
+- **`sideEffects`** 必须列出样式文件，否则 Tree-shaking 会错误移除
+- **`exports` 只暴露主入口与 `./style`**，不要加 `./es/*` / `./lib/*` 通配。
+  通配会把 `vue-tsc` 逐模块产出的 `.d.ts` 一并暴露，它们带无扩展名相对引用，
+  在 `moduleResolution: node16` 下报 TS2834；且 attw 对通配 entrypoint 整段跳过，
+  发布门禁看不见这类破损
+- **`exports` 必须用嵌套双包形式**：`import.types` → `es/index.d.ts`，
+  `require.types` → `lib/index.d.cts`。写成扁平的 `{types, import, require}` 会让 CJS
+  消费方拿到 ESM 的 `.d.ts`（masquerading）
+- **`./style` 必须带 `types` 条件**指向 `es/style.d.ts`（构建期由 `emitStyleDts` 生成），
+  否则消费方开启 `noUncheckedSideEffectImports` 时 `import '@aix/<name>/style'` 无法解析
+- **build 顺序必须是 `build:types` → `build:js`**：`build:js` 的 dts bundle 段依赖
+  `es/*.d.ts` 已存在，顺序颠倒会导致类型产物缺失
+- **不要加 `publishConfig`**：registry 由仓库根 `.npmrc` 的 scoped 配置解析（私有仓库），
+  `access` 对私有 registry 无意义
+
+`tsconfig.json` 与 `tsconfig.build.json` 分开的原因：前者 `noEmit`，必须 include
+`stories/` 与 `__test__/`，否则这两处代码不被 `type-check` 覆盖；后者只 include `src/`，
+保证声明产物干净。
+
+---
+
+## 与 component-generator 的分工
+
+| 场景 | 用哪个 |
+|------|--------|
+| 新建 `packages/<name>/` 顶层包 | **本 Skill**（→ `pnpm gen`）|
+| 往已有包里加一个子组件 | [component-generator](../component-generator/SKILL.md) |
+
+`pnpm gen` **只能创建新包**，不能往已有包里塞组件——包名已存在时它会直接报错退出。
+
+---
 
 ## 相关文档
 
-- [project-structure.md](../../agents/project-structure.md) - 项目结构和 Monorepo 管理指导
-- [component-generator](../component-generator/SKILL.md) - 组件生成器
-- [npm-publishing.md](../../agents/npm-publishing.md) - npm 发布流程
+- `scripts/gen/` - 生成器实现与 `.eta` 模板（本 Skill 的事实来源）
+- [project-structure.md](../../agents/project-structure.md) - Monorepo 结构
+- [npm-publishing.md](../../agents/npm-publishing.md) - 发布流程与私有 registry
+- `docs/guide/development-standards.md` - 全库开发规范

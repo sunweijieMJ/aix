@@ -41,7 +41,7 @@ describe('LanguageFileManager bucket write', () => {
     const config = makeConfig();
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
-    LanguageFileManager.writeLocaleFile(config, false, { 'order.title': '订单' }, 'zh-CN');
+    new LanguageFileManager(config, false).writeLocaleFile({ 'order.title': '订单' }, 'zh-CN');
 
     const singleFile = path.join(config.io.localesDir, 'zh-CN.json');
     expect(fs.existsSync(singleFile)).toBe(true);
@@ -61,9 +61,7 @@ describe('LanguageFileManager bucket write', () => {
     });
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
-    LanguageFileManager.writeLocaleFile(
-      config,
-      false,
+    new LanguageFileManager(config, false).writeLocaleFile(
       { 'order.title': '订单', 'user.name': '用户' },
       'zh-CN',
       { 'order.title': 'order', 'user.name': 'common' },
@@ -90,7 +88,7 @@ describe('LanguageFileManager bucket write', () => {
       JSON.stringify({ 'legacy.key': '历史' }),
     );
 
-    LanguageFileManager.getMessages(config, false);
+    new LanguageFileManager(config, false).getMessages();
 
     expect(fs.existsSync(path.join(config.io.localesDir, 'zh-CN.json.bak'))).toBe(true);
     expect(fs.existsSync(path.join(config.io.localesDir, 'zh-CN.json'))).toBe(false);
@@ -112,10 +110,10 @@ describe('LanguageFileManager bucket write', () => {
     fs.mkdirSync(config.io.localesDir, { recursive: true });
     fs.writeFileSync(path.join(config.io.localesDir, 'zh-CN.json'), '{"k":"v"}');
 
-    LanguageFileManager.getMessages(config, false);
+    new LanguageFileManager(config, false).getMessages();
     const firstBakStat = fs.statSync(path.join(config.io.localesDir, 'zh-CN.json.bak'));
 
-    LanguageFileManager.getMessages(config, false);
+    new LanguageFileManager(config, false).getMessages();
     const secondBakStat = fs.statSync(path.join(config.io.localesDir, 'zh-CN.json.bak'));
     expect(secondBakStat.mtimeMs).toBe(firstBakStat.mtimeMs);
   });
@@ -134,7 +132,7 @@ describe('LanguageFileManager bucket write', () => {
     fs.writeFileSync(path.join(langDir, 'order.json'), '{"order.title":"订单"}');
     fs.writeFileSync(path.join(langDir, 'common.json'), '{"common.confirm":"确认"}');
 
-    const messages = LanguageFileManager.getMessages(config, false);
+    const messages = new LanguageFileManager(config, false).getMessages();
     expect(messages['zh-CN']).toEqual({
       'order.title': '订单',
       'common.confirm': '确认',
@@ -152,9 +150,7 @@ describe('LanguageFileManager bucket write', () => {
     });
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
-    LanguageFileManager.writeLocaleFile(
-      config,
-      false,
+    new LanguageFileManager(config, false).writeLocaleFile(
       { 'order.title': '订单', 'user.name': '用户' },
       'zh-CN',
       { 'order.title': 'order', 'user.name': 'common' },
@@ -184,7 +180,7 @@ describe('LanguageFileManager bucket write', () => {
     fs.writeFileSync(path.join(commonDir, 'zh-CN.json'), '{"common.confirm":"确认"}');
     fs.writeFileSync(path.join(commonDir, 'en-US.json'), '{"common.confirm":"Confirm"}');
 
-    const messages = LanguageFileManager.getMessages(config, false);
+    const messages = new LanguageFileManager(config, false).getMessages();
     expect(messages['zh-CN']).toEqual({
       'order.title': '订单',
       'common.confirm': '确认',
@@ -218,7 +214,7 @@ describe('LanguageFileManager bucket write', () => {
       'misc.foo': 'common',
     });
 
-    LanguageFileManager.writeLocaleFile(config, false, localeMap, 'zh-CN', keyBucketMap);
+    new LanguageFileManager(config, false).writeLocaleFile(localeMap, 'zh-CN', keyBucketMap);
 
     const orderFile = path.join(config.io.localesDir, 'zh-CN', 'order.json');
     const userFile = path.join(config.io.localesDir, 'zh-CN', 'user.json');
@@ -239,7 +235,7 @@ describe('LanguageFileManager bucket write', () => {
     });
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
-    LanguageFileManager.writeLocaleFile(config, false, { 'a.x': 'A', 'b.y': 'B' }, 'zh-CN', {
+    new LanguageFileManager(config, false).writeLocaleFile({ 'a.x': 'A', 'b.y': 'B' }, 'zh-CN', {
       'a.x': 'common',
       'b.y': 'common',
     });
@@ -262,9 +258,7 @@ describe('LanguageFileManager bucket write', () => {
     fs.mkdirSync(langDir, { recursive: true });
 
     // 模拟历史规则：把 user.* 写到 user.json
-    LanguageFileManager.writeLocaleFile(
-      config,
-      false,
+    new LanguageFileManager(config, false).writeLocaleFile(
       { 'user.name': '用户', 'order.title': '订单' },
       'zh-CN',
       { 'user.name': 'user', 'order.title': 'order' },
@@ -272,9 +266,7 @@ describe('LanguageFileManager bucket write', () => {
     expect(fs.existsSync(path.join(langDir, 'user.json'))).toBe(true);
 
     // 新规则只保留 order；user.* 现在归入 common
-    LanguageFileManager.writeLocaleFile(
-      config,
-      false,
+    new LanguageFileManager(config, false).writeLocaleFile(
       { 'user.name': '用户', 'order.title': '订单' },
       'zh-CN',
       { 'user.name': 'common', 'order.title': 'order' },
@@ -306,7 +298,7 @@ describe('LanguageFileManager bucket write', () => {
     fs.writeFileSync(path.join(langDir, 'legacy.json'), '{"legacy.k":"v"}');
     fs.writeFileSync(path.join(langDir, 'legacy.json.bak'), '{"old.bak":"x"}');
 
-    LanguageFileManager.writeLocaleFile(config, false, { 'order.title': '订单' }, 'zh-CN', {
+    new LanguageFileManager(config, false).writeLocaleFile({ 'order.title': '订单' }, 'zh-CN', {
       'order.title': 'order',
     });
 
@@ -330,7 +322,7 @@ describe('LanguageFileManager bucket write', () => {
     fs.writeFileSync(path.join(langDir, 'misc.json'), JSON.stringify({ 'order.title': '订单' }));
 
     // 用 updateLanguageFiles 触发：新增一个 user.name，触发整包重写
-    LanguageFileManager.updateLanguageFiles(config, false, [
+    new LanguageFileManager(config, false).updateLanguageFiles([
       {
         semanticId: 'user.name',
         original: '用户',

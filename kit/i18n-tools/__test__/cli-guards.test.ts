@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
@@ -156,12 +156,170 @@ describe('CLI 入口守卫（cli.ts main）', () => {
     T,
   );
 
+  // 回归（yargs 缺 .strict()）：未知 flag 此前被当自由参数静默收下，命令照常执行且退出码 0
+  // ——`--dry-runn` 拼错就变成一次真跑。strict 之后拼错即报错退出并点名该 flag。
+  it(
+    '未知 flag（拼错）→ 非零退出并点名该 flag',
+    () => {
+      const { code, out } = runCli(['--mode', 'generate', '--dry-runn'], cfgDir);
+      expect(code).not.toBe(0);
+      expect(out).toMatch(/dry-runn/);
+    },
+    T,
+  );
+
+  it(
+    '合法组合不受 .strict() 影响（--config + --mode + --path 仍走到路径校验）',
+    () => {
+      const { code, out } = runCli(
+        ['--config', './i18n.config.mjs', '--mode', 'generate', '--path', 'no/such.vue'],
+        cfgDir,
+      );
+      // 被路径守卫拦下（而非「未知参数」），说明 strict 没误杀合法 flag
+      expect(out).toMatch(/--path 无效/);
+      expect(out).not.toMatch(/未知的参数|Unknown argument/);
+      expect(code).toBe(1);
+    },
+    T,
+  );
+
+  it(
+    '--config 传两次 → 采用最后一个并告警，不抛 TypeError',
+    () => {
+      const { code, out } = runCli(
+        [
+          '--config',
+          './no-such.config.mjs',
+          '--config',
+          './i18n.config.mjs',
+          '--mode',
+          'generate',
+          '--path',
+          'no/such.vue',
+        ],
+        cfgDir,
+      );
+      expect(out).toMatch(/--config 传入了 2 次，采用最后一个/);
+      expect(out).not.toMatch(/paths\[1\]|TypeError/);
+      // 采用了存在的那份配置 → 走到路径守卫，而非「无法加载配置文件」
+      expect(out).toMatch(/--path 无效/);
+      expect(code).toBe(1);
+    },
+    T,
+  );
+
+  /**
+   * 守卫退出走 CliExit 信号 + process.exitCode（P3）：直接 process.exit 会在 stdout 是
+   * 管道时截断尚未 flush 的输出，用户看不到刚打印的那条错误。改造后守卫文案与退出码
+   * 不变，且不得被 main 的兜底 catch 误套成「执行 xx 操作时发生错误」。
+   */
+  it(
+    '守卫退出只打自身文案，不套「执行 xx 操作时发生错误」',
+    () => {
+      const invalidPath = runCli(['--mode', 'generate', '--path', 'no/such.vue'], cfgDir);
+      expect(invalidPath.code).toBe(1);
+      expect(invalidPath.out).toMatch(/--path 无效/);
+      expect(invalidPath.out).not.toMatch(/操作时发生错误/);
+
+      // resolveApplyPlanPath：latest 找不到任何 plan
+      const noPlan = runCli(['--mode', 'generate', '--apply-plan', 'latest'], cfgDir);
+      expect(noPlan.code).toBe(1);
+      expect(noPlan.out).toMatch(/找不到任何 plan/);
+      expect(noPlan.out).not.toMatch(/操作时发生错误/);
+    },
+    T,
+  );
+
+  /**
+   * CC-03：interactive 的默认值此前只看 --mode/--ci，从不读 process.stdin.isTTY，
+   * 而注释与 --help 都自述「无 TTY ⇒ 非交互」。管道里裸跑（漏带 --mode/--ci）会进
+   * @inquirer/prompts：stdin 有内容时第一个 select 吃到回车即选中默认项「自动模式」并真跑。
+   * 子进程 stdin 是管道（非 TTY），故这里跑的正是该路径。
+   */
+  it(
+    'CC-03: 无 TTY 且未传 --mode/--ci → 走非交互路径报 --path 缺失，不进 @inquirer/prompts',
+    () => {
+      const { code, out } = runCli([], cfgDir);
+      expect(out).toMatch(/需用 --path/);
+      expect(out).not.toMatch(/请选择运行模式|ExitPromptError/);
+      expect(code).toBe(1);
+    },
+    T,
+  );
+
+  it(
+    'CC-03: --help 中 --interactive 的描述与实际判定一致（含 TTY 条件）',
+    () => {
+      const { out } = runCli(['--help'], cfgDir);
+      expect(out).toMatch(/TTY/);
+    },
+    T,
+  );
+
   it(
     '--help → 成功退出（确认守卫不是恒返回非零）',
     () => {
       const { code, out } = runCli(['--help'], cfgDir);
       expect(code).toBe(0);
       expect(out).toMatch(/国际化工具集|--mode/);
+    },
+    T,
+  );
+
+  /**
+   * 回归（四轮审计 A15）：--help 顶部的模式清单曾是手写列表，与 --mode choices 分头维护，
+   * csv-export / csv-import / prune 三个模式漏登记。现由 MODE_LIST + MODE_DESCRIPTIONS 生成。
+   */
+  it(
+    '--help 顶部模式清单覆盖全部 --mode choices',
+    () => {
+      const { code, out } = runCli(['--help'], cfgDir);
+      expect(code).toBe(0);
+      const header = out.split('使用方式')[0]!;
+      for (const mode of [
+        'automatic',
+        'generate',
+        'pick',
+        'translate',
+        'merge',
+        'restore',
+        'export',
+        'doctor',
+        'csv-export',
+        'csv-import',
+        'prune',
+      ]) {
+        expect(header).toContain(mode);
+      }
+    },
+    T,
+  );
+
+  /**
+   * 「仅在 xx 模式生效」的选项被静默丢弃时必须提示：用户看不到警告就会以为参数生效
+   * （`--mode merge --path src/x` 看似限定了范围，实际是全量跑）。
+   * 每个用例都挑一个「警告之后还会被既有守卫拦下」的组合，断言不依赖后续真跑。
+   */
+  it.each([
+    [['--mode', 'generate', '--keep-plan'], /--keep-plan 仅在 --apply-plan/],
+    [['--mode', 'generate', '--plan-output-dir', 'plans'], /--plan-output-dir 仅在 --dry-run/],
+    [['--mode', 'generate', '--langs', 'en-US'], /--langs 仅在 --mode csv-export \/ csv-import/],
+    [['--mode', 'generate', '--filter', 'translated'], /--filter 仅在 --mode csv-export/],
+    [['--mode', 'generate', '--source', 'translations'], /--source 仅在 --mode csv-export/],
+    [
+      ['--mode', 'csv-import', '--path', 'src'],
+      /--path 仅在 --mode generate \/ restore \/ automatic/,
+    ],
+    [
+      ['--mode', 'csv-import', '--skip-llm'],
+      /--skip-llm 仅在 --mode generate \/ automatic \/ translate/,
+    ],
+    [['--mode', 'generate', '--include-stale-target'], /--include-stale-target 仅在 --mode prune/],
+  ])(
+    '%s → 提示该选项在当前模式下被忽略',
+    (args, pattern) => {
+      const { out } = runCli(args as string[], cfgDir);
+      expect(out).toMatch(pattern as RegExp);
     },
     T,
   );
@@ -179,6 +337,75 @@ describe('CLI 入口守卫（cli.ts main）', () => {
 
       expect(code).toBe(0);
       expect(out.trim()).toBe(toolPackage.version);
+    },
+    T,
+  );
+});
+
+/**
+ * 覆盖率 CI 卡点必须覆盖 apply-plan 路径（P1）：dry-run + apply 两段式工作流下，
+ * 真正落盘的是 apply，若阈值只在直跑 generate 时判定，配了 --coverage-threshold 的
+ * 流水线会一路绿灯。plan 携带 dry-run 结算的覆盖率快照，apply 据此判定并以 exit 2 退出。
+ */
+describe('apply-plan 覆盖率阈值卡点（e2e）', () => {
+  let proj: string;
+
+  // 一处可自动转换 + 一处需人工的 HTML 模板 → 覆盖率 50%
+  const MIXED = `<script setup>\nconst label = '提交';\nconst html = \`<div>提示</div>\`;\n</script>\n`;
+  const PLAN_CONFIG = `export default {
+  root: process.cwd(),
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh', targets: ['en'] },
+  io: { localesDir: 'i18n', sourceDir: 'src', prettify: false },
+  llm: { shared: { apiKey: 'test-key', model: 'gpt-4o' } },
+};
+`;
+
+  beforeEach(() => {
+    proj = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-cli-plan-cov-'));
+    fs.writeFileSync(path.join(proj, 'i18n.config.mjs'), PLAN_CONFIG, 'utf-8');
+    fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(proj, 'src', 'A.vue'), MIXED, 'utf-8');
+  });
+
+  afterEach(() => {
+    fs.rmSync(proj, { recursive: true, force: true });
+  });
+
+  it(
+    'apply 打印覆盖率面板；低于阈值 → 退出码 2（源码仍已落盘）',
+    () => {
+      const dry = runCli(['--mode', 'generate', '--path', 'src', '--dry-run', '--skip-llm'], proj);
+      expect(dry.code, `dry-run 输出：\n${dry.out}`).toBe(0);
+
+      const apply = runCli(
+        ['--mode', 'generate', '--apply-plan', 'latest', '--coverage-threshold', '90'],
+        proj,
+      );
+
+      expect(apply.out).toMatch(/本次国际化覆盖率/);
+      expect(apply.out).toMatch(/国际化覆盖率 50\.0% 低于阈值 90%/);
+      // 文案必须点明改动已落盘，否则 CI 里「失败」会被读成「没改」
+      expect(apply.out).toMatch(/改动已写入/);
+      expect(apply.code).toBe(2);
+      // 阈值卡点发生在回放之后：源码已按 plan 落盘，退出码只用于 CI 判读
+      expect(fs.readFileSync(path.join(proj, 'src', 'A.vue'), 'utf-8')).toMatch(/\bt\('/);
+    },
+    T,
+  );
+
+  it(
+    '达标阈值 → 正常退出 0',
+    () => {
+      const dry = runCli(['--mode', 'generate', '--path', 'src', '--dry-run', '--skip-llm'], proj);
+      expect(dry.code, `dry-run 输出：\n${dry.out}`).toBe(0);
+
+      const apply = runCli(
+        ['--mode', 'generate', '--apply-plan', 'latest', '--coverage-threshold', '50'],
+        proj,
+      );
+
+      expect(apply.code, `apply 输出：\n${apply.out}`).toBe(0);
     },
     T,
   );
@@ -216,6 +443,86 @@ describe('export --output 接线（e2e）', () => {
       expect(JSON.parse(fs.readFileSync(path.join(outDir, 'zh.json'), 'utf-8'))).toEqual({
         a: '你好',
       });
+    },
+    T,
+  );
+});
+
+/**
+ * restore 安全网（e2e）：CLI 此前硬编码 overwrite=true，restore 是唯一没有 dry-run 的
+ * 破坏性模式，且会把用户自己手写的 t() 与 import 一并还原掉。
+ * 现在默认写副本到 restored/，就地改写需 --overwrite，--dry-run 只预览。
+ */
+describe('restore 默认不就地改写（e2e）', () => {
+  let proj: string;
+  let srcFile: string;
+
+  const RESTORE_CONFIG = `export default {
+  root: process.cwd(),
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh', targets: ['en'] },
+  io: { localesDir: 'i18n', sourceDir: 'src', prettify: false },
+  llm: { shared: { apiKey: 'test-key', model: 'gpt-4o' } },
+};
+`;
+  const SRC = `<script setup lang="ts">\nimport { t } from '@/i18n';\nconst m = t('a');\n</script>\n`;
+
+  beforeEach(() => {
+    proj = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-cli-restore-'));
+    fs.writeFileSync(path.join(proj, 'i18n.config.mjs'), RESTORE_CONFIG, 'utf-8');
+    fs.mkdirSync(path.join(proj, 'i18n'), { recursive: true });
+    fs.writeFileSync(path.join(proj, 'i18n', 'zh.json'), JSON.stringify({ a: '你好' }));
+    fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
+    srcFile = path.join(proj, 'src', 'A.vue');
+    fs.writeFileSync(srcFile, SRC, 'utf-8');
+  });
+
+  afterEach(() => {
+    fs.rmSync(proj, { recursive: true, force: true });
+  });
+
+  it(
+    '默认（不传 --overwrite）：源文件不动，产物落 restored/',
+    () => {
+      const { code, out } = runCli(['--mode', 'restore', '--path', 'src'], proj);
+      expect(code, `CLI 输出：\n${out}`).toBe(0);
+      expect(fs.readFileSync(srcFile, 'utf-8')).toBe(SRC);
+      const copy = path.join(proj, 'restored', 'src', 'A.vue');
+      expect(fs.existsSync(copy)).toBe(true);
+      expect(fs.readFileSync(copy, 'utf-8')).toContain('你好');
+    },
+    T,
+  );
+
+  it(
+    '--overwrite：就地改写源文件，不产出 restored/',
+    () => {
+      const { code, out } = runCli(['--mode', 'restore', '--path', 'src', '--overwrite'], proj);
+      expect(code, `CLI 输出：\n${out}`).toBe(0);
+      expect(fs.readFileSync(srcFile, 'utf-8')).toContain('你好');
+      expect(fs.existsSync(path.join(proj, 'restored'))).toBe(false);
+    },
+    T,
+  );
+
+  it(
+    '--dry-run：零写盘（无 restored/、源文件不动），输出含还原计数',
+    () => {
+      const before = fs.readdirSync(proj).sort();
+      const { code, out } = runCli(['--mode', 'restore', '--path', 'src', '--dry-run'], proj);
+
+      expect(code, `CLI 输出：\n${out}`).toBe(0);
+      expect(fs.readFileSync(srcFile, 'utf-8')).toBe(SRC);
+      expect(fs.existsSync(path.join(proj, 'restored'))).toBe(false);
+      // 除 .i18n-tools（运行报告）外不新增任何顶层产物
+      expect(
+        fs
+          .readdirSync(proj)
+          .filter((n) => n !== '.i18n-tools')
+          .sort(),
+      ).toEqual(before);
+      expect(out).toMatch(/将还原调用点: 1 处/);
+      expect(out).toMatch(/未写入任何文件/);
     },
     T,
   );

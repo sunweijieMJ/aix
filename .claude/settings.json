@@ -40,11 +40,15 @@
       "Bash(git checkout --*)",
       "Bash(git checkout .)",
       "Bash(git checkout -- .)",
+      "Bash(git checkout * -- *)",
+      "Bash(git checkout -f*)",
       "Bash(git reset --hard*)",
       "Bash(git clean -f*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
-      "Bash(git branch -D*)"
+      "Bash(git branch -D*)",
+      "Bash(git stash drop*)",
+      "Bash(git stash clear*)"
     ]
   },
   "enabledMcpjsonServers": ["aix"],

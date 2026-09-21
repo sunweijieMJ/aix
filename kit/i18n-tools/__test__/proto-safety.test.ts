@@ -9,7 +9,9 @@ import { GeneratePlanWriter, type GeneratePlan } from '../src/core/GeneratePlan'
 import { FileUtils } from '../src/utils/file-utils';
 import { serializeCsv } from '../src/utils/csv-utils';
 import { LLMClient } from '../src/utils/llm-client';
+import { LanguageFileManager } from '../src/utils/language-file-manager';
 import { LoggerUtils } from '../src/utils/logger';
+import { writeTranslationsFile } from '../src/utils/json-io';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 
@@ -19,6 +21,7 @@ import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
  *   2. FileUtils.unflattenObject —— 含原型名中间段的扁平 key 不污染 Object.prototype
  *   3. DoctorProcessor missing-target-key —— 原型名 key 的缺失判定用 own-property 而非 `in`
  *   4. GenerateProcessor dry-run —— 原型名 semanticId 不被 `in` 去重丢弃
+ *   5. writeTranslationsFile —— 排序重建时顶层 `__proto__` key 不被 setter 静默吞掉
  */
 
 describe('CsvImportProcessor — __proto__ 原型污染防护', () => {
@@ -326,5 +329,195 @@ describe('GenerateProcessor nested — 原型名 key 段在写源码前 fail-fas
 
     // 关键 2：不变量——源码未被改写（仍是原中文，而非 t('constructor')）
     expect(fs.readFileSync(file, 'utf-8')).toBe(ORIGINAL);
+  });
+});
+
+// #5 writeTranslationsFile —— 排序重建对象时顶层 `__proto__` key 被 setter 静默吞掉
+describe('writeTranslationsFile — 顶层 __proto__ key 保真', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-write-proto-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    delete (Object.prototype as Record<string, unknown>).zh;
+  });
+
+  /**
+   * 回归：排序重建用的是普通 `{}`，`sorted['__proto__'] = v` 走 Object.prototype 的
+   * __proto__ setter —— 值既不成为自有属性也不报错，落盘的 translations.json 比入参
+   * 少一条（`__proto__` 是合法 semanticId 末段，pick/merge 都会原样透传到这里）。
+   */
+  it('key 为 __proto__ 的条目不被吞掉，且不污染 Object.prototype', () => {
+    const p = path.join(tmpDir, 't.json');
+    // 计算属性名：字面量里直接写 `__proto__:` 会被当成原型设置语法而非自有属性
+    const data: Record<string, unknown> = {
+      'b.x': { zh: '乙', en: 'B' },
+      ['__proto__']: { zh: '原型', en: 'proto' },
+      'a.x': { zh: '甲', en: 'A' },
+    };
+    writeTranslationsFile(p, data);
+
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+    expect(Object.keys(raw).sort()).toEqual(['__proto__', 'a.x', 'b.x']);
+    expect(Object.getOwnPropertyDescriptor(raw, '__proto__')?.value).toEqual({
+      zh: '原型',
+      en: 'proto',
+    });
+    expect(({} as Record<string, unknown>).zh).toBeUndefined();
+  });
+});
+
+/**
+ * flattenObject 用普通对象累加时，`__proto__` 叶子会被原型 setter 静默吞掉
+ * （值是对象则换掉整张 map 的原型）。累加器需用 null 原型对象 + 自有属性定义。
+ */
+describe('FileUtils.flattenObject — 保住 __proto__ 叶子 key', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-flatten-proto-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function writeJson(relPath: string, data: unknown): void {
+    const full = path.join(tmpDir, 'locale', relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  }
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  it('顶层 "__proto__" 字符串叶子被保留', () => {
+    const raw = JSON.parse('{"__proto__":"文案","normal":"值"}');
+    const flat = FileUtils.flattenObject(raw, '', '.');
+
+    expect(Object.keys(flat).sort()).toEqual(['__proto__', 'normal']);
+    expect(flat['__proto__']).toBe('文案');
+  });
+
+  it('"__proto__" 的值是数组时不会被当成原型换掉整张 map', () => {
+    const raw = JSON.parse('{"__proto__":["a","b"]}');
+    const flat = FileUtils.flattenObject(raw, '', '.');
+
+    expect(Object.getPrototypeOf(flat)).toBeNull();
+    expect(flat['__proto__']).toEqual(['a', 'b']);
+  });
+
+  it('[反向] "__proto__" 的值是对象时照常递归展平，且不污染 Object.prototype', () => {
+    const raw = JSON.parse('{"__proto__":{"b":"x"}}');
+    const flat = FileUtils.flattenObject(raw, '', '.');
+
+    expect(Object.keys(flat)).toEqual(['__proto__.b']);
+    expect(flat['__proto__.b']).toBe('x');
+    expect(Object.getPrototypeOf(flat)).toBeNull();
+    expect(({} as Record<string, unknown>)['b']).toBeUndefined();
+  });
+
+  it('[反向] 普通 key 的展平结果与嵌套/分隔符行为完全不变', () => {
+    const flat = FileUtils.flattenObject({ a: { b: 'x', c: { d: 'y' } }, e: 'z' }, '', '.');
+    expect(flat).toEqual({ 'a.b': 'x', 'a.c.d': 'y', e: 'z' });
+
+    const custom = FileUtils.flattenObject({ a: { b: 'x' } }, '', '/');
+    expect(custom).toEqual({ 'a/b': 'x' });
+
+    const prefixed = FileUtils.flattenObject({ b: 'x' }, 'a', '.');
+    expect(prefixed).toEqual({ 'a.b': 'x' });
+  });
+
+  it('[反向] readLocaleFile 读到的 __proto__ 叶子可被后续 Object.keys/entries 正常消费', () => {
+    writeJson('zh-CN.json', JSON.parse('{"__proto__":"文案","normal":"值"}'));
+    const config = makeConfig({
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+    });
+    const messages = new LanguageFileManager(config, false).readLocaleFile('zh-CN');
+
+    expect(messages).not.toBeNull();
+    expect(Object.keys(messages!).sort()).toEqual(['__proto__', 'normal']);
+  });
+});
+
+/**
+ * 回归（四轮审计 A3）：nested 落盘的保留段名校验必须覆盖**所有**写路径，不能只在
+ * generate 的写源码前预检里做。存量 key（手写 locale / flat 时期写入 / CSV 回流）经
+ * merge / prune / export 的写回同样会过 serialize → unflattenObject，含
+ * `__proto__`/`constructor`/`prototype` 段的 key 会被整条静默丢弃、文件比读入时少一条。
+ */
+describe('LanguageFileManager nested — 存量保留段名 key 写盘时 fail-fast', () => {
+  let rootDir: string;
+  let localeDir: string;
+
+  const buildConfig = (format: 'flat' | 'nested'): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { sourceDir: rootDir, localesDir: localeDir, format, prettify: false },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lfm-reserved-'));
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('writeLocaleFile 遇到含 prototype 段的存量 key → 抛错并指出 key 名，文件不被改写', () => {
+    const zhPath = path.join(localeDir, 'zh-CN.json');
+    const existing = { 'views.prototype.title': '原型页标题', 'views.home.title': '首页' };
+    fs.writeFileSync(zhPath, JSON.stringify(existing), 'utf-8');
+
+    const manager = new LanguageFileManager(buildConfig('nested'), false);
+    const flat = manager.readLocaleFile('zh-CN')!;
+
+    expect(() => manager.writeLocaleFile(flat, 'zh-CN')).toThrow(/views\.prototype\.title/);
+    // 原文件未被半写入 / 丢 key
+    expect(JSON.parse(fs.readFileSync(zhPath, 'utf-8'))).toEqual(existing);
+  });
+
+  it('assertKeysSerializable（merge 写盘前预检）同样拦截保留段名 key', () => {
+    const manager = new LanguageFileManager(buildConfig('nested'), false);
+    expect(() => manager.assertKeysSerializable(['a.constructor.b'])).toThrow(/constructor/);
+    expect(() => manager.assertKeysSerializable(['a.b.c'])).not.toThrow();
+  });
+
+  it('flat 格式不经 unflatten，保留段名 key 照常写入', () => {
+    const zhPath = path.join(localeDir, 'zh-CN.json');
+    const manager = new LanguageFileManager(buildConfig('flat'), false);
+
+    manager.writeLocaleFile({ 'views.prototype.title': '原型页标题' }, 'zh-CN');
+
+    expect(JSON.parse(fs.readFileSync(zhPath, 'utf-8'))).toEqual({
+      'views.prototype.title': '原型页标题',
+    });
   });
 });

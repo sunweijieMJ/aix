@@ -2,6 +2,8 @@ import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
+import { collapseWhitespace } from './text-normalize';
+import { classifyJsonFile } from './json-io';
 
 /**
  * 内部归一化后的词表结构：
@@ -31,14 +33,14 @@ export class Glossary {
    * 避免「按钮」与「按钮 」（多个空格）被识别成两条不同条目。
    */
   static normalizeKey(text: string, normalize: boolean): string {
-    return normalize ? text.trim().replace(/\s+/g, ' ') : text;
+    return normalize ? collapseWhitespace(text) : text;
   }
 
   /**
    * 加载并归一化词表。
    *
    * - 未配置 `glossary.file` 或文件不存在 → 静默返回 `null`（与 io.customDir 同样的"显式启用"语义）
-   * - JSON 解析失败 → 抛错（safeLoadJsonFile 已记录错误）
+   * - JSON 解析失败 / 顶层非对象 → 抛错（两者都经 classifyJsonFile 判为 corrupt）
    * - 归一化后键冲突 → 抛错，提醒用户清理重复项
    */
   static load(config: ResolvedConfig): GlossaryMap | null {
@@ -46,9 +48,10 @@ export class Glossary {
     if (!filePath || !fs.existsSync(filePath)) return null;
 
     // 文件已确认存在（上方 existsSync 守卫）。损坏 JSON 必须抛错而非静默吞成空词表——
-    // 否则用户配了词表却因文件存坏导致所有 lookup 静默 miss、术语全部回退 LLM 而无从察觉，
-    // 违反本方法文档承诺的 fail-fast 语义（safeLoadJsonFile 会把损坏静默降级为 {}，不可用）。
-    const cls = FileUtils.classifyJsonFile<RawGlossaryFile>(filePath);
+    // 否则用户配了词表却因文件存坏导致所有 lookup 静默 miss、术语全部回退 LLM 而无从察觉。
+    // 故走 classifyJsonFile 的四态判别，不能用 safeLoadJsonFile：它把损坏降级为 {}，
+    // 与本方法承诺的 fail-fast 语义冲突。
+    const cls = classifyJsonFile<RawGlossaryFile>(filePath);
     if (cls.status === 'corrupt') {
       throw new Error(
         `词表文件解析失败（JSON 格式损坏，请修复后重试）: ${FileUtils.getRelativePath(filePath)}`,

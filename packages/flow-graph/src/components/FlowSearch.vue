@@ -34,13 +34,16 @@
 </template>
 
 <script setup lang="ts">
+/** 画布搜索面板：按关键字检索节点，选中后定位到画布上的该节点。 */
 import { Panel, useVueFlow } from '@vue-flow/core';
 import { computed, inject, nextTick, ref } from 'vue';
 import zhCN from '../locale/zh-CN';
 import { FlowGraphLocaleKey, type FlowNode } from '../types';
 
 const props = defineProps<{
+  /** 参与搜索的节点列表 */
   nodes: FlowNode[];
+  /** 候选列表最大高度（px） */
   suggestionsMaxHeight?: number;
 }>();
 

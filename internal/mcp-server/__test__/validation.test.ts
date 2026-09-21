@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_CONFIG } from '../src/config/index';
 import type { ServerConfig } from '../src/config/index';
 import type { ComponentInfo, ExtractorConfig } from '../src/types/index';
 import {
@@ -12,130 +13,56 @@ import {
 
 describe('Validation Utils', () => {
   describe('validateServerConfig', () => {
-    it('应该验证有效的服务器配置', () => {
-      const config: ServerConfig = {
-        dataDir: '/tmp/data',
-        cacheDir: '/tmp/cache',
-        packagesDir: '/tmp/packages',
-        cacheTTL: 3600000,
-        enableCache: true,
-        maxCacheSize: 100,
-        maxConcurrentExtraction: 5,
-        extractionTimeout: 30000,
-        serverName: 'test-server',
-        serverVersion: '1.0.0',
-        verbose: false,
-        features: {
-          enablePrompts: true,
-          enableExamples: true,
-          enableChangelog: true,
-          enableDependencyAnalysis: true,
-        },
-        ignorePackages: [],
-        ignorePatterns: [],
-      };
+    const validConfig = (): ServerConfig => ({
+      dataDir: '/tmp/data',
+      packagesDir: '/tmp/packages',
+      serverName: 'AIX Components MCP Server',
+      serverVersion: '1.0.0',
+      verbose: false,
+      ignorePackages: [],
+    });
 
-      const result = validateServerConfig(config);
+    it('应该验证有效的服务器配置', () => {
+      const result = validateServerConfig(validConfig());
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
+    it('真实的 DEFAULT_CONFIG 必须能通过校验', () => {
+      // 回归用例：serverName 曾被要求匹配 /^[a-z0-9-]+$/，
+      // 而默认值是带空格大写的 "AIX Components MCP Server"，
+      // 导致 validate() 对默认配置永远返回 isValid=false。
+      // 之所以一直没被发现，是因为测试从来只喂人造的 'test-server'。
+      const result = validateServerConfig(DEFAULT_CONFIG);
+      expect(result.errors).toEqual([]);
+      expect(result.isValid).toBe(true);
+    });
+
     it('应该检测缺少必需字段的配置', () => {
-      const config = {
-        cacheTTL: 3600000,
-        enableCache: true,
-        maxCacheSize: 100,
-        maxConcurrentExtraction: 5,
-        extractionTimeout: 30000,
-        serverName: 'test-server',
-        serverVersion: '1.0.0',
-        verbose: false,
-        features: {
-          enablePrompts: true,
-          enableExamples: true,
-          enableChangelog: true,
-          enableDependencyAnalysis: true,
-        },
-        ignorePackages: [],
-        ignorePatterns: [],
-      } as unknown as ServerConfig;
+      const config = { serverVersion: '1.0.0', verbose: false } as unknown as ServerConfig;
 
       const result = validateServerConfig(config);
       expect(result.isValid).toBe(false);
       expect(result.errors).toContain('dataDir 是必需的');
-      expect(result.errors).toContain('cacheDir 是必需的');
       expect(result.errors).toContain('packagesDir 是必需的');
+      expect(result.errors).toContain('serverName 是必需的');
+      expect(result.errors).toContain('ignorePackages 必须是字符串数组');
     });
 
-    it('应该检测无效的数值配置', () => {
-      const config: ServerConfig = {
-        dataDir: '/tmp/data',
-        cacheDir: '/tmp/cache',
-        packagesDir: '/tmp/packages',
-        cacheTTL: -1,
-        enableCache: true,
-        maxCacheSize: -10,
-        maxConcurrentExtraction: 0,
-        extractionTimeout: 30000,
-        serverName: 'test-server',
-        serverVersion: '1.0.0',
-        verbose: false,
-        features: {
-          enablePrompts: true,
-          enableExamples: true,
-          enableChangelog: true,
-          enableDependencyAnalysis: true,
-        },
-        ignorePackages: [],
-        ignorePatterns: [],
-      };
-
-      const result = validateServerConfig(config);
-      expect(result.isValid).toBe(false);
-      expect(result.errors).toContain('cacheTTL 必须大于等于 0');
-      expect(result.errors).toContain('maxCacheSize 必须大于等于 0');
-      expect(result.errors).toContain('maxConcurrentExtraction 必须大于 0');
-    });
-
-    it('应该检测无效的服务器名称格式', () => {
-      const config: ServerConfig = {
-        dataDir: '/tmp/data',
-        cacheDir: '/tmp/cache',
-        packagesDir: '/tmp/packages',
-        cacheTTL: 3600000,
-        enableCache: true,
-        maxCacheSize: 100,
-        maxConcurrentExtraction: 5,
-        extractionTimeout: 30000,
-        serverName: 'Invalid Server Name!',
-        serverVersion: '1.0.0',
-        verbose: false,
-        features: {
-          enablePrompts: true,
-          enableExamples: true,
-          enableChangelog: true,
-          enableDependencyAnalysis: true,
-        },
-        ignorePackages: [],
-        ignorePatterns: [],
-      };
-
-      const result = validateServerConfig(config);
-      expect(result.isValid).toBe(false);
-      expect(result.errors).toContain('serverName 只能包含小写字母、数字和连字符');
+    it('非语义化版本号只警告不报错', () => {
+      const result = validateServerConfig({ ...validConfig(), serverVersion: 'v1' });
+      expect(result.isValid).toBe(true);
+      expect(result.warnings).toContain('serverVersion 建议使用语义化版本格式');
     });
   });
-
   describe('validateExtractorConfig', () => {
     it('应该验证有效的提取器配置', () => {
       const config: ExtractorConfig = {
         packagesDir: '/tmp/packages',
         outputDir: '/tmp/output',
         ignorePackages: ['test-package'],
-        enableCache: true,
         verbose: false,
         maxConcurrentExtraction: 5,
-        extractionTimeout: 30000,
       };
 
       const result = validateExtractorConfig(config);
@@ -148,7 +75,6 @@ describe('Validation Utils', () => {
         packagesDir: '',
         outputDir: '',
         ignorePackages: [],
-        enableCache: true,
         verbose: false,
       } as ExtractorConfig;
 
@@ -163,13 +89,11 @@ describe('Validation Utils', () => {
         packagesDir: '/tmp/packages',
         outputDir: '/tmp/output',
         maxConcurrentExtraction: 0,
-        extractionTimeout: 500,
       };
 
       const result = validateExtractorConfig(config);
       expect(result.isValid).toBe(false);
       expect(result.errors).toContain('maxConcurrentExtraction 必须大于 0');
-      expect(result.warnings).toContain('extractionTimeout 建议设置为至少 1000ms');
     });
   });
 
@@ -335,9 +259,10 @@ describe('Validation Utils', () => {
         },
       ];
 
+      // 一个包里出现多个组件是合法的，只警告不判错
       const result = validateComponents(components);
-      expect(result.isValid).toBe(false);
-      expect(result.errors).toContain('重复的包名: @test/component');
+      expect(result.isValid).toBe(true);
+      expect(result.warnings).toContain('重复的包名: @test/component');
     });
 
     it('应该检测重复的组件名', () => {

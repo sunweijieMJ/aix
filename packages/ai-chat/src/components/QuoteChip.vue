@@ -18,9 +18,11 @@
 
 <script lang="ts">
 export interface QuoteChipProps {
+  /** 引用数据 */
   quote: Quote;
 }
 export interface QuoteChipEmits {
+  /** 点击删除该引用 */
   (e: 'remove'): void;
   /** 点击主体回链定位到原文 */
   (e: 'locate', quote: Quote): void;
@@ -28,6 +30,7 @@ export interface QuoteChipEmits {
 </script>
 
 <script setup lang="ts">
+/** 输入框上方的引用 chip：点正文定位回原文，点关闭移除该条引用。 */
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
 import { useAiChatLocale } from '../composables/useAiChatLocale';

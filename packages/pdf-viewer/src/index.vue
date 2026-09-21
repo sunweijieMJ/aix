@@ -69,7 +69,7 @@
       </div>
     </div>
 
-    <!-- 工具栏 -->
+    <!-- @slot 自定义工具栏，作用域含 currentPage / totalPages / scale 与翻页、缩放方法；默认渲染内置 PdfToolbar -->
     <slot
       v-if="mergedConfig.showToolbar"
       name="toolbar"
@@ -165,6 +165,7 @@ import type {
   PdfViewerProps,
   PdfViewerEmits,
   PdfViewerExpose,
+  PdfViewerToolbarSlotScope,
   ThumbnailInfo,
 } from './types';
 
@@ -180,6 +181,11 @@ const props = withDefaults(defineProps<PdfViewerProps>(), {
 });
 
 const emit = defineEmits<PdfViewerEmits>();
+
+defineSlots<{
+  /** 自定义工具栏，默认渲染内置 PdfToolbar */
+  toolbar?: (props: PdfViewerToolbarSlotScope) => unknown;
+}>();
 
 // 国际化
 const { t } = useLocale({ name: 'pdf-viewer', messages: locale });
@@ -238,6 +244,7 @@ let isManualZoom = false;
 
 // PDF 加载器
 const pdfLoader = usePdfLoader({
+  getWorkerSrc: () => mergedConfig.value.workerSrc,
   onLoad: () => {
     emit('ready', pdfLoader.totalPages.value);
   },
@@ -278,7 +285,7 @@ const contextMenu = useContextMenu({
       : textSelection.getSelectedText(textLayerRef.value),
   getSelectedImages: () => imageLayer.getSelectedImages(),
   getCurrentPage: () => currentPage.value,
-  onMenuClick: (_item, context) => emit('contextMenu', context),
+  onMenuClick: (item, context) => emit('contextMenu', context, item),
 });
 
 // 连续滚动

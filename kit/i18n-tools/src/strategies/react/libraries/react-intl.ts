@@ -2,7 +2,9 @@ import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
 import type { MessageInfo } from '../../../utils/types';
 import { ReactASTUtils } from '../react-ast-utils';
-import { CommonASTUtils } from '../../../utils/common-ast-utils';
+import { isAlreadyInternationalizedByScaffold } from '../../../utils/ast-guards';
+import { finalizeLocaleMessage } from '../../../utils/message-shape';
+import { formatValuesMapping } from '../../../utils/string-escape';
 
 /**
  * react-intl 库适配器实现
@@ -20,6 +22,8 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   readonly hookDeclaration = 'const intl = useIntl();';
   // react-intl 用 ICU 单花括号 `{name}`
   readonly usesDoubleBracePlaceholders = false;
+  // ICU 消息 id 里的冒号是 id 自身的一部分。
+  readonly supportsNamespace = false;
   readonly translationVarName = 'intl';
   readonly jsxComponentName = 'FormattedMessage';
   readonly hocPropsType = 'WrappedComponentProps';
@@ -40,7 +44,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     descriptor += ' }';
 
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       return `${call}(${descriptor}, ${mapping})`;
     }
     return `${call}(${descriptor})`;
@@ -60,7 +64,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
       props += ` defaultMessage={${escaped}}`;
     }
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       props += ` values={${mapping}}`;
     }
     return `<FormattedMessage ${props} />`;
@@ -70,18 +74,19 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     return `injectIntl(${componentName})`;
   }
 
-  getImportSpecifiers(usage: {
-    hasJsxComponent: boolean;
-    hasHook: boolean;
-    hasHOC: boolean;
-  }): string[] {
-    const specifiers: string[] = [];
-    if (usage.hasJsxComponent) specifiers.push('FormattedMessage');
-    if (usage.hasHook) specifiers.push('useIntl');
+  getImportSpecifiers(usage: { hasJsxComponent: boolean; hasHook: boolean; hasHOC: boolean }): {
+    values: string[];
+    types: string[];
+  } {
+    const values: string[] = [];
+    const types: string[] = [];
+    if (usage.hasJsxComponent) values.push('FormattedMessage');
+    if (usage.hasHook) values.push('useIntl');
     if (usage.hasHOC) {
-      specifiers.push('injectIntl', 'WrappedComponentProps');
+      values.push('injectIntl');
+      types.push('WrappedComponentProps');
     }
-    return specifiers;
+    return { values, types };
   }
 
   generateGlobalDeclaration(): string {
@@ -237,7 +242,13 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
     // 函数组件经 injectIntl 把 intl 作为 prop 解构传入（`({ intl }: WrappedComponentProps) => …`）
     // 时，intl 已是本地形参绑定；若漏判会再注入 `const intl = useIntl()` 与形参同作用域双声明。
-    if (ReactASTUtils.componentParamBindsVar(node, this.translationVarName)) {
+    // 带上 HOC 口径：业务自己的同名解构形参不提供 formatMessage，当成已有绑定会产出坏代码。
+    if (
+      ReactASTUtils.componentParamBindsVar(node, this.translationVarName, {
+        hocPropsType: this.hocPropsType,
+        isHOCCall: (expression) => this.isHOCCall(expression),
+      })
+    ) {
       return true;
     }
     // 仅认本地 `const intl = useIntl()` 绑定（不含 props.intl/this.props.intl 成员访问）。
@@ -258,7 +269,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {
-    return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
+    return isAlreadyInternationalizedByScaffold(node, {
       isI18nCall: (expression) =>
         this.isTranslationExpression(expression) ||
         // defineMessages(...)
@@ -293,11 +304,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
    * ICU 转义成 '{'count'}'，defaultMessage 不再插值。
    */
   private finalizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
-    return CommonASTUtils.finalizeLocaleMessage(
-      defaultMessage,
-      values ? values.values() : [],
-      this,
-    );
+    return finalizeLocaleMessage(defaultMessage, values ? values.values() : [], this);
   }
 
   // react-intl 用 ICU，单 `{` 是插值/语法字符。ICU 以单引号转义：`'{'` / `'}'`，

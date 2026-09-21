@@ -63,6 +63,7 @@
 </template>
 
 <script setup lang="ts">
+/** 直播控制栏：LIVE 标识、刷新、音量与全屏，没有进度条与倍速。 */
 import { Play, Pause, VolumeUp, VolumeMute, Fullscreen, FullscreenExit, Refresh } from '@aix/icons';
 import { computed } from 'vue';
 import { useControlsAutoHide } from '../composables/useControlsAutoHide';

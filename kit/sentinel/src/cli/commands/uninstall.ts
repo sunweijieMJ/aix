@@ -8,7 +8,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import fse from 'fs-extra';
 import type { Command } from 'commander';
-import inquirer from 'inquirer';
+import { confirm } from '@inquirer/prompts';
 
 import type { Platform } from '../../types/index.js';
 import { VALID_PLATFORMS, MARKER_START, MARKER_END } from '../../types/index.js';
@@ -94,14 +94,10 @@ async function runUninstall(options: {
 
   // 确认
   if (!options.yes) {
-    const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
-      {
-        type: 'confirm',
-        name: 'confirmed',
-        message: '确认卸载?',
-        default: false,
-      },
-    ]);
+    const confirmed = await confirm({
+      message: '确认卸载?',
+      default: false,
+    });
 
     if (!confirmed) {
       logger.info('已取消卸载');

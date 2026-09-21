@@ -2,12 +2,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { program } from 'commander';
-import {
-  COMPONENT_LIBRARY_CONFIG,
-  DEFAULT_WS_HOST,
-  DEFAULT_WS_PORT,
-  TEXT_TEMPLATES,
-} from './constants';
+import { COMPONENT_LIBRARY_CONFIG } from './constants';
 import { McpServer } from './server/index';
 import type { ExtractorConfig } from './types/index';
 import { log } from './utils/logger';
@@ -15,6 +10,16 @@ import { createMonitoringManager, formatHealthCheckResult } from './utils/monito
 import { validateExtractorConfig } from './utils/validation';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 解析数据目录：CLI 参数 > 环境变量 > 包内 data/
+ */
+function resolveDataDir(fromOption?: string): string {
+  return fromOption || process.env.MCP_DATA_DIR || join(__dirname, '../data');
+}
+
+/** 组件包目录的默认值，同样允许环境变量覆盖 */
+const defaultPackagesDir = process.env.MCP_PACKAGES_DIR || join(__dirname, '../../../packages');
 
 /**
  * CLI 应用类
@@ -28,12 +33,13 @@ class McpCli {
    * 设置命令
    */
   private setupCommands(): void {
+    // 注意：不要在 program 上重复声明子命令已有的 -d / -t。
+    // 同名短选项同时存在于顶层和子命令时，commander 会把它判给顶层，
+    // 导致 `health -d <dir>` 这类写法在子命令 action 里根本收不到值。
     program
       .name(COMPONENT_LIBRARY_CONFIG.cliName)
       .description(COMPONENT_LIBRARY_CONFIG.cliDisplayName)
-      .version(COMPONENT_LIBRARY_CONFIG.version)
-      .option('-d, --data <dir>', '数据目录路径')
-      .option('-t, --test', '测试模式（不启动 stdio transport）', false);
+      .version(COMPONENT_LIBRARY_CONFIG.version);
 
     // 移除默认action，让Commander.js处理help和version
     // program.action 会拦截所有命令，包括 --help
@@ -48,22 +54,11 @@ class McpCli {
         await this.serveCommand(options);
       });
 
-    // WebSocket 服务器启动命令
-    program
-      .command('serve-ws')
-      .description('启动 MCP WebSocket 服务器')
-      .option('-d, --data <dir>', '数据目录路径')
-      .option('-p, --port <port>', 'WebSocket 端口', DEFAULT_WS_PORT.toString())
-      .option('-H, --host <host>', 'WebSocket 主机', DEFAULT_WS_HOST)
-      .action(async (options) => {
-        await this.serveWebSocketCommand(options);
-      });
-
     // 提取组件数据命令
     program
       .command('extract')
       .description('提取组件库数据')
-      .option('-p, --packages <dir>', '包目录路径', join(__dirname, '../../../packages'))
+      .option('-p, --packages <dir>', '包目录路径', defaultPackagesDir)
       .option('-k, --kit <dir>', '工具包目录路径 (kit/)', join(__dirname, '../../../kit'))
       .option(
         '-i, --internal <dir>',
@@ -73,7 +68,6 @@ class McpCli {
       .option('-o, --output <dir>', '输出目录路径')
       .option('-v, --verbose', '显示详细输出', false)
       .option('--ignore <packages>', '忽略的包列表（逗号分隔）', '')
-      .option('--incremental', '增量提取（仅提取变更的组件）', false)
       .action(async (options) => {
         await this.extractCommand(options);
       });
@@ -96,21 +90,12 @@ class McpCli {
         await this.statsCommand(options);
       });
 
-    // 清理缓存命令
-    program
-      .command('clean')
-      .description('清理缓存数据')
-      .option('-d, --data <dir>', '数据目录路径')
-      .action(async (options) => {
-        await this.cleanCommand(options);
-      });
-
     // 健康检查命令
     program
       .command('health')
       .description('执行健康检查')
       .option('-d, --data <dir>', '数据目录路径')
-      .option('-p, --packages <dir>', '包目录路径', join(__dirname, '../../../packages'))
+      .option('-p, --packages <dir>', '包目录路径', defaultPackagesDir)
       .option('--quick', '快速检查（仅检查关键项）', false)
       .action(async (options) => {
         await this.healthCommand(options);
@@ -121,7 +106,7 @@ class McpCli {
       .command('sync-version')
       .description('同步组件库版本信息到 MCP Server')
       .option('-d, --data <dir>', '数据目录路径')
-      .option('-p, --packages <dir>', '包目录路径', join(__dirname, '../../../packages'))
+      .option('-p, --packages <dir>', '包目录路径', defaultPackagesDir)
       .action(async (options) => {
         await this.syncVersionCommand(options);
       });
@@ -132,7 +117,7 @@ class McpCli {
    */
   private async serveCommand(options: { data?: string; test?: boolean }): Promise<void> {
     try {
-      log.info(chalk.blue(TEXT_TEMPLATES.cliWelcome()));
+      log.info(chalk.blue(`🚀 启动 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server...`));
 
       // 确保数据目录存在（如果提供了）
       if (options.data) {
@@ -178,14 +163,12 @@ class McpCli {
     output?: string;
     verbose: boolean;
     ignore: string;
-    incremental: boolean;
   }): Promise<void> {
     try {
-      const isIncremental = options.incremental;
-      log.info(chalk.blue(isIncremental ? '📦 开始增量提取组件数据...' : '📦 开始提取组件数据...'));
+      log.info(chalk.blue('📦 开始提取组件数据...'));
 
       // 使用默认输出目录或提供的目录
-      const outputDir = options.output || join(__dirname, '../data');
+      const outputDir = options.output || resolveDataDir();
 
       // 确保输出目录存在
       const fs = await import('node:fs/promises');
@@ -195,7 +178,6 @@ class McpCli {
         packagesDir: options.packages,
         outputDir: outputDir,
         ignorePackages: options.ignore ? options.ignore.split(',').map((s) => s.trim()) : [],
-        enableCache: true,
         verbose: options.verbose,
       };
 
@@ -220,76 +202,24 @@ class McpCli {
       const { ComponentExtractor } = await import('./extractors/index');
       const extractor = new ComponentExtractor(config);
 
-      let components;
-      let icons: any[] = [];
+      const { components, icons } = await extractor.extractAndSaveAllComponents();
 
-      if (isIncremental) {
-        // 增量提取：读取上次提取时间
-        const metadataPath = join(config.outputDir, 'metadata.json');
-        let lastExtractTime = new Date(0); // 默认为最早时间
+      // 提取工具包
+      const { ToolPackageExtractor } = await import('./extractors/index');
+      const { DataManager } = await import('./utils/data-manager');
+      const toolExtractor = new ToolPackageExtractor();
+      const dataManager = new DataManager(config.outputDir);
 
-        try {
-          const metadataContent = await fs.readFile(metadataPath, 'utf8');
-          const metadata = JSON.parse(metadataContent);
-          if (metadata.extractedAt) {
-            lastExtractTime = new Date(metadata.extractedAt);
-            log.info(chalk.gray(`上次提取时间: ${lastExtractTime.toISOString()}`));
-          }
-        } catch {
-          log.warn(chalk.yellow('⚠️ 未找到上次提取记录，将执行全量提取'));
-        }
+      const kitPackages = await toolExtractor.extractFromDirectory(options.kit, 'kit');
+      const internalPackages = await toolExtractor.extractFromDirectory(
+        options.internal,
+        'internal',
+      );
+      const allToolPackages = [...kitPackages, ...internalPackages];
 
-        // 执行增量提取
-        components = await extractor.extractIncrementalComponents(lastExtractTime);
-
-        // 增量模式下，需要合并现有数据
-        if (components.length > 0) {
-          try {
-            const indexPath = join(config.outputDir, 'components-index.json');
-            const indexContent = await fs.readFile(indexPath, 'utf8');
-            const existingIndex = JSON.parse(indexContent);
-
-            // 合并组件：更新已存在的，添加新的
-            const componentMap = new Map(
-              existingIndex.components.map((c: any) => [c.packageName, c]),
-            );
-            for (const comp of components) {
-              componentMap.set(comp.packageName, comp);
-            }
-
-            // 更新索引（简化版，仅更新组件列表）
-            existingIndex.components = Array.from(componentMap.values());
-            existingIndex.lastUpdated = new Date().toISOString();
-
-            await fs.writeFile(indexPath, JSON.stringify(existingIndex, null, 2), 'utf8');
-            log.info(chalk.green(`📝 已更新组件索引`));
-          } catch (error) {
-            log.warn(chalk.yellow('⚠️ 无法合并现有数据，将覆盖'), error);
-          }
-        }
-      } else {
-        // 全量提取
-        const result = await extractor.extractAndSaveAllComponents();
-        components = result.components;
-        icons = result.icons;
-
-        // 提取工具包
-        const { ToolPackageExtractor } = await import('./extractors/index');
-        const { DataManager } = await import('./utils/data-manager');
-        const toolExtractor = new ToolPackageExtractor();
-        const dataManager = new DataManager(config.outputDir);
-
-        const kitPackages = await toolExtractor.extractFromDirectory(options.kit, 'kit');
-        const internalPackages = await toolExtractor.extractFromDirectory(
-          options.internal,
-          'internal',
-        );
-        const allToolPackages = [...kitPackages, ...internalPackages];
-
-        if (allToolPackages.length > 0) {
-          await dataManager.saveToolPackages(allToolPackages);
-          log.info(chalk.green(`✅ 成功提取 ${allToolPackages.length} 个工具包`));
-        }
+      if (allToolPackages.length > 0) {
+        await dataManager.saveToolPackages(allToolPackages);
+        log.info(chalk.green(`✅ 成功提取 ${allToolPackages.length} 个工具包`));
       }
 
       // 保存元数据
@@ -299,18 +229,12 @@ class McpCli {
         totalIcons: icons.length,
         totalItems: components.length + icons.length,
         version: '1.0.0',
-        incremental: isIncremental,
       };
 
       const metadataPath = join(config.outputDir, 'metadata.json');
       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
       log.info(chalk.green(`📊 元数据已保存到: ${metadataPath}`));
-
-      if (isIncremental) {
-        log.info(chalk.green(`✅ 增量提取完成，更新了 ${components.length} 个组件`));
-      } else {
-        log.info(chalk.green(`✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`));
-      }
+      log.info(chalk.green(`✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`));
 
       process.exit(0);
     } catch (error) {
@@ -327,7 +251,7 @@ class McpCli {
       log.info(chalk.blue('🔍 验证组件数据...'));
 
       // 使用默认数据目录如果未提供
-      const dataDir = options.data || join(__dirname, '../data');
+      const dataDir = resolveDataDir(options.data);
 
       const { readFile } = await import('node:fs/promises');
       const indexPath = join(dataDir, 'components-index.json');
@@ -374,7 +298,7 @@ class McpCli {
       log.info(chalk.blue('==================='));
 
       // 使用默认数据目录如果未提供
-      const dataDir = options.data || join(__dirname, '../data');
+      const dataDir = resolveDataDir(options.data);
 
       const { readFile } = await import('node:fs/promises');
       const indexPath = join(dataDir, 'components-index.json');
@@ -426,33 +350,6 @@ class McpCli {
   }
 
   /**
-   * 清理缓存命令
-   */
-  private async cleanCommand(options: { data?: string }): Promise<void> {
-    try {
-      log.info(chalk.blue('🧹 清理缓存数据...'));
-
-      // 使用默认数据目录如果未提供
-      const dataDir = options.data || join(__dirname, '../data');
-
-      const { rm } = await import('node:fs/promises');
-      const cacheDir = join(dataDir, '.cache');
-
-      await rm(cacheDir, { recursive: true, force: true });
-      log.info(chalk.green('✅ 缓存清理完成'));
-      process.exit(0);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        log.info(chalk.yellow('⚠️ 缓存目录不存在'));
-        process.exit(0);
-      } else {
-        log.error(chalk.red('❌ 清理缓存失败:'), error);
-        process.exit(1);
-      }
-    }
-  }
-
-  /**
    * 同步版本命令
    */
   private async syncVersionCommand(options: { data?: string; packages: string }): Promise<void> {
@@ -460,7 +357,7 @@ class McpCli {
       log.info(chalk.blue('🔄 同步组件库版本信息...'));
 
       // 使用默认数据目录如果未提供
-      const dataDir = options.data || join(__dirname, '../data');
+      const dataDir = resolveDataDir(options.data);
 
       const fs = await import('node:fs/promises');
       const path = await import('node:path');
@@ -550,7 +447,7 @@ class McpCli {
   /**
    * 健康检查命令
    */
-  private async healthCommand(_options: {
+  private async healthCommand(options: {
     data?: string;
     packages: string;
     quick: boolean;
@@ -558,10 +455,13 @@ class McpCli {
     try {
       log.info(chalk.blue('🏥 执行健康检查...'));
 
+      const dataDir = resolveDataDir(options.data);
+      log.info(chalk.gray(`数据目录: ${dataDir}`));
+
       const monitoring = createMonitoringManager();
 
       // quick 选项已废弃，统一使用 performHealthCheck
-      const result = await monitoring.performHealthCheck();
+      const result = await monitoring.performHealthCheck(dataDir);
 
       const output = formatHealthCheckResult(result);
       log.info(output);
@@ -576,62 +476,6 @@ class McpCli {
       }
     } catch (error) {
       log.error(chalk.red('❌ 健康检查失败:'), error);
-      process.exit(1);
-    }
-  }
-
-  /**
-   * WebSocket 服务器启动命令
-   */
-  private async serveWebSocketCommand(options: {
-    data?: string;
-    port: string;
-    host: string;
-  }): Promise<void> {
-    try {
-      // 使用默认数据目录如果未提供
-      const dataDir = options.data || join(__dirname, '../data');
-
-      log.info(chalk.blue(TEXT_TEMPLATES.wsStart()));
-      log.info(chalk.gray(`数据目录: ${dataDir}`));
-      log.info(chalk.gray(`WebSocket 地址: ws://${options.host}:${options.port}`));
-
-      // 确保数据目录存在
-      const fs = await import('node:fs/promises');
-      await fs.mkdir(dataDir, { recursive: true }).catch(() => {});
-
-      // 动态导入服务器类
-      const { McpServer } = await import('./server/index');
-
-      // 创建服务器实例
-      const server = new McpServer(dataDir);
-
-      // 启动 WebSocket 服务器
-      const port = parseInt(options.port, 10);
-      await server.startWebSocket(port, options.host);
-
-      // 获取并显示统计信息
-      const stats = server.getStats();
-      log.info(chalk.green('✅ WebSocket 服务器启动成功!'));
-      log.info(chalk.gray(`已加载 ${stats.componentsLoaded} 个组件`));
-      log.info(chalk.gray(`可用工具: ${stats.toolsAvailable} 个`));
-      log.info(chalk.cyan(`WebSocket 端点: ws://${options.host}:${options.port}`));
-
-      // 优雅关闭处理
-      const gracefulShutdown = () => {
-        log.info(chalk.yellow('\n🛑 正在关闭 WebSocket 服务器...'));
-        server.stop().then(() => {
-          process.exit(0);
-        });
-      };
-
-      process.on('SIGINT', gracefulShutdown);
-      process.on('SIGTERM', gracefulShutdown);
-
-      // 保持进程运行
-      log.info(chalk.gray('按 Ctrl+C 停止服务器'));
-    } catch (error) {
-      log.error(chalk.red('❌ WebSocket 服务器启动失败:'), error);
       process.exit(1);
     }
   }

@@ -1,13 +1,13 @@
 /**
  * Figma MCP 基准图提供器
  *
- * 利用项目现有的 Figma MCP 集成，通过 MCP Client SDK 调用
- * mcp__figma__download_figma_images 工具获取设计稿图片。
+ * @deprecated 请改用 `figma-api`（FigmaApiProvider）。MCP 是面向 agent 的协议，
+ * 作为程序化 SDK 需要 spawn 子进程走 stdio，参数名随 server 实现变化，
+ * 且无法按文件版本缓存。本 provider 将在下个 major 版本移除。
  *
- * 优势：
- * - 无需额外的 API Token（复用 MCP 连接）
- * - 支持复杂的节点选择
- * - 批量下载优化（并发限制）
+ * 当前实现对接 figma-developer-mcp（Framelink）：
+ * - 通过 FIGMA_API_KEY 环境变量向子进程传递 token
+ * - download_figma_images 的缩放参数名为 pngScale
  */
 
 import path from 'node:path';
@@ -28,8 +28,10 @@ const log = logger.child('FigmaMcpProvider');
 
 /** 默认下载超时 (ms) */
 const DEFAULT_TIMEOUT = 30_000;
-/** 默认缩放比例 */
-const DEFAULT_SCALE = 2;
+/** 默认缩放比例（与截图 deviceScaleFactor 默认值一致） */
+const DEFAULT_SCALE = 1;
+
+let deprecationWarned = false;
 
 /**
  * 动态导入可选依赖（防止打包器静态分析模块路径）
@@ -86,11 +88,21 @@ export class FigmaMcpProvider implements BaselineProvider {
 
   private mcpClient: McpClient | null = null;
   private defaultFileKey?: string;
+  private accessToken?: string;
 
   private boundExitHandler: (() => void) | null = null;
 
-  constructor(options?: { fileKey?: string }) {
+  constructor(options?: { fileKey?: string; accessToken?: string }) {
     this.defaultFileKey = options?.fileKey;
+    this.accessToken = options?.accessToken;
+
+    if (!deprecationWarned) {
+      deprecationWarned = true;
+      log.warn(
+        "baseline provider 'figma-mcp' is deprecated and will be removed in the next major; " +
+          "switch to 'figma-api'.",
+      );
+    }
 
     // 注册进程退出清理。
     // 注意: exit handler 中无法执行异步操作（Promise 不会被等待），
@@ -260,9 +272,26 @@ export class FigmaMcpProvider implements BaselineProvider {
         '@modelcontextprotocol/sdk/client/stdio.js',
       );
 
+      const token = this.accessToken ?? process.env.FIGMA_API_KEY ?? process.env.FIGMA_TOKEN ?? '';
+      // 只透传子进程运行所需的变量，避免把 ANTHROPIC_API_KEY / CI secrets 等泄漏给第三方 npx 包
+      const env: Record<string, string> = { FIGMA_API_KEY: token };
+      for (const key of [
+        'PATH',
+        'HOME',
+        'USERPROFILE',
+        'SystemRoot',
+        'TMPDIR',
+        'TEMP',
+        'TMP',
+        'npm_config_cache',
+      ]) {
+        const value = process.env[key];
+        if (value !== undefined) env[key] = value;
+      }
       const transport = new StdioClientTransport({
         command: 'npx',
-        args: ['-y', '@anthropic-ai/mcp-server-figma'],
+        args: ['-y', 'figma-developer-mcp', '--stdio'],
+        env,
       });
 
       const client: McpClient = new Client(
@@ -303,8 +332,7 @@ export class FigmaMcpProvider implements BaselineProvider {
         fileKey,
         nodes: [{ nodeId, fileName }],
         localPath: outputDir,
-        format: 'png',
-        scale,
+        pngScale: scale,
       },
       timeout,
     );

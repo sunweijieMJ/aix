@@ -141,6 +141,90 @@ describe('PruneProcessor', () => {
     expect(readLocale('zh-CN')).toEqual({ used: '用', 'dyn.a': '动态' }); // dyn.a 保留
   });
 
+  /**
+   * target-only 残留（P3）：doctor 报 stale-target-key 却只报不删，prune 又只按源码引用
+   * 判孤儿（残留 key 压根不在 source locale 里，永远进不了孤儿名单）——译文文件里的
+   * 死条目没有任何命令清得掉。`--include-stale-target` 补上这条路径，默认仍关闭。
+   */
+  describe('--include-stale-target', () => {
+    const seedStale = (): void => {
+      writeSource('A.vue', `<template>{{ t('used') }}</template>`);
+      writeLocale('zh-CN', { used: '用' });
+      writeLocale('en-US', { used: 'used', staleOnly: 'left over' });
+    };
+
+    it('默认关闭：target-only 残留 key 保留不动', async () => {
+      seedStale();
+
+      await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+        dryRun: false,
+        ci: true,
+      }).execute();
+
+      expect(readLocale('en-US')).toEqual({ used: 'used', staleOnly: 'left over' });
+    });
+
+    it('开启后只删 target 侧残留，source 与在用 key 不动', async () => {
+      seedStale();
+
+      await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+        dryRun: false,
+        ci: true,
+        includeStaleTarget: true,
+      }).execute();
+
+      expect(readLocale('en-US')).toEqual({ used: 'used' });
+      expect(readLocale('zh-CN')).toEqual({ used: '用' });
+    });
+
+    it('--dry-run 只列出残留 key，不写盘', async () => {
+      seedStale();
+
+      await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+        dryRun: true,
+        ci: true,
+        includeStaleTarget: true,
+      }).execute();
+
+      expect(readLocale('en-US')).toEqual({ used: 'used', staleOnly: 'left over' });
+      expect(LoggerUtils.info).toHaveBeenCalledWith(
+        expect.stringContaining('个 target-only 残留 key'),
+      );
+    });
+
+    it('源码仍引用（source locale 缺该 key）的 target 值保守保留', async () => {
+      // source 缺 key 属于 doctor 的 missing-key，删掉译文只会让运行时更糟
+      writeSource('A.vue', `<template>{{ t('used') }}{{ t('onlyInTarget') }}</template>`);
+      writeLocale('zh-CN', { used: '用' });
+      writeLocale('en-US', { used: 'used', onlyInTarget: 'still referenced' });
+
+      await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+        dryRun: false,
+        ci: true,
+        includeStaleTarget: true,
+      }).execute();
+
+      expect(readLocale('en-US')).toEqual({ used: 'used', onlyInTarget: 'still referenced' });
+    });
+
+    it('命中 dynamicKeyAllowlist 的残留 key 同样保留', async () => {
+      writeSource('A.vue', `<template>{{ t('used') }}</template>`);
+      writeLocale('zh-CN', { used: '用' });
+      writeLocale('en-US', { used: 'used', 'dyn.a': 'dynamic', staleOnly: 'left over' });
+
+      const config = buildConfig(rootDir, sourceDir, localeDir, {
+        keys: { separator: '.', dynamicKeyAllowlist: ['dyn.'] },
+      });
+      await new PruneProcessor(config, false, undefined, {
+        dryRun: false,
+        ci: true,
+        includeStaleTarget: true,
+      }).execute();
+
+      expect(readLocale('en-US')).toEqual({ used: 'used', 'dyn.a': 'dynamic' });
+    });
+  });
+
   it('非 --ci：确认 false 时不删', async () => {
     writeSource('A.vue', `<template>{{ t('used') }}</template>`);
     writeLocale('zh-CN', { used: '用', orphan: '没人用' });
@@ -227,6 +311,23 @@ describe('PruneProcessor', () => {
     expect(readLocale('zh-CN')).toEqual({ used: '使用中', mustKeep: '必须保留' });
     expect(readLocale('en-US')).toEqual({ used: 'Used', mustKeep: 'Must keep' });
   });
+
+  it('B1: 反引号静态 key（无插值）不被当孤儿删除', async () => {
+    writeSource(
+      'A.vue',
+      `<script setup>\nconst a = $t('views.a.title');\nconst b = t(\`views.a.sub\`);\n</script>`,
+    );
+    writeLocale('zh-CN', { 'views.a.title': '标题', 'views.a.sub': '副标题', orphan: '没人用' });
+    writeLocale('en-US', { 'views.a.title': 'Title', 'views.a.sub': 'Sub', orphan: 'unused' });
+
+    await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(readLocale('zh-CN')).toEqual({ 'views.a.title': '标题', 'views.a.sub': '副标题' });
+    expect(readLocale('en-US')).toEqual({ 'views.a.title': 'Title', 'views.a.sub': 'Sub' });
+  });
 });
 
 /**
@@ -305,5 +406,115 @@ describe('PruneProcessor — buckets 迁移窗口守卫', () => {
     expect(
       JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN', 'common.json'), 'utf8')),
     ).toEqual({ used: '用' });
+  });
+});
+
+/**
+ * 回归（四轮审计 A1）：namespace 归一口径必须与 restore 一致，否则在用 key 被当孤儿删除。
+ *  - i18next 系（library.supportsNamespace）：`ns:key` 是运行时约定，locale 存裸 key，
+ *    与工具是否配 framework.namespace 无关，两侧一律剥首个冒号前缀。
+ *  - 其余库：冒号属于 key 自身，不剥；但源码若写成 `ns:key` 而 locale 存裸 key，
+ *    剥离后能对上的 key 一律保留不删（宁可留噪声，不做不可逆删除）。
+ */
+describe('PruneProcessor — namespace 归一（四轮审计 A1）', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prune-ns-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const run = async (extra: Partial<I18nToolsConfig>): Promise<void> => {
+    await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir, extra), false, undefined, {
+      dryRun: false,
+      ci: true,
+    }).execute();
+  };
+
+  it('vue-i18next：源码 ns:key、locale 存裸 key 且未配 namespace → 不判孤儿', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ greeting: '你好' }));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ greeting: 'Hi' }));
+
+    await run({ framework: { type: 'vue', library: 'vue-i18next', tImport: '@/locale' } });
+
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      greeting: '你好',
+    });
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'en-US.json'), 'utf8'))).toEqual({
+      greeting: 'Hi',
+    });
+  });
+
+  it('vue-i18next：locale 存 ns:key、源码写裸 key → 同样不判孤儿', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'app:greeting': '你好' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ 'app:greeting': 'Hi' }));
+
+    await run({ framework: { type: 'vue', library: 'vue-i18next', tImport: '@/locale' } });
+
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      'app:greeting': '你好',
+    });
+  });
+
+  it('vue-i18n（不支持 namespace）：源码 ns:key、locale 裸 key → 保留并告警，不删', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}{{ $t('kept') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ greeting: '你好', kept: '保留', orphan: '没人用' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ greeting: 'Hi' }));
+
+    await run({});
+
+    // greeting 被 ns 闸保护；真正无人引用的 orphan 仍被删除
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      greeting: '你好',
+      kept: '保留',
+    });
+  });
+
+  it('vue-i18n：冒号是 key 自身一部分时照常按字面对账（无引用即孤儿）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('a:b') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'a:b': '冒号 key', 'x:y': '没人用' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ 'a:b': 'colon key' }));
+
+    await run({});
+
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      'a:b': '冒号 key',
+    });
   });
 });

@@ -21,8 +21,7 @@
     >
       <!--
         节点本体容器：hover 监听只挂在这里，与下方"label"分离，
-        避免悬停 label 时也触发菜单。body 完全填充 wrapper 的几何矩形，
-        与原来直接挂 wrapper 的 hover 命中区一致。
+        避免悬停 label 时也触发菜单。body 完全填充 wrapper 的几何矩形。
       -->
       <div
         ref="bodyRef"
@@ -36,6 +35,7 @@
           :color="data?.color || fallbackColor"
           :colors="data?.pathColors ?? []"
         />
+        <!-- @slot 节点主体内容，作用域含 size / nodeState / clicking / onClick -->
         <slot
           :size="size"
           :node-state="nodeState"
@@ -111,6 +111,7 @@ import {
   FlowGraphLocaleKey,
   FlowNodeLabelConfigKey,
   FlowNodeMenuConfigKey,
+  type FlowBaseNodeSlotScope,
   type NodeData,
 } from '../../types';
 import NodeActiveCross from './NodeActiveCross.vue';
@@ -120,9 +121,13 @@ import NodeActiveCross from './NodeActiveCross.vue';
  * 子类通过 `v-bind="$props"` 透传给 BaseNode，未声明的字段会落到 $attrs 被忽略。
  */
 interface Props {
+  /** 节点 id（由 Vue Flow 注入） */
   id: string;
+  /** 节点数据 */
   data?: NodeData;
+  /** 是否正在拖拽（由 Vue Flow 注入） */
   dragging?: boolean;
+  /** 连接点是否可连接（由 Vue Flow 注入） */
   connectable?: HandleConnectable;
   /** 节点默认尺寸（px）：当 data.size 未设置时使用 */
   defaultSize: number;
@@ -133,6 +138,11 @@ interface Props {
 defineOptions({ name: 'AixFlowBaseNode', inheritAttrs: false });
 
 const props = defineProps<Props>();
+
+defineSlots<{
+  /** 节点主体内容，由子类按 size / nodeState 渲染形状 */
+  default?: (props: FlowBaseNodeSlotScope) => unknown;
+}>();
 
 /** 节点尺寸（像素），回退到 defaultSize */
 const size = computed(() => props.data?.size ?? props.defaultSize);

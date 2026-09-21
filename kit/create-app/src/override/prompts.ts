@@ -1,6 +1,7 @@
-import { text, select, multiselect, isCancel } from '@clack/prompts';
+import { text, multiselect } from '@clack/prompts';
 import pc from 'picocolors';
-import { detectLanguage } from '../utils/detector';
+import { CreateAppError } from '../utils/errors';
+import { validateOverrideCode } from '../utils/validate';
 import {
   ALL_MODULES,
   MODULE_DESCRIPTIONS,
@@ -10,55 +11,41 @@ import {
   type ModuleId,
 } from './types';
 
-/** 项目代码校验正则 */
-const PROJECT_CODE_REGEX = /^[a-z][a-z0-9-]*$/;
-
 /**
  * 运行交互式问答，收集生成选项
+ *
+ * 注意：传进来的 `partial.project`（命令行位置参数）同样要校验。历史缺陷是校验只写在
+ * 下面那个 text 问答的 validate 里，命令行给值时整段问答被跳过 → `../../PWNED`
+ * 一路走到写盘，把覆盖层写到 output 目录之外（且 registry 的 glob 扫不到它）。
  */
 export async function runPrompts(
-  cwd: string,
   partial: Partial<GenerateOptions>,
 ): Promise<GenerateOptions | null> {
   let project = partial.project;
-  let lang = partial.lang;
   let modules = partial.modules;
+
+  // truthy 判断：空串按「缺失」处理，落进下面的问答（与 add.ts 同一套约定）
+  if (project) {
+    const error = validateOverrideCode(project);
+    if (error) throw new CreateAppError('E_INVALID_PROJECT_NAME', error, '请更换定制目录名后重试');
+  }
 
   // 1. 项目代码
   if (!project) {
     const result = await text({
       message: '定制目录名（如 sysu、gzdx）',
-      validate: (value) =>
-        value && PROJECT_CODE_REGEX.test(value)
-          ? undefined
-          : '只能包含小写字母、数字和连字符，且以字母开头',
+      validate: (value) => validateOverrideCode(value),
     });
-    if (isCancel(result)) {
+    // 按 typeof 判取消：isCancel 的守卫是 `value is typeof CANCEL_SYMBOL`，收不掉 string | symbol 里的
+    // symbol；clack 返回值里 symbol 只有取消哨兵这一种
+    if (typeof result === 'symbol') {
       console.log(pc.yellow('\n已取消'));
       return null;
     }
     project = result;
   }
 
-  // 2. 语言选择
-  if (!lang) {
-    const detected = detectLanguage(cwd);
-    const result = await select({
-      message: `项目语言 ${pc.dim(`(自动检测: ${detected === 'ts' ? 'TypeScript' : 'JavaScript'})`)}`,
-      options: [
-        { label: 'TypeScript', value: 'ts' },
-        { label: 'JavaScript', value: 'js' },
-      ],
-      initialValue: detected,
-    });
-    if (isCancel(result)) {
-      console.log(pc.yellow('\n已取消'));
-      return null;
-    }
-    lang = result as 'ts' | 'js';
-  }
-
-  // 3. 模块选择
+  // 2. 模块选择
   if (!modules) {
     const result = await multiselect({
       message: '选择需要定制的模块 (空格选择，回车确认)',
@@ -78,7 +65,7 @@ export async function runPrompts(
       initialValues: REQUIRED_MODULES,
       required: true,
     });
-    if (isCancel(result)) {
+    if (typeof result === 'symbol') {
       console.log(pc.yellow('\n已取消'));
       return null;
     }
@@ -92,7 +79,7 @@ export async function runPrompts(
     modules = selected;
   }
 
-  return buildOptions({ ...partial, project, lang, modules });
+  return buildOptions({ ...partial, project, modules });
 }
 
 function buildOptions(raw: Partial<GenerateOptions>): GenerateOptions {
@@ -106,7 +93,6 @@ function buildOptions(raw: Partial<GenerateOptions>): GenerateOptions {
 
   return {
     project: raw.project!,
-    lang: raw.lang ?? 'ts',
     modules: modules as ModuleId[],
     output: raw.output ?? 'src/overrides',
     yes: raw.yes ?? false,

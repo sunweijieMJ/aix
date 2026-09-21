@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { input, select } from '@inquirer/prompts';
 import { DEFAULT_REGISTRY, NPM_UNPUBLISH_TIME_LIMIT_HOURS, exec, run, confirm } from './shared.js';
 import { getPublishablePackages } from './workspace.js';
 
@@ -79,35 +79,23 @@ export const deprecatePackageVersion = async (
     return;
   }
 
-  const { packageName } = await inquirer.prompt([
-    {
-      type: 'select',
-      name: 'packageName',
-      message: '选择要废弃的包:',
-      choices: publishablePackages.map((pkg) => ({
-        name: `${pkg.name} (当前版本: ${pkg.version})`,
-        value: pkg.name,
-      })),
-    },
-  ]);
+  const packageName = await select<string>({
+    message: '选择要废弃的包:',
+    choices: publishablePackages.map((pkg) => ({
+      name: `${pkg.name} (当前版本: ${pkg.version})`,
+      value: pkg.name,
+    })),
+  });
 
-  const { version } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'version',
-      message: '输入要废弃的版本号（留空表示当前版本）:',
-      default: publishablePackages.find((p) => p.name === packageName)?.version,
-    },
-  ]);
+  const version = await input({
+    message: '输入要废弃的版本号（留空表示当前版本）:',
+    default: publishablePackages.find((p) => p.name === packageName)?.version,
+  });
 
-  const { message } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'message',
-      message: '废弃原因:',
-      default: '此版本已废弃，请升级到最新版本',
-    },
-  ]);
+  const message = await input({
+    message: '废弃原因:',
+    default: '此版本已废弃，请升级到最新版本',
+  });
 
   console.log(chalk.yellow(`\n即将废弃: ${packageName}@${version}\n原因: ${message}`));
   if (!(await confirm('确认废弃?', false, skipPrompts))) {
@@ -151,26 +139,18 @@ export const unpublishPackageVersion = async (
     return;
   }
 
-  const { packageName } = await inquirer.prompt([
-    {
-      type: 'select',
-      name: 'packageName',
-      message: '选择要撤回的包:',
-      choices: publishablePackages.map((pkg) => ({
-        name: `${pkg.name} (当前版本: ${pkg.version})`,
-        value: pkg.name,
-      })),
-    },
-  ]);
+  const packageName = await select<string>({
+    message: '选择要撤回的包:',
+    choices: publishablePackages.map((pkg) => ({
+      name: `${pkg.name} (当前版本: ${pkg.version})`,
+      value: pkg.name,
+    })),
+  });
 
-  const { version } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'version',
-      message: '输入要撤回的版本号（留空表示当前版本）:',
-      default: publishablePackages.find((p) => p.name === packageName)?.version,
-    },
-  ]);
+  const version = await input({
+    message: '输入要撤回的版本号（留空表示当前版本）:',
+    default: publishablePackages.find((p) => p.name === packageName)?.version,
+  });
 
   console.log(chalk.red(`\n即将撤回: ${packageName}@${version}\n这将永久删除该版本！`));
   if (!(await confirm('最后确认，真的要撤回吗？', false, skipPrompts))) {

@@ -2,6 +2,7 @@
 
 # Dependencies
 node_modules
+.pnpm-store
 .pnp
 .pnp.js
 
@@ -62,6 +63,11 @@ yarn.lock
 # Misc
 .DS_Store
 *.pem
+
+# 编辑器交换文件
+*.swp
+*.swo
+*~
 
 *storybook.log
 storybook-static

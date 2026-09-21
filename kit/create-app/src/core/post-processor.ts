@@ -1,15 +1,26 @@
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import type { ProjectConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
 
+/**
+ * Windows 上 pnpm / npm / yarn 是 `.cmd` 垫片，spawnSync 不带后缀找不到；
+ * 不用 `shell: true`：shell 模式下参数按空格拼接且不加引号，带空格的 commit message 会被拆开。
+ * 平台由参数传入以便测试。
+ */
+export function resolveCommand(cmd: string, platform: NodeJS.Platform): string {
+  const SHIMMED = ['pnpm', 'npm', 'yarn'];
+  return platform === 'win32' && SHIMMED.includes(cmd) ? `${cmd}.cmd` : cmd;
+}
+
 /** 在指定目录执行命令，将输出流到终端 */
 function run(cmd: string, args: string[], cwd: string): void {
-  const result = spawnSync(cmd, args, {
+  const result = spawnSync(resolveCommand(cmd, process.platform), args, {
     cwd,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
   });
   if (result.status !== 0) {
     throw new CreateAppError(
@@ -48,9 +59,9 @@ export async function runPostProcess(config: ProjectConfig, destDir: string): Pr
     } catch (err) {
       spinner.stop('依赖安装失败');
       throw new CreateAppError(
-        'E_UNKNOWN',
+        'E_INSTALL_FAILED',
         `${pm} install 执行失败`,
-        '请手动进入项目目录后执行安装命令',
+        '请手动进入项目目录后执行安装命令（常见原因：私服不可达、Node/pnpm 版本不满足 engines）',
         err,
       );
     }
@@ -59,14 +70,41 @@ export async function runPostProcess(config: ProjectConfig, destDir: string): Pr
   printNextSteps(config, destDir);
 }
 
+/**
+ * 从产物 package.json 里挑启动脚本
+ *
+ * 不能写死 `dev`：admin 模板的启动脚本叫 `start`，照着提示敲会得到
+ * 「Missing script: dev」。按常见命名依次找，都没有就退回 `dev`。
+ */
+function resolveDevScript(destDir: string): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(destDir, 'package.json'), 'utf-8')) as {
+      scripts?: Record<string, string>;
+    };
+    return ['dev', 'start', 'serve'].find((name) => pkg.scripts?.[name]) ?? 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
+/**
+ * 需要引号才能直接 `cd` 的路径加单引号
+ *
+ * 项目名按目录名规则校验（见 utils/validate），空格等 shell 元字符是合法的目录名，
+ * 但照原样打印出来的 `cd my app` 是一条跑不通的命令。
+ */
+function shellQuote(value: string): string {
+  return /^[\w@./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function printNextSteps(config: ProjectConfig, destDir: string): void {
-  const rel = destDir.replace(process.cwd() + '/', '');
+  const rel = path.relative(process.cwd(), destDir) || '.';
   const pm = config.packageManager;
 
   const steps = [
-    `  ${pc.cyan('cd')} ${rel}`,
+    `  ${pc.cyan('cd')} ${shellQuote(rel)}`,
     ...(!config.installDeps ? [`  ${pc.cyan(pm)} install`] : []),
-    `  ${pc.cyan(pm)} run dev`,
+    `  ${pc.cyan(pm)} run ${resolveDevScript(destDir)}`,
   ];
 
   p.outro(`${pc.green('项目创建成功！')} 接下来：\n\n${steps.join('\n')}\n`);

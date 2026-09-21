@@ -10,6 +10,8 @@ import {
   DEFAULT_EXTRACT,
 } from '../src/config/defaults';
 import type { I18nToolsConfig } from '../src/config/types';
+import { VueAdapter } from '../src/adapters/VueAdapter';
+import { FileUtils } from '../src/utils/file-utils';
 
 // 最小可用 LLM 配置（多数测试不关心 LLM）
 const llm = {
@@ -996,5 +998,272 @@ describe('config — keys.separator 空串校验', () => {
 
   it('多字符 separator（"__"）在 flat 下仍合法', () => {
     expect(() => resolveConfig(separatorBase('__'))).not.toThrow();
+  });
+});
+
+/**
+ * 枚举取值校验统一走 validateEnum：非法取值 fail-fast，报错信息带上配置路径。
+ */
+describe('resolveConfig — merge.onLlmRejected / glossary.override 枚举 fail-fast', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-enum-guard-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ReturnType<typeof resolveConfig> {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  it('merge.onLlmRejected typo 报错且带配置路径', () => {
+    expect(() => makeConfig({ merge: { onLlmRejected: 'whatever' as never } })).toThrow(
+      /merge\.onLlmRejected/,
+    );
+  });
+
+  it('glossary.override typo 报错且带配置路径', () => {
+    expect(() => makeConfig({ glossary: { override: 'allway' as never } })).toThrow(
+      /glossary\.override/,
+    );
+  });
+
+  it('合法取值不受影响', () => {
+    expect(() => makeConfig({ merge: { onLlmRejected: 'warn-only' } })).not.toThrow();
+    expect(() => makeConfig({ glossary: { override: 'always' } })).not.toThrow();
+  });
+});
+
+/**
+ * 回归（四轮审计 A5/A9）：loader 的类型与合并守卫。
+ *  - keys.dynamicKeyAllowlist / extract.filterPatterns 误写非数组会被 [...value] 逐字符展开
+ *    （前者展开成单字符前缀，几乎所有 key 都被当「可能动态引用」而免于 prune/doctor 判定）。
+ *  - llm.<task> 里显式写出的 undefined 字段不得盖掉 shared 的同名值。
+ *  - keys.prefix.rules[i].use 缺失必须报错（与 match 缺失同款），不静默补默认 path 策略。
+ *  - keys.prefix.skip/take 非数值经 Math.max 变 NaN，slice(NaN) 静默按 0 处理。
+ */
+describe('resolveConfig — 类型与合并守卫（四轮审计 A5/A9）', () => {
+  const base: I18nToolsConfig = {
+    root: TEST_ROOT,
+    framework: { type: 'vue' },
+    llm: { shared: { apiKey: 'K', model: 'shared-model', baseURL: 'https://example.com' } },
+  };
+
+  it('keys.dynamicKeyAllowlist 误写字符串 → 抛错并带字段路径', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { dynamicKeyAllowlist: 'menu.' as unknown as string[] },
+      }),
+    ).toThrow(/keys\.dynamicKeyAllowlist/);
+  });
+
+  it('extract.filterPatterns 误写单个正则 → 抛错并带字段路径', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        extract: { filterPatterns: /^\d+$/ as unknown as RegExp[] },
+      }),
+    ).toThrow(/extract\.filterPatterns/);
+  });
+
+  it('合法数组不受影响', () => {
+    const r = resolveConfig({
+      ...base,
+      keys: { dynamicKeyAllowlist: ['menu.', /^dyn\./] },
+      extract: { filterPatterns: [/^\d+$/] },
+    });
+    expect(r.keys.dynamicKeyAllowlist).toHaveLength(2);
+    expect(r.extract.filterPatterns).toHaveLength(1);
+  });
+
+  it('llm.<task> 显式 undefined 字段不顶掉 shared 值', () => {
+    const r = resolveConfig({
+      ...base,
+      llm: { ...base.llm, translation: { model: undefined, apiKey: undefined } },
+    });
+    expect(r.llm.translation.model).toBe('shared-model');
+    expect(r.llm.translation.apiKey).toBe('K');
+    // 任务级显式赋值仍然覆盖 shared
+    const overridden = resolveConfig({
+      ...base,
+      llm: { ...base.llm, translation: { model: 'task-model' } },
+    });
+    expect(overridden.llm.translation.model).toBe('task-model');
+  });
+
+  it('keys.prefix.rules[i].use 缺失 → 抛错，不静默补默认策略', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: {
+          prefix: {
+            strategy: 'rules',
+            rules: [{ match: 'src/**' } as unknown as { match: string; use: never }],
+          },
+        },
+      }),
+    ).toThrow(/keys\.prefix\.rules\[0\]\.use/);
+  });
+
+  it('keys.prefix.skip / take 非数值 → 抛错，不静默变 NaN', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { prefix: { strategy: 'path', take: '2' as unknown as number } },
+      }),
+    ).toThrow(/keys\.prefix\.take/);
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { prefix: { strategy: 'path', skip: NaN } },
+      }),
+    ).toThrow(/keys\.prefix\.skip/);
+    // 合法数值照常（负值仍按 0 处理）
+    const r = resolveConfig({
+      ...base,
+      keys: { prefix: { strategy: 'path', skip: -1, take: 2 } },
+    });
+    expect(r.keys.prefix).toMatchObject({ skip: 0, take: 2 });
+  });
+});
+
+/**
+ * DEFAULT_IO.include 与各框架适配器的 extensions 是同一件事的两处声明：
+ * include 决定扫哪些文件，extensions 决定「扫到了要不要交给适配器」与 `--path` 单文件校验。
+ * 两者不一致时目录扫描会静默漏文件、单文件模式会报「不支持的文件类型」。
+ */
+describe('DEFAULT_IO.include 与框架 extensions 同口径', () => {
+  const extOf = (glob: string): string => path.extname(glob);
+
+  it('Vue 适配器覆盖默认 include 的全部扩展名（含 .tsx/.jsx）', () => {
+    const supported = new VueAdapter().getSupportedExtensions();
+    for (const glob of DEFAULT_IO.include) {
+      expect(supported).toContain(extOf(glob));
+    }
+    expect(supported).toContain('.tsx');
+    expect(supported).toContain('.jsx');
+  });
+
+  it('Vue 工程的 --path xxx.tsx 通过单文件校验', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-vue-tsx-path-'));
+    const file = path.join(dir, 'Comp.tsx');
+    fs.writeFileSync(file, 'export const a = 1;\n');
+    const adapter = new VueAdapter();
+    const result = FileUtils.validateTargetPath(
+      file,
+      adapter.getSupportedExtensions(),
+      adapter.getDisplayName(),
+    );
+    fs.rmSync(dir, { recursive: true, force: true });
+    expect(result).toEqual({ isValid: true, type: 'file' });
+  });
+});
+
+/**
+ * CC-01 / CC-02：数组元素类型与 io.indent 的守卫。
+ *  - filterPatterns 元素误写成字符串时，提取器对每个文件的 template/script 各抛一次
+ *    TypeError 并被就地吞成空提取 → 覆盖率虚报 100%、--coverage-threshold 放行、exit 0。
+ *  - dynamicKeyAllowlist 混入非 string/RegExp 元素 → doctor/prune 运行期抛无字段名 TypeError。
+ *  - io.indent 非数值经 Math.max 变 NaN，JSON.stringify 按 0 处理 → 所有 JSON 压成单行；
+ *    >10 被 JSON.stringify 静默截断到 10。
+ */
+describe('resolveConfig — 数组元素与 io.indent 守卫（CC-01/CC-02）', () => {
+  const base: I18nToolsConfig = {
+    root: TEST_ROOT,
+    framework: { type: 'vue' },
+    llm,
+  };
+
+  it('CC-01: extract.filterPatterns 元素是字符串 → 抛错并带下标', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        extract: { filterPatterns: [/^ok$/, '^\\d+$' as unknown as RegExp] },
+      }),
+    ).toThrow(/extract\.filterPatterns\[1\]/);
+  });
+
+  it('CC-01: keys.dynamicKeyAllowlist 元素是数字 → 抛错并带下标', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { dynamicKeyAllowlist: ['dyn.', 123 as unknown as string] },
+      }),
+    ).toThrow(/keys\.dynamicKeyAllowlist\[1\]/);
+  });
+
+  it('CC-01: io.include / io.exclude 元素非字符串或空串 → 抛错并带字段名与下标', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        io: { include: ['**/*.vue', 123 as unknown as string] },
+      }),
+    ).toThrow(/io\.include\[1\]/);
+    expect(() =>
+      resolveConfig({
+        ...base,
+        io: { exclude: ['dist', '  ' as unknown as string] },
+      }),
+    ).toThrow(/io\.exclude\[1\]/);
+  });
+
+  it('CC-01: 合法元素（string / RegExp）不受影响', () => {
+    const r = resolveConfig({
+      ...base,
+      keys: { dynamicKeyAllowlist: ['dyn.', /^x\./] },
+      extract: { filterPatterns: [/^\d+$/] },
+    });
+    expect(r.keys.dynamicKeyAllowlist).toHaveLength(2);
+    expect(r.extract.filterPatterns).toHaveLength(1);
+  });
+
+  it('CC-02: io.indent 非数值 / 非整数 / 越界 / 负值 → 抛错并带字段名', () => {
+    for (const bad of ['abc', true, 2.5, 100, -1]) {
+      expect(() => resolveConfig({ ...base, io: { indent: bad as unknown as number } })).toThrow(
+        /io\.indent/,
+      );
+    }
+  });
+
+  it('CC-02: io.indent 合法取值（0-10 整数）与默认值不受影响', () => {
+    expect(resolveConfig({ ...base, io: { indent: 0 } }).io.indent).toBe(0);
+    expect(resolveConfig({ ...base, io: { indent: 4 } }).io.indent).toBe(4);
+    expect(resolveConfig(base).io.indent).toBe(2);
+  });
+});
+
+/**
+ * A-1：`.i18n-tools`（工具自身的 plan 目录）必须始终被排除——`plans/<ts>/sources/` 下
+ * 是转换后的源码副本，被当源码扫到会让 restore 把副本还原成未国际化代码，
+ * apply 随后按副本写回源文件；generate 也会把副本里的 t() 计进 alreadyI18n。
+ */
+describe('resolveConfig — .i18n-tools 强制排除（A-1）', () => {
+  const base: I18nToolsConfig = {
+    root: TEST_ROOT,
+    framework: { type: 'vue' },
+    llm,
+  };
+
+  it('A-1: 默认 exclude 含 .i18n-tools', () => {
+    expect(resolveConfig(base).io.exclude).toContain('.i18n-tools');
+  });
+
+  it('A-1: 用户自定义 exclude 覆盖默认值时仍强制并入 .i18n-tools', () => {
+    const r = resolveConfig({ ...base, io: { exclude: ['dist'] } });
+    expect(r.io.exclude).toContain('.i18n-tools');
+    expect(r.io.exclude).toContain('node_modules');
   });
 });

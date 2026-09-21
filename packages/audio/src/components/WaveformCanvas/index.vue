@@ -41,7 +41,11 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
 let containerObserver: ResizeObserver | null = null;
 const actualWidth = ref(props.width || DEFAULT_WIDTH);
-const dpr = window.devicePixelRatio || 1;
+/**
+ * 设备像素比。SSR 阶段没有 window，先按 1 渲染，挂载后取真实值——
+ * 在 setup 顶层读 window 会让整个服务端渲染失败。
+ */
+const dpr = ref(1);
 
 const ariaLabel = computed(() => {
   if (!props.data?.length) return '音频波形（暂无数据）';
@@ -50,6 +54,7 @@ const ariaLabel = computed(() => {
 });
 
 onMounted(() => {
+  dpr.value = window.devicePixelRatio || 1;
   if (!canvasRef.value) return;
   ctx = canvasRef.value.getContext('2d');
   syncWidthSource();
@@ -105,8 +110,8 @@ function draw() {
   const width = actualWidth.value;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, width * dpr, height * dpr);
-  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width * dpr.value, height * dpr.value);
+  ctx.scale(dpr.value, dpr.value);
 
   if (!data || data.length === 0) {
     drawPlaceholder(width, height);

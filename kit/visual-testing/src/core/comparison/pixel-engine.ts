@@ -7,7 +7,7 @@
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import path from 'node:path';
-import { readPNG, writePNG, alignImages } from '../../utils/image';
+import { readPNG, writePNG, alignImages, cropToIntersection } from '../../utils/image';
 import { ensureDir } from '../../utils/file';
 import { logger } from '../../utils/logger';
 import type {
@@ -31,6 +31,7 @@ export class PixelComparisonEngine implements ComparisonEngine {
       colorThreshold = 0.1,
       threshold = 0.01,
       antialiasing = true,
+      sizeAlignment = 'pad',
     } = options;
 
     log.debug(`Comparing: ${baselinePath} vs ${actualPath}`);
@@ -42,8 +43,11 @@ export class PixelComparisonEngine implements ComparisonEngine {
     // 2. 检查尺寸差异
     const sizeDiff = this.checkSizeDiff(baseline, actual);
 
-    // 3. 对齐尺寸
-    const { aligned1, aligned2, width, height } = alignImages(baseline, actual);
+    // 3. 对齐尺寸：pad 把多出的部分计为差异；crop 只比交集
+    const { aligned1, aligned2, width, height } =
+      sizeAlignment === 'crop'
+        ? cropToIntersection(baseline, actual)
+        : alignImages(baseline, actual);
 
     // 4. 创建差异图
     const diff = new PNG({ width, height });

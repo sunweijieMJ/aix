@@ -1,19 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import picomatch from 'picomatch';
-import { CONFIG, FILES } from './constants';
+import { CHINESE_CHAR_RE, FILES } from './constants';
 import { LoggerUtils } from './logger';
 import { normalizePosix } from './path-matcher';
+import { safeLoadJsonFile } from './json-io';
 import type { ResolvedConfig } from '../config';
-
-/**
- * classifyJsonFile 的判别式结果：四态明确区分，调用方据 status 分流。
- */
-export type JsonFileClassification<T = any> =
-  | { status: 'missing' }
-  | { status: 'empty' }
-  | { status: 'corrupt' }
-  | { status: 'ok'; data: T };
 
 /**
  * 文件和文本操作工具类
@@ -22,125 +14,32 @@ export type JsonFileClassification<T = any> =
  * 路径相关方法已参数化，接收 ResolvedConfig 而非硬编码路径
  */
 export class FileUtils {
-  // =================================================================
-  // JSON Processing Methods
-  // =================================================================
-
-  static safeParseJson(content: string): any {
-    try {
-      // 剥离 UTF-8 BOM（U+FEFF）：Windows 外部编辑器（PowerShell 5.1、VS、记事本）写出的
-      // locale/glossary/translations 文件常带 BOM，带 BOM 的内容直接 JSON.parse 会抛错，
-      // 导致整条读链路误判文件损坏。此处单点收口，覆盖经 safeParseJson 的全部读路径。
-      const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
-      return JSON.parse(normalized);
-    } catch (error) {
-      LoggerUtils.error('JSON解析失败:', error);
-      return null;
-    }
-  }
-
   /**
-   * 判别式 JSON 文件读取：区分「不存在 / 空 / 损坏 / 正常」四态，收口散落在 glossary 与
-   * language-file-manager 多处的「readFileSync → trim 判空 → safeParseJson → null 即损坏」骨架。
+   * 找出两个**扁平** locale map 中「同 key、不同值」的条目（基础包 vs 定制包冲突检测）。
    *
-   * 与 safeLoadJsonFile 的区别：后者把「不存在」「空」「损坏」一律降级为 defaultValue，
-   * 无法区分——凡需对损坏 fail-fast（抛错/中止/回调）的调用方都只能绕过它自己手写。
-   * 本方法把分类逻辑收一处，各调用方仅 switch on status、保留各自的后续动作。
+   * 入参契约：必须是已 flatten 的 `key → 标量值` 字典（两个生产调用点——ExportProcessor
+   * 的 flat / bucketed 导出——都在 flatten 之后进来）。不递归下钻嵌套值，也因此无需
+   * 感知 keys.separator。
    */
-  static classifyJsonFile<T = any>(filePath: string): JsonFileClassification<T> {
-    if (!fs.existsSync(filePath)) return { status: 'missing' };
-    const content = fs.readFileSync(filePath, 'utf-8');
-    if (content.trim() === '') return { status: 'empty' };
-    const parsed = FileUtils.safeParseJson(content);
-    if (parsed === null) return { status: 'corrupt' };
-    return { status: 'ok', data: parsed as T };
-  }
-
-  /**
-   * 严格加载「字典型」JSON 中间文件（untranslated / translations 等）：
-   *   - 不存在 / 空 → `{}`（视为「尚无条目」，安全继续）
-   *   - 损坏（存在且非空却解析失败）→ 抛错中止（绝不降级为 `{}`，否则下游会用空对象覆写、
-   *     销毁在途译文 / 把损坏误判为「无条目」而 CI 伪绿灯）
-   *   - 正常 → 解析结果
-   *
-   * 统一 Merge / Translate / CsvExport / CsvImport 共用的
-   * 「readFileSync → trim 判空 → safeParseJson → null 即损坏」骨架。corrupt 报错信息由调用方
-   * 按场景定制（各命令对「会销毁什么」的描述不同）。
-   */
-  static loadJsonDictOrThrow<T = Record<string, unknown>>(
-    filePath: string,
-    buildCorruptMessage: (filePath: string) => string,
-  ): T {
-    const cls = FileUtils.classifyJsonFile<T>(filePath);
-    if (cls.status === 'corrupt') {
-      throw new Error(buildCorruptMessage(filePath));
-    }
-    if (cls.status === 'ok') {
-      return cls.data;
-    }
-    return {} as T;
-  }
-
   static findConflictingKeys(
-    obj1: Record<string, any>,
-    obj2: Record<string, any>,
-    prefix = '',
+    obj1: Record<string, unknown>,
+    obj2: Record<string, unknown>,
   ): string[] {
     const conflicts: string[] = [];
-
-    for (const key in obj1) {
-      if (Object.prototype.hasOwnProperty.call(obj1, key)) {
-        const currentPath = prefix ? `${prefix}.${key}` : key;
-
-        if (Object.prototype.hasOwnProperty.call(obj2, key)) {
-          const val1 = obj1[key];
-          const val2 = obj2[key];
-
-          if (
-            typeof val1 === 'object' &&
-            typeof val2 === 'object' &&
-            val1 !== null &&
-            val2 !== null
-          ) {
-            conflicts.push(...this.findConflictingKeys(val1, val2, currentPath));
-          } else if (val1 !== val2) {
-            conflicts.push(currentPath);
-          }
-        }
-      }
+    for (const key of Object.keys(obj1)) {
+      if (!Object.prototype.hasOwnProperty.call(obj2, key)) continue;
+      if (obj1[key] !== obj2[key]) conflicts.push(key);
     }
-
     return conflicts;
-  }
-
-  // =================================================================
-  // Collection/Array Utilities
-  // =================================================================
-
-  static groupBy<T>(items: T[], getKey: (item: T) => string): Record<string, T[]> {
-    return items.reduce(
-      (groups, item) => {
-        const key = getKey(item);
-        if (!groups[key]) {
-          groups[key] = [];
-        }
-        groups[key].push(item);
-        return groups;
-      },
-      {} as Record<string, T[]>,
-    );
   }
 
   // =================================================================
   // Text Processing Methods
   // =================================================================
 
-  static containsChinese(text: string, options: { ignoreSpaces?: boolean } = {}): boolean {
+  static containsChinese(text: string): boolean {
     if (!text) return false;
-
-    const processedText = options.ignoreSpaces ? text.replace(/\s/g, '') : text;
-
-    return CONFIG.CHINESE_REGEX.test(processedText);
+    return CHINESE_CHAR_RE.test(text);
   }
 
   /**
@@ -152,9 +51,6 @@ export class FileUtils {
 
     if (!enValue?.trim()) return false;
 
-    const cleanValue = enValue.replace(/[{}[\]().,;:!?'""`~@#$%^&*+=<>|\\/-]/g, '').trim();
-    if (cleanValue.length === 0) return false;
-
     // 包含任何文字或数字字符即视为有效翻译
     // \p{L} 匹配任意语言的字母，\p{N} 匹配任意数字
     return /[\p{L}\p{N}]/u.test(enValue);
@@ -165,7 +61,10 @@ export class FileUtils {
     prefix: string = '',
     separator: string = '.',
   ): Record<string, any> {
-    const result: Record<string, any> = {};
+    // null 原型：普通 `{}` 上 `result['__proto__'] = '文案'` 走 Object.prototype 的 __proto__
+    // setter，字符串值不会成为自有属性（叶子 key 静默消失），对象值还会换掉 result 的原型。
+    // `__proto__` 是合法的 locale 末段 key，写侧 writeTranslationsFile 已同样处理。
+    const result: Record<string, any> = Object.create(null);
 
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -219,142 +118,6 @@ export class FileUtils {
     return result;
   }
 
-  // =================================================================
-  // File I/O Methods
-  // =================================================================
-
-  static safeLoadJsonFile<T extends object>(
-    filePath: string,
-    options: {
-      defaultValue?: T;
-      errorMessage?: string;
-      logSuccess?: boolean;
-      silent?: boolean;
-    } = {},
-  ): T {
-    const { defaultValue = {} as T, errorMessage, logSuccess = false, silent = false } = options;
-
-    try {
-      if (!fs.existsSync(filePath)) {
-        if (!silent) {
-          LoggerUtils.warn(`⚠️ 文件不存在: ${filePath}`);
-        }
-        return defaultValue;
-      }
-
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-      const parsed = FileUtils.safeParseJson(fileContent);
-
-      if (parsed === null) {
-        if (!silent) {
-          LoggerUtils.error(
-            errorMessage
-              ? `❌ ${errorMessage}（JSON格式损坏）: ${filePath}`
-              : `❌ JSON格式损坏，无法加载: ${filePath}`,
-          );
-        }
-        return defaultValue;
-      }
-
-      if (logSuccess && !silent) {
-        const itemCount = Object.keys(parsed).length;
-        LoggerUtils.success(`📄 已加载 ${path.basename(filePath)}, 包含 ${itemCount} 个条目`);
-      }
-
-      return parsed as T;
-    } catch (error) {
-      if (!silent) {
-        LoggerUtils.error(
-          errorMessage ? `❌ ${errorMessage}: ${filePath}` : `❌ 加载JSON文件失败: ${filePath}`,
-          error,
-        );
-      }
-      return defaultValue;
-    }
-  }
-
-  static ensureDirectoryExists(dirPath: string): void {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-  }
-
-  static createOrEmptyFile(filePath: string, content: string = '{}'): void {
-    FileUtils.ensureDirectoryExists(path.dirname(filePath));
-    const contentWithNewline = content.endsWith('\n') ? content : content + '\n';
-    FileUtils.atomicWriteText(filePath, contentWithNewline);
-  }
-
-  /**
-   * 原子写入：先写到同目录的临时文件，fsync 落盘后 rename 替换目标。
-   *
-   * Why: 直接 writeFileSync 在写入过程中若进程崩溃 / 同名并发写，
-   *      目标文件会处于"半截"状态。rename 在大多数 POSIX 与 Windows
-   *      文件系统上都是原子的，能保证读端永远看到完整的旧或新内容。
-   *      fsync 显式刷新内核缓冲区到物理介质，避免 rename 后断电仍丢内容。
-   *      显式 utf8 编码可避免 Windows 下默认 ANSI 解码的 mojibake。
-   */
-  static atomicWriteText(filePath: string, content: string): void {
-    const dir = path.dirname(filePath);
-    const tmpPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
-    try {
-      const fd = fs.openSync(tmpPath, 'w');
-      try {
-        fs.writeFileSync(fd, content, 'utf8');
-        // FlushFileBuffers / fdatasync：rename 仅保证目录项原子切换，
-        // 文件内容真正落盘要靠 fsync。
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(tmpPath, filePath);
-    } catch (error) {
-      // 失败时清理临时文件，不向上吞没原始错误
-      try {
-        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-      } catch {
-        // 临时文件清理失败不影响主流程错误传播
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * 统一的 JSON 写入：保证父目录存在、缩进一致、末尾换行。
-   *
-   * Why: 早期实现散落在多个 Processor 内联拼装 `JSON.stringify(data, null, 2) + '\n'`，
-   * 一旦换行/编码/缩进策略需要调整就要多处改动；统一入口避免漂移。
-   */
-  static writeJsonFile(
-    filePath: string,
-    data: unknown,
-    options: { indent?: number; ensureDir?: boolean } = {},
-  ): void {
-    const { indent = 2, ensureDir = true } = options;
-    if (ensureDir) {
-      FileUtils.ensureDirectoryExists(path.dirname(filePath));
-    }
-    const content = JSON.stringify(data, null, indent) + '\n';
-    FileUtils.atomicWriteText(filePath, content);
-  }
-
-  /**
-   * 写 translations.json / untranslated.json 这类「条目字典」文件：
-   * 落盘前按顶层 key 字母序排序，使顺序与「哪个步骤最后写」解耦。
-   *
-   * Why: pick 按源 locale 装配顺序写、merge 按「已有 + 末尾追加」写，两者顺序
-   * 不一致——merge 之后再跑 pick 会把追加的 key 重排回中部，产生大 no-op diff。
-   * 统一排序后，pick / merge / translate / csv-import 写出的顺序恒定一致。
-   * 内层值对象（{ zh, en, ... }）顺序保持不变。
-   */
-  static writeTranslationsFile(filePath: string, data: Record<string, unknown>): void {
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(data).sort()) {
-      sorted[key] = data[key];
-    }
-    FileUtils.writeJsonFile(filePath, sorted);
-  }
-
   /** 类型声明文件不应被作为业务源码处理 */
   static isDeclarationFile(fileName: string): boolean {
     return fileName.endsWith('.d.ts') || fileName.endsWith('.d.mts') || fileName.endsWith('.d.cts');
@@ -363,10 +126,15 @@ export class FileUtils {
   /**
    * 文件名是否匹配给定扩展名集合（同时排除类型声明文件）。
    * 框架细节由调用方通过 Adapter.getSupportedExtensions() 提供，本工具不再硬编码。
+   *
+   * 扩展名比较不区分大小写：macOS / Windows 上 `Foo.VUE` 与 `Foo.vue` 是同一个文件，
+   * 大小写敏感会让这类文件被本方法漏掉、却仍被 source-key-scanner 的 hasExtension
+   * （已 toLowerCase）当框架文件扫描，两侧口径分裂。
    */
   static matchesExtensions(fileName: string, extensions: string[]): boolean {
     if (FileUtils.isDeclarationFile(fileName)) return false;
-    return extensions.includes(path.extname(fileName));
+    const ext = path.extname(fileName).toLowerCase();
+    return extensions.some((e) => e.toLowerCase() === ext);
   }
 
   /**
@@ -397,7 +165,7 @@ export class FileUtils {
       if (e.includes('/')) {
         pathExcludes.push(e);
       } else if (e.includes('*') || e.includes('?')) {
-        // 仅匹配单段文件名（不跨越 / 分隔符），保持与原 simpleGlobToRegex 行为一致
+        // 仅匹配单段文件名（不跨越 / 分隔符）
         globExcludes.push(picomatch(e, { dot: true }));
       } else {
         literalExcludes.add(e);
@@ -422,7 +190,27 @@ export class FileUtils {
     const absoluteDirPath = path.resolve(dirPath);
     const includeBase = path.resolve(rootDir ?? dirPath);
 
+    const collectFile = (fullPath: string): void => {
+      const includedByGlob = !includeMatcher || includeMatcher(fullPath, includeBase);
+      const excludedByPath = excludePathMatcher ? excludePathMatcher(fullPath, includeBase) : false;
+      if (includedByGlob && !excludedByPath) {
+        files.push(fullPath);
+      }
+    };
+
+    // 已访问目录的 realpath 集合：软链可以指回祖先目录，跟随时不去重会无限递归。
+    const visitedRealDirs = new Set<string>();
+
     const walkDir = (currentPath: string): void => {
+      let realDir: string;
+      try {
+        realDir = fs.realpathSync(currentPath);
+      } catch {
+        return;
+      }
+      if (visitedRealDirs.has(realDir)) return;
+      visitedRealDirs.add(realDir);
+
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
 
       for (const entry of entries) {
@@ -434,14 +222,24 @@ export class FileUtils {
 
         if (entry.isDirectory()) {
           walkDir(fullPath);
-        } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
-          const includedByGlob = !includeMatcher || includeMatcher(fullPath, includeBase);
-          const excludedByPath = excludePathMatcher
-            ? excludePathMatcher(fullPath, includeBase)
-            : false;
-          if (includedByGlob && !excludedByPath) {
-            files.push(fullPath);
+        } else if (entry.isSymbolicLink()) {
+          // Dirent 的 isDirectory/isFile 描述的是软链本身（两者都为 false），不跟随会让
+          // 软链进来的源码目录 / 文件整片扫不到 —— 提取端看不到，中文静默留在源码里。
+          // monorepo 用软链把共享目录挂进包内是常见布局，故必须 stat 跟随后再分流。
+          let target: fs.Stats;
+          try {
+            target = fs.statSync(fullPath);
+          } catch {
+            // 断链（指向已删除路径）：跳过，不因扫描阶段的失效链接中断整条命令。
+            continue;
           }
+          if (target.isDirectory()) {
+            walkDir(fullPath);
+          } else if (target.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
+            collectFile(fullPath);
+          }
+        } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
+          collectFile(fullPath);
         }
       }
     };
@@ -477,7 +275,7 @@ export class FileUtils {
       );
       return {} as T;
     }
-    return this.safeLoadJsonFile<T>(filePath, {
+    return safeLoadJsonFile<T>(filePath, {
       errorMessage: `加载 ${type} ${lang} 语言文件失败`,
       logSuccess: true,
     });
@@ -487,12 +285,6 @@ export class FileUtils {
   // Path-related Methods (config-driven)
   // =================================================================
 
-  /**
-   * 获取工作目录路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @returns 目录路径
-   */
   static getDirectoryPath(config: ResolvedConfig, isCustom: boolean): string {
     if (isCustom) {
       if (!config.io.customDir) {
@@ -503,22 +295,10 @@ export class FileUtils {
     return config.io.localesDir;
   }
 
-  /**
-   * 获取待翻译文件路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @returns 待翻译文件路径
-   */
   static getUntranslatedPath(config: ResolvedConfig, isCustom: boolean): string {
     return path.join(this.getDirectoryPath(config, isCustom), FILES.UNTRANSLATED_JSON);
   }
 
-  /**
-   * 获取翻译文件路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @returns 翻译文件路径
-   */
   static getTranslatedPath(config: ResolvedConfig, isCustom: boolean): string {
     return path.join(this.getDirectoryPath(config, isCustom), FILES.TRANSLATIONS_JSON);
   }
@@ -566,11 +346,6 @@ export class FileUtils {
     return { isValid: false, type: 'invalid', error: '不支持的路径类型' };
   }
 
-  /**
-   * 获取相对路径
-   * @param filePath - 文件路径
-   * @returns 相对于工作目录的路径
-   */
   static getRelativePath(filePath: string): string {
     return path.relative(process.cwd(), filePath);
   }

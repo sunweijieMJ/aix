@@ -3049,7 +3049,7 @@ jobs:
 | looks-same | ^9.0.0 | 智能图像比对 |
 | zod | ^3.23.0 | 配置 Schema 验证 |
 | commander | ^12.0.0 | CLI 框架 |
-| inquirer | ^9.0.0 | 交互式 CLI |
+| @inquirer/prompts | ^8.7.0 | 交互式 CLI |
 | chalk | ^5.0.0 | 终端颜色 |
 | ora | ^8.0.0 | 终端 Spinner |
 | @anthropic-ai/sdk | ^0.30.0 | Claude API |

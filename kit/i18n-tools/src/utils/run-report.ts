@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { FileUtils } from './file-utils';
 import { extractSafeError } from './logger';
+import { writeJsonFile } from './json-io';
 
 /**
  * 失败发生的阶段（与三个 Processor 内已有的失败分支一一对应）：
@@ -10,7 +10,7 @@ import { extractSafeError } from './logger';
  * - translate：Translate 的批次翻译失败
  * - restore：  Restore 的单文件还原失败
  */
-export type FailureStage = 'transform' | 'write' | 'translate' | 'restore';
+type FailureStage = 'transform' | 'write' | 'translate' | 'restore';
 
 /**
  * 落盘的失败记录条目。
@@ -41,24 +41,33 @@ export interface FailureRecord {
  * - comparison-operand   `xxx === '中文'` 比较操作数（运行时切语言后分支永远不命中）
  * - mixed-content        混合内容字符串（中英符号交错，无法机械拆分）
  * - html-in-template     源码模板字符串含 HTML 标签（含拼装结构）
+ * - non-html-template    `<template lang="pug">` 等非 HTML 模板语言，整块无法解析
+ * - jsx-text-in-vue      Vue tsx/jsx 的 JSX 子节点文本（Vue 侧不做 JSX 文本改写）
+ * - class-property       类组件属性初始化器中的中文（该位置没有可用的 t 绑定）
  * - html-tag-in-value    locale value 已含 HTML 标签（运行时 innerHTML = t()）
  * - long-value           locale value 超长（建议拆分）
  * - semantic-duplicate   语义重复 key（占位符变量名/空白差异）
  * - cross-module-reuse   跨模块复用候选（同一 value 多前缀使用）
  * - hardcoded-comparison 硬编码中文与已 i18n 文案比较（脱钩风险）
  * - nested-interpolation-chinese 插值表达式内中文分支被占位符吞掉（运行时渲染未翻译中文）
+ * - param-default        形参默认值中的中文（参数作用域看不到函数体内注入的 t 绑定）
  */
 export type ManualCategory =
   | 'comparison-operand'
   | 'mixed-content'
   | 'html-in-template'
+  | 'non-html-template'
+  | 'jsx-text-in-vue'
   | 'class-property'
+  | 'param-default'
+  | 'conflicting-t-binding'
   | 'html-tag-in-value'
   | 'long-value'
   | 'semantic-duplicate'
   | 'cross-module-reuse'
   | 'hardcoded-comparison'
-  | 'nested-interpolation-chinese';
+  | 'nested-interpolation-chinese'
+  | 'parse-error';
 
 /**
  * 单条「需要人工处理」记录。结构尽量贴合 IDE 跳转所需信息（file:line:column），
@@ -102,6 +111,9 @@ export interface CoverageMetric {
   coverageRate: number;
 }
 
+/** 警告的严重级别（doctor 的 missing-key=error / orphan=warning / lint=info 等）。 */
+type ReportSeverity = 'error' | 'warning' | 'info';
+
 /**
  * 单次运行的失败 / 警告收集器。
  *
@@ -117,9 +129,6 @@ export interface CoverageMetric {
  * 3. 错误字段统一走 safe-extract，避免泄露凭据。
  * 4. 文件名带时间戳 + command + pid，避免并发运行互相覆盖。
  */
-/** 警告的严重级别（doctor 的 missing-key=error / orphan=warning / lint=info 等）。 */
-export type ReportSeverity = 'error' | 'warning' | 'info';
-
 export class RunReport {
   private failures: FailureRecord[] = [];
   private warnings: string[] = [];
@@ -138,7 +147,7 @@ export class RunReport {
   addFailure(record: Omit<FailureRecord, 'error'> & { error: unknown }): void {
     this.failures.push({
       ...record,
-      error: RunReport.safeExtractError(record.error),
+      error: extractSafeError(record.error),
     });
   }
 
@@ -165,11 +174,6 @@ export class RunReport {
     }
   }
 
-  /** 批量追加，便于 extractor / linter 一次性 drain。 */
-  addManualEntries(entries: ManualEntry[]): void {
-    for (const entry of entries) this.addManualEntry(entry);
-  }
-
   /** 设置覆盖率指标。重复调用以最后一次为准（generate 末尾一次性写入）。 */
   setCoverage(metric: CoverageMetric): void {
     this.coverage = metric;
@@ -179,7 +183,13 @@ export class RunReport {
     return this.coverage;
   }
 
-  /** 按 category 分组聚合，供 summary 渲染。 */
+  /**
+   * 按 category 分组聚合**全部** needsManual，供报告渲染与测试观察。
+   *
+   * 与下方 groupCoverageManualByCategory 的关系：后者是「只要进 coverage.skipped 的那 4 类」
+   * 的特化版（coverage 总览用），本方法才是全量入口——lint 类发现（semantic-duplicate /
+   * html-tag-in-value 等）只能从这里看到。
+   */
   groupManualByCategory(): Record<string, ManualEntry[]> {
     const groups: Record<string, ManualEntry[]> = {};
     for (const e of this.needsManual) {
@@ -194,7 +204,12 @@ export class RunReport {
       'comparison-operand',
       'nested-interpolation-chinese',
       'html-in-template',
+      'non-html-template',
+      'jsx-text-in-vue',
       'class-property',
+      'param-default',
+      'conflicting-t-binding',
+      'parse-error',
     ]);
     const groups: Record<string, ManualEntry[]> = {};
     for (const entry of this.needsManual) {
@@ -269,7 +284,7 @@ export class RunReport {
         warnings: this.warnings,
         needsManual: this.needsManual,
       };
-      FileUtils.writeJsonFile(filePath, payload);
+      writeJsonFile(filePath, payload);
       RunReport.pruneOldLogs(logsDir);
       return filePath;
     } catch {
@@ -341,13 +356,18 @@ export class RunReport {
     'comparison-operand': '比较运算符跳过的中文字面量',
     'mixed-content': '混合内容字符串（无法机械拆分）',
     'html-in-template': '模板字符串含 HTML 标签',
+    'non-html-template': '非 HTML 模板语言（pug 等）整块跳过',
+    'jsx-text-in-vue': 'Vue tsx/jsx 的 JSX 子节点文本未提取',
     'class-property': '类组件属性初始化器缺少翻译绑定',
+    'param-default': '形参默认值缺少翻译绑定',
+    'conflicting-t-binding': '作用域已有同名非 i18n 绑定，整处跳过提取',
     'html-tag-in-value': 'locale value 含 HTML 标签',
     'long-value': 'locale value 过长',
     'semantic-duplicate': '语义重复 key（占位符/空白差异）',
     'cross-module-reuse': '跨模块复用候选',
     'hardcoded-comparison': '硬编码中文 ↔ i18n 文案脱钩风险',
     'nested-interpolation-chinese': '插值表达式内中文未提取（渲染未翻译中文）',
+    'parse-error': '源文件解析失败，相应块整块未提取',
   };
 
   static readonly MANUAL_DEFAULT_SUGGESTIONS: Record<ManualCategory, string> = {
@@ -365,8 +385,32 @@ export class RunReport {
 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用：
     ❌  innerHTML = \`<span class="x">\${title}</span>\`
     ✅  innerHTML = \`<span class="x">\${t('xxx')}</span>\``,
+    'non-html-template': `@vue/compiler-dom 只解析 HTML 模板，pug / jade 等预处理语法会被当成
+单个文本节点，整块模板会被替换成一句 $t() 且不可还原，故整块跳过。
+建议把该组件的模板编译 / 改写为 HTML，或手工为其中的文案加 $t() 调用：
+    ❌  <template lang="pug">
+    ✅  <template>  <!-- 普通 HTML 模板 -->`,
+    'jsx-text-in-vue': `Vue 项目的 tsx / jsx 里，JSX 子节点文本不做自动改写：
+替换成 {t('key')} 后 restore 无法从表达式容器还原回裸文本，往返会丢结构。
+建议把文案挪进属性或变量，由工具接管：
+    ❌  <div>提交</div>
+    ✅  const label = '提交';  <div>{label}</div>   // 变量初值可被提取
+    ✅  <div title="提交" />                        // JSX 属性可被提取`,
     'class-property': `类组件属性初始化时没有可用的 t/intl 绑定，直接替换会生成未定义标识符。
 建议把文案移入 render()/方法/getter，或使用已注入的 this.props.t / this.props.intl。`,
+    'param-default': `形参默认值在参数作用域求值，而 t/intl 绑定注入在函数体内，参数看不见它。
+建议默认值留哨兵、函数体内兜底：
+    ❌  function App({ label = '默认标签' }) { ... }
+    ✅  function App({ label }) {
+          const { t } = useTranslation();
+          const text = label ?? t('app__defaultLabel');
+        }`,
+    'conflicting-t-binding': `组件自身或其外层作用域（含模块顶层）已有与 t/intl 同名的非 i18n 绑定。
+注入器不能在同块再声明一个同名变量，也不能遮蔽外层绑定；若仍替换文案，
+新写入的 t(...) 会解析到那个同名函数上，产出「能编译、行为错」的代码。
+建议把该同名绑定改名，或人工为该组件接入 i18n 后重跑：
+    ❌  import { t } from './tiny-template';   // 与 i18n 的 t 撞名
+    ✅  import { t as tpl } from './tiny-template';`,
     'html-tag-in-value': `locale value 已经混入了 HTML 标签，翻译质量难保证。
 处理方式同 html-in-template：把样式结构留在源码模板，t() 只包文案。`,
     'long-value': `locale value 超过 200 字符。长文本翻译质量差且不便维护。
@@ -377,7 +421,7 @@ export class RunReport {
 建议在源码中统一变量名 / 空白，重跑 generate 即可自动复用同一 key。`,
     'cross-module-reuse': `同一 value 在 ≥ 3 个不同目录前缀下都被使用，可以提升到 common。
 在 i18n.config 启用：
-    idPrefix: { promoteToCommon: { threshold: 3, namespace: 'common' } }
+    keys: { reuse: { promoteToCommon: { threshold: 3, namespace: 'common' } } }
 让新增使用点自动归入 common namespace。`,
     'hardcoded-comparison': `比较运算符两侧字面量不会被提取（避免破坏分支判断），
 但同句中文若在别处（如数组初值 / ref 默认值）被提取为 t(...)，
@@ -389,9 +433,10 @@ export class RunReport {
 切到非源语种后会渲染出未翻译的中文。建议把分支各自 t() 化：
     ❌  \`操作失败：\${cond ? '内部错误' : '网络异常'}\`
     ✅  \`操作失败：\${cond ? t('xxx__internalError') : t('xxx__networkError')}\``,
+    'parse-error': `源文件（或其中的 template / script 块）语法有误，解析器拿不到 AST，
+相应内容整块未提取——其中的中文既不在 locale 里，也不会出现在其它跳过清单里。
+建议先修好语法（未闭合标签、重复属性等）再重跑 generate：
+    ❌  <div class="a" class="b">重复属性</div>   // Duplicate attribute
+    ✅  <div class="a b">重复属性</div>`,
   };
-
-  private static safeExtractError(error: unknown): FailureRecord['error'] {
-    return extractSafeError(error);
-  }
 }

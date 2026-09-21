@@ -10,6 +10,7 @@ export type {
   SubtitleEmits,
   SubtitleExpose,
   SubtitleParser,
+  SubtitleSlotScope,
 } from './types';
 
 // 导出 Composable

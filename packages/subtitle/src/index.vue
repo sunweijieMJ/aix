@@ -18,7 +18,7 @@
       ]"
       :style="subtitleStyle"
     >
-      <!-- 自定义 slot - 传递字幕文本和分段信息 -->
+      <!-- @slot 自定义字幕渲染，作用域含 text / fullText / currentSegment / totalSegments / data；默认渲染当前分段文本 -->
       <slot
         :text="currentSegmentText"
         :full-text="displayText"
@@ -40,7 +40,7 @@
  * 支持加载 VTT/SRT/JSON/SBV/ASS 格式字幕文件，根据时间显示对应字幕
  */
 import { computed, ref, watch, toRef } from 'vue';
-import type { SubtitleProps, SubtitleEmits, SubtitleExpose } from './types';
+import type { SubtitleProps, SubtitleEmits, SubtitleExpose, SubtitleSlotScope } from './types';
 import { useSegment } from './useSegment';
 import { useSubtitle } from './useSubtitle';
 import { useTextMeasure } from './useTextMeasure';
@@ -61,6 +61,11 @@ const props = withDefaults(defineProps<SubtitleProps>(), {
 });
 
 const emit = defineEmits<SubtitleEmits>();
+
+defineSlots<{
+  /** 自定义字幕渲染，默认渲染当前分段文本 */
+  default?: (props: SubtitleSlotScope) => unknown;
+}>();
 
 // 转换 currentTime 为 ref
 const currentTimeRef = toRef(() => props.currentTime ?? 0);

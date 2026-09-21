@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
+import type { CoverageMetric } from '../utils/run-report';
 import type { ExtractedString } from '../utils/types';
+import { classifyJsonFile, ensureDirectoryExists, writeJsonFile } from '../utils/json-io';
 
 /**
  * 单条「拟替换记录」。一条 Hit 对应 ExtractedString 一一映射，只是把对外
@@ -27,7 +28,7 @@ export interface GeneratePlanHit {
   isTemplateString?: boolean;
   templateVariables?: string[];
   attributeName?: string;
-  /** 命中的 modules.rules 名（未启用 modules 时为空） */
+  /** 命中的 buckets.rules 桶名（未启用 buckets 时为空） */
   module?: string;
 }
 
@@ -48,6 +49,33 @@ export interface GeneratePlanFileEntry {
   transformedCodeRef: string;
   /** 转换前源文件内容的 SHA-256 指纹，apply 时校验源文件未被外部改过 */
   sourceHash: string;
+  /**
+   * `sources/` 下那份转换后源码的 SHA-256 指纹，read() 时校验 plan 目录未被外部改过。
+   *
+   * sourceHash 只盖源文件，盖不住 plan 自身：`sources/` 里的副本被改（restore 误扫、
+   * 手工编辑、同步工具截断）后 apply 会把改坏的内容当「审过的代码」写回源文件，
+   * 同时照常写 localeDelta，落成「源码无 t()、locale 却有 key」的不一致态且报成功。
+   *
+   * 可选：缺该字段的旧 plan 只告警不拒绝（schemaVersion 未变，旧 plan 仍可 apply）。
+   */
+  transformedHash?: string;
+}
+
+/**
+ * dry-run 结算出的覆盖率快照。
+ *
+ * Why 要进 plan：CI 卡点（`--coverage-threshold` / ci.coverageThreshold）跑在 apply 这一步，
+ * 而 apply 不重跑提取、算不出覆盖率。dry-run 把账本随 plan 带过去，apply 回放同款面板并
+ * 据此判定阈值，"dry-run 审、apply 落"的两段式工作流才不会把门禁漏掉。
+ *
+ * 字段可选：缺该字段的旧版 plan 仍可正常 apply，只是跳过面板与阈值判定。
+ */
+export interface GeneratePlanCoverage {
+  metric: CoverageMetric;
+  /** 本轮新分配（未复用历史）的 key 数，对应面板「其中新增 key」一行 */
+  newKeys?: number;
+  /** 进入 coverage.skipped 口径的待人工项，按 category 计数 */
+  manualByCategory: Record<string, number>;
 }
 
 /**
@@ -90,9 +118,25 @@ export interface GeneratePlan {
     /** 本轮 plan 中拟新增到 locale 的 key 数（去重后） */
     newKeys: number;
   };
+  /**
+   * dry-run 当时的覆盖率账本，apply 回放面板与 CI 阈值卡点共用（见 GeneratePlanCoverage）。
+   * 可选：兼容缺该字段的旧 plan（缺失即跳过面板与阈值判定，不拒绝 apply）。
+   */
+  coverage?: GeneratePlanCoverage;
   entries: GeneratePlanFileEntry[];
   /** key → source message，apply 阶段直接合并到 source locale 文件 */
   localeDelta: Record<string, string>;
+  /**
+   * localeDelta 中**已存在于 source locale** 的 key → 写 plan 那一刻它们的当前值。
+   *
+   * 源文件指纹（entries[].sourceHash）只覆盖源码、不覆盖 locale：dry-run 与 apply 之间若有人
+   * 改了这些 key 的值（改文案 / merge 了别的分支），apply 会用 plan 里的旧值静默覆盖回去。
+   * apply 时逐条比对当前值，漂移则列出并拒绝（交互下可确认后继续）。
+   *
+   * 只记「将被覆盖的既有 key」：新 key 无既有值可漂移，记了只是白白撑大 plan 体积。
+   * 可选：兼容缺该字段的旧 plan（缺失即跳过比对）。
+   */
+  localeBaseline?: Record<string, string>;
   /** key → bucket 名，仅启用 buckets 时非空；apply 阶段透传给 LanguageFileManager */
   keyBucketMap?: Record<string, string>;
   /**
@@ -147,13 +191,13 @@ export class GeneratePlanWriter {
    * @param transformedSources file 相对路径 → transform 后代码内容
    */
   static write(baseDir: string, plan: GeneratePlan, transformedSources: Map<string, string>): void {
-    FileUtils.ensureDirectoryExists(baseDir);
-    FileUtils.writeJsonFile(path.join(baseDir, this.OWNERSHIP_FILENAME), {
+    ensureDirectoryExists(baseDir);
+    writeJsonFile(path.join(baseDir, this.OWNERSHIP_FILENAME), {
       schemaVersion: 1,
       planDir: path.resolve(baseDir),
     });
     const sourcesDir = path.join(baseDir, this.SOURCES_DIRNAME);
-    FileUtils.ensureDirectoryExists(sourcesDir);
+    ensureDirectoryExists(sourcesDir);
 
     const sourcesRoot = path.resolve(sourcesDir);
     for (const [relPath, code] of transformedSources) {
@@ -164,16 +208,16 @@ export class GeneratePlanWriter {
       if (resolved !== sourcesRoot && !resolved.startsWith(sourcesRoot + path.sep)) {
         throw new Error(`Plan 源码相对路径越界，拒绝写出：${relPath}`);
       }
-      FileUtils.ensureDirectoryExists(path.dirname(target));
+      ensureDirectoryExists(path.dirname(target));
       fs.writeFileSync(target, code, 'utf-8');
     }
 
-    FileUtils.writeJsonFile(path.join(baseDir, this.PLAN_FILENAME), plan);
+    writeJsonFile(path.join(baseDir, this.PLAN_FILENAME), plan);
 
     // 更新 latest 指针。失败不向上抛错——指针只是便捷功能，主流程不依赖它。
     try {
       const plansRoot = path.dirname(baseDir);
-      FileUtils.writeJsonFile(path.join(plansRoot, this.LAST_POINTER_FILENAME), {
+      writeJsonFile(path.join(plansRoot, this.LAST_POINTER_FILENAME), {
         path: baseDir,
         writtenAt: new Date().toISOString(),
       });
@@ -198,7 +242,24 @@ export class GeneratePlanWriter {
     if (!fs.existsSync(planPath)) {
       throw new Error(`Plan 文件不存在：${planPath}`);
     }
-    const plan = JSON.parse(fs.readFileSync(planPath, 'utf-8')) as GeneratePlan;
+    // 走 classifyJsonFile 而非裸 JSON.parse：后者对空文件 / 语法错 / 顶层是数组三种情况
+    // 抛的都是不带文件路径的 SyntaxError（或压根不抛，留到 plan.entries 处才崩），
+    // 用户拿到的报错定位不到是哪份 plan 坏了。
+    // silent：下方 throw 的信息已带 planPath + classified.reason（含解析器给出的出错位置），
+    // 解析期再打一条无上下文的裸错误只是重复。
+    const classified = classifyJsonFile<GeneratePlan>(planPath, { silent: true });
+    if (classified.status !== 'ok') {
+      const detail =
+        classified.status === 'empty'
+          ? '文件为空'
+          : classified.status === 'corrupt'
+            ? (classified.reason ?? '内容损坏')
+            : '文件不存在';
+      throw new Error(
+        `Plan 文件无法解析：${planPath}（${detail}）。请重新运行 generate --dry-run 生成新版 plan。`,
+      );
+    }
+    const plan = classified.data;
     if (plan.schemaVersion !== 2) {
       throw new Error(
         `Plan schemaVersion=${plan.schemaVersion} 不受支持。请重新运行 generate --dry-run 生成新版 plan。`,
@@ -213,6 +274,9 @@ export class GeneratePlanWriter {
     const baseDir = path.dirname(planPath);
     const sourcesRoot = path.resolve(baseDir, this.SOURCES_DIRNAME);
     const transformedSources = new Map<string, string>();
+    /** sources/ 内容与 plan 记录不符的条目；缺指纹的旧 plan 条目单独记，只告警。 */
+    const tampered: string[] = [];
+    const missingHash: string[] = [];
     for (const entry of plan.entries) {
       const refPath = this.resolveRelativeWithin(
         baseDir,
@@ -229,7 +293,26 @@ export class GeneratePlanWriter {
           `Plan 引用的转换后源码缺失：${entry.transformedCodeRef}（绝对路径 ${refPath}）。Plan 目录可能不完整。`,
         );
       }
-      transformedSources.set(entry.file, fs.readFileSync(refPath, 'utf-8'));
+      const code = fs.readFileSync(refPath, 'utf-8');
+      if (entry.transformedHash === undefined) {
+        missingHash.push(entry.file);
+      } else if (this.sha256(code) !== entry.transformedHash) {
+        tampered.push(entry.transformedCodeRef);
+      }
+      transformedSources.set(entry.file, code);
+    }
+    if (tampered.length > 0) {
+      throw new Error(
+        `Plan 目录下的转换后源码与写 plan 时不一致（共 ${tampered.length} 个）：\n` +
+          `   ${tampered.slice(0, 10).join('\n   ')}${tampered.length > 10 ? '\n   …' : ''}\n` +
+          '👉 apply 会把这些内容当「已审过的代码」写回源文件，已拒绝。请重新运行 generate --dry-run 生成新版 plan。',
+      );
+    }
+    if (missingHash.length > 0) {
+      LoggerUtils.warn(
+        `Plan 中 ${missingHash.length} 个条目缺少 transformedHash（旧版 plan），` +
+          '跳过 sources/ 完整性校验。建议重新运行 generate --dry-run 生成新版 plan。',
+      );
     }
 
     return { plan, transformedSources };
@@ -324,10 +407,27 @@ export class GeneratePlanWriter {
   }
 
   /**
+   * 容错读取 plan 的**簿记**小文件（`.last.json` 指针、`.i18n-tools-plan.json` 所有权标记）：
+   * 读不到 / 解析不了一律返回 null，由调用方走各自的回退（指针损坏 → 扫目录、标记无效 → 拒绝清理）。
+   *
+   * 刻意不走 json-io 的 classifyJsonFile / safeLoadJsonFile：那两条路径在解析失败时会打
+   * LoggerUtils.error，而这里的失败是**预期内**的（用户手删指针、上次写盘被中断），
+   * 报错只会误导。真正需要 fail-fast 并带路径报错的 plan.json 主体走 read() 里的
+   * classifyJsonFile，两种口径不要混用。
+   */
+  private static readBookkeepingJson<T>(filePath: string): T | null {
+    try {
+      return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * 解析 `latest` 关键字到具体 plan.json 路径。
    *
    * 优先读 `<plansRoot>/.last.json`；若文件缺失（如指针写失败 / 用户手动删过），
-   * 退回到按目录名时间戳排序找最新，保证 latest 关键字在合理状况下都能命中。
+   * 退回到按目录 mtime 倒序找最新，保证 latest 关键字在合理状况下都能命中。
    *
    * 返回 null 表示完全没有可 apply 的 plan，由 caller 决定如何提示用户。
    */
@@ -335,14 +435,11 @@ export class GeneratePlanWriter {
     // 优先级 1：指针文件
     const pointerPath = path.join(plansRoot, this.LAST_POINTER_FILENAME);
     if (fs.existsSync(pointerPath)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(pointerPath, 'utf-8')) as { path?: string };
-        if (data.path && fs.existsSync(data.path)) {
-          const planFile = path.join(data.path, this.PLAN_FILENAME);
-          if (fs.existsSync(planFile)) return planFile;
-        }
-      } catch {
-        /* 指针损坏 → 回退到目录扫描 */
+      // 指针损坏（null）→ 回退到目录扫描
+      const data = this.readBookkeepingJson<{ path?: string }>(pointerPath);
+      if (data?.path && fs.existsSync(data.path)) {
+        const planFile = path.join(data.path, this.PLAN_FILENAME);
+        if (fs.existsSync(planFile)) return planFile;
       }
     }
 
@@ -380,11 +477,16 @@ export class GeneratePlanWriter {
         LoggerUtils.warn(`⚠️  跳过清理未标记为工具所有的目录：${resolvedPlanDir}`);
         return false;
       }
-      const marker = JSON.parse(fs.readFileSync(markerPath, 'utf-8')) as {
+      const marker = this.readBookkeepingJson<{
         schemaVersion?: number;
         planDir?: string;
-      };
-      if (marker.schemaVersion !== 1 || path.resolve(marker.planDir ?? '') !== resolvedPlanDir) {
+      }>(markerPath);
+      // 标记读不出来（损坏 / 半截写入）与标记内容不符同属「无法确认所有权」，一律拒绝清理
+      if (
+        !marker ||
+        marker.schemaVersion !== 1 ||
+        path.resolve(marker.planDir ?? '') !== resolvedPlanDir
+      ) {
         LoggerUtils.warn(`⚠️  跳过清理所有权标记无效或目录已移动的 Plan：${resolvedPlanDir}`);
         return false;
       }
@@ -392,14 +494,10 @@ export class GeneratePlanWriter {
       const plansRoot = path.dirname(planDir);
       const pointerPath = path.join(plansRoot, this.LAST_POINTER_FILENAME);
       if (fs.existsSync(pointerPath)) {
-        try {
-          const data = JSON.parse(fs.readFileSync(pointerPath, 'utf-8')) as { path?: string };
-          // 仅在指针指向当前被清理的目录时才删；指向其它 plan 时保留
-          if (data.path === planDir) {
-            fs.unlinkSync(pointerPath);
-          }
-        } catch {
-          /* 指针损坏：连同损坏的指针一起删，恢复干净状态 */
+        const data = this.readBookkeepingJson<{ path?: string }>(pointerPath);
+        // 指针损坏（null）：连同损坏的指针一起删，恢复干净状态。
+        // 未损坏时仅在指针指向当前被清理的目录时才删；指向其它 plan 时保留。
+        if (data === null || data.path === planDir) {
           try {
             fs.unlinkSync(pointerPath);
           } catch {

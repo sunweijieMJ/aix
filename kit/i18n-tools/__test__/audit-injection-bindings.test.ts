@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import ts from 'typescript';
 import { ReactComponentInjector } from '../src/strategies/react/ReactComponentInjector';
 import { ReactImportManager } from '../src/strategies/react/ReactImportManager';
@@ -6,10 +6,12 @@ import {
   createReactI18nLibrary,
   type ReactI18nLibraryType,
 } from '../src/strategies/react/libraries';
+import { VueAdapter } from '../src/adapters/VueAdapter';
 import { VueImportManager } from '../src/strategies/vue/VueImportManager';
 import { VueComponentInjector } from '../src/strategies/vue/VueComponentInjector';
 import { VueI18nLibraryImpl } from '../src/strategies/vue/libraries/vue-i18n';
 import { VueI18nextLibrary } from '../src/strategies/vue/libraries/vue-i18next';
+import { LoggerUtils } from '../src/utils/logger';
 import type { ExtractedString } from '../src/utils/types';
 
 /**
@@ -224,5 +226,508 @@ const label = t('existing.key');
     const out = build().inject(code);
     expect((out.match(/import\s*\{\s*t\s*\}\s*from/g) ?? []).length).toBe(1);
     expect(out).not.toContain('useI18n');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug 5：文件内同名组件按 name+type 查表 → 已有 hook 的那个也被再注入（TS2451）
+// ---------------------------------------------------------------------------
+/**
+ * Phase 1 收集组件、Phase 3 按 `name + type` 去表里找条目：文件内两个同名组件
+ * （不同作用域的 `function Panel()`）会全部命中同一条目，已有 `const { t } = useTranslation()`
+ * 的那个也被再注入一次 → 同块双声明。改为 Phase 3 就地重算注入判定：Phase 2 只在文件顶部
+ * 增删 import、不改变任何组件内部绑定，重算与 Phase 1 逐个组件一一对应，且免疫偏移平移。
+ */
+describe('同名组件不串号注入（审计 Bug5）', () => {
+  it('两个同名 Panel：只给缺绑定的那个注入 hook', () => {
+    const code = `import React from 'react';
+export function Outer() {
+  function Panel() {
+    const { t } = useTranslation();
+    return <div>{t('a')}</div>;
+  }
+  return <Panel />;
+}
+export function Other() {
+  function Panel() {
+    return <div>{t('b')}</div>;
+  }
+  return <Panel />;
+}
+`;
+    const out = buildReactInjector().inject(code);
+    // 全文件恰好两处 `const { t } = useTranslation()`：原有的一处 + 新注入的一处
+    expect(
+      (out.match(/const \{ t \} = useTranslation\(\)/g) ?? []).length,
+      `注入输出：\n${out}`,
+    ).toBe(2);
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('两个同名类组件：已被 HOC 包裹的只补解构，未包裹的才加 wrapper', () => {
+    const code = `import React from 'react';
+export function A() {
+  class Card extends React.Component<WithTranslation> {
+    render() { const { t } = this.props; return <div>{t('a')}</div>; }
+  }
+  return <Card />;
+}
+export class Card extends React.Component {
+  render() { return <div>{t('b')}</div>; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    // 未包裹的那个才生成 HOC wrapper，且只生成一次
+    expect((out.match(/withTranslation\(\)\(/g) ?? []).length, `注入输出：\n${out}`).toBe(1);
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('回归：单个组件的常规注入不受影响', () => {
+    const code = `import React from 'react';
+export function Panel() {
+  return <div>{t('a')}</div>;
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect((out.match(/const \{ t \} = useTranslation\(\)/g) ?? []).length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug 6：static 成员被注入 const { t } = this.props → 运行时 TypeError
+// ---------------------------------------------------------------------------
+/**
+ * static 成员的 this 是类构造函数本身、没有 props。注入端遍历成员时不看 static 修饰符，
+ * 会把 `const { t } = this.props` 塞进 static 方法/箭头属性体。提取端已整体跳过 static
+ * 成员，这里是防御纵深：兜住用户手写、非本工具产出的 static 里的 t()。
+ */
+describe('static 类成员不注入 this.props 解构（审计 Bug6）', () => {
+  it('static 方法内的 t()：不注入解构，实例方法照常注入', () => {
+    const code = `class Foo extends React.Component {
+  static build() { return t('x'); }
+  render() { return <div>{t('y')}</div>; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect((out.match(/const \{ t \} = this\.props;/g) ?? []).length, `注入输出：\n${out}`).toBe(1);
+    // 落点必须在 render 而非 static build
+    expect(out.indexOf('const { t } = this.props;')).toBeGreaterThan(out.indexOf('static build'));
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('static 箭头属性内的 t()：不被包成块体注入解构', () => {
+    const code = `class Foo extends React.Component {
+  static build = () => t('x');
+  render() { return <div />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out, `注入输出：\n${out}`).not.toContain('const { t } = this.props;');
+    expect(out).toContain('static build = () => t(');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `<script setup>` 判定走 @vue/compiler-sfc 的 descriptor，与属性书写顺序无关
+// ---------------------------------------------------------------------------
+describe('Vue script setup 判定与属性顺序无关', () => {
+  const injector = new VueAdapter('@/i18n', 'vue-i18n', {}).getComponentInjector();
+  const sfc = (openTag: string): string =>
+    `<template>\n  <div>{{ msg }}</div>\n</template>\n\n${openTag}\nconst msg = t('a.b');\n</script>\n`;
+
+  it('lang 在 setup 之前时同样注入 import { t }', () => {
+    expect(injector.inject(sfc('<script lang="ts" setup>'))).toContain('import { t }');
+  });
+
+  it('标准顺序（setup 在前）行为不变', () => {
+    expect(injector.inject(sfc('<script setup lang="ts">'))).toContain('import { t }');
+  });
+
+  it('非 setup 的普通 <script> 不被本路径改写', () => {
+    const code = sfc('<script lang="ts">');
+    expect(injector.inject(code)).toBe(code);
+  });
+
+  it('setup 属性出现在属性值里（src="setup.js"）不误判为 script setup', () => {
+    // 该 SFC 无 scriptSetup 块，descriptor 判定为 false；正则兜底也要求 setup 前有空白
+    const code =
+      '<template>\n  <div>{{ msg }}</div>\n</template>\n\n<script src="setup.js"></script>\n';
+    expect(injector.inject(code)).toBe(code);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 注入模块 import 前先清理占位 `declare const t` / `void t;`，避免与 import 重名
+// ---------------------------------------------------------------------------
+describe('Vue 注入：applySetupModuleImport 先清理占位 declare const t', () => {
+  const T_IMPORT = '@/plugins/locale';
+  const lib = new VueI18nLibraryImpl();
+
+  const inject = (src: string): string => {
+    const importManager = new VueImportManager(T_IMPORT, lib);
+    return new VueComponentInjector(lib, importManager).inject(src, 'C.vue');
+  };
+
+  it('中文仅在 template + 占位 declare const t：产物不同时含 import 与 declare', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).not.toMatch(/declare\s+const\s+t\s*:/);
+    // 业务代码本身不受影响
+    expect(out).toContain("const label = t('existing.key')");
+  });
+
+  it('占位 `void t;` 同样被清理', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `void t;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).not.toMatch(/^\s*void\s+t\s*;/m);
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+  });
+
+  it('反向：无占位 declare 的正常注入路径产物不变（只多一行 import）', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).toContain("const label = t('existing.key')");
+    expect(out.replace(`import { t } from '${T_IMPORT}';\n`, '')).toBe(src);
+  });
+
+  it('反向：<pre> 里逐字展示的同形示例代码不被误删（strip 只作用于 script 块）', () => {
+    const src =
+      `<template>\n` +
+      `  <pre>\n` +
+      `declare const t: (k: string) => string;\n` +
+      `void t;\n` +
+      `  </pre>\n` +
+      `</template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    // template 里的示例文本必须原样保留
+    const templatePart = out.slice(0, out.indexOf('<script'));
+    expect(templatePart).toContain('declare const t: (k: string) => string;');
+    expect(templatePart).toContain('void t;');
+    // script 块内的占位声明被清掉，import 注入成功
+    const scriptPart = out.slice(out.indexOf('<script'));
+    expect(scriptPart).not.toMatch(/declare\s+const\s+t\s*:/);
+    expect(scriptPart).toContain(`import { t } from '${T_IMPORT}'`);
+  });
+
+  it('反向：重复注入幂等（第二次调用产物与第一次完全一致）', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const once = inject(src);
+    expect(inject(once)).toBe(once);
+  });
+
+  it('反向：`declare const $t` 不被误删（工具不注入 $t，无冲突）', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const $t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).toContain('declare const $t:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 本地已有任意形态的 t 绑定（普通赋值 / 解构别名）时不再注入模块 import { t }
+// ---------------------------------------------------------------------------
+describe('Vue 注入：本地 t 声明存在时不重复注入 import { t }', () => {
+  const T_IMPORT = '@/plugins/locale';
+  const lib = new VueI18nLibraryImpl();
+  const manager = new VueImportManager(T_IMPORT, lib);
+  const injector = new VueComponentInjector(lib, manager);
+
+  /** handleGlobalImports 只看 context，其余字段取最小合法值。 */
+  const scriptStrings = (): ExtractedString[] => [
+    {
+      original: '你好',
+      semanticId: 'k0',
+      filePath: '/proj/C.vue',
+      line: 1,
+      column: 1,
+      context: 'script',
+      componentType: 'setup',
+    },
+  ];
+
+  const setupSfc = (body: string): string =>
+    `<template>\n  <div>{{ msg }}</div>\n</template>\n\n<script setup lang="ts">\n${body}\n</script>\n`;
+
+  it('handleGlobalImports：`const t = useI18n().t` 已提供本地 t，不注入 import', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst t = useI18n().t;\nconst msg = t('k0');`,
+    );
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+    expect(out).toContain('const t = useI18n().t;');
+  });
+
+  it('VueComponentInjector.inject：同形态下同样不注入（两条注入路径共用同一汇点）', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst t = useI18n().t;\nconst msg = t('k0');`,
+    );
+    expect(injector.inject(code, '/proj/C.vue')).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  it('解构别名 `const { total: t } = stats` 也是本地 t 绑定，同样跳过注入', () => {
+    const code = setupSfc(`const { total: t } = stats;\nconst msg = t('k0');`);
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  it('非 setup 单 script 块的 `let t;` 同样拦住注入', () => {
+    const code = `<script lang="ts">\nlet t;\nexport default { created() { t('k0'); } };\n</script>\n`;
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  // ---------- 反向：不得误伤名字相近的声明与真正需要注入的场景 ----------
+
+  it('反向：`const tt = …` 不是本地 t，仍照常注入', () => {
+    const code = setupSfc(`const tt = other();\nconst msg = t('k0');`);
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：`const t2 = …` 不是本地 t，仍照常注入', () => {
+    const code = setupSfc(`const t2 = other();\nconst msg = t('k0');`);
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：`const { t: localT } = useI18n()` 本地无 t，仍照常注入', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst { t: localT } = useI18n();\nconst msg = t('k0');`,
+    );
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：无任何本地 t 声明时照常注入', () => {
+    const code = setupSfc(`const msg = t('k0');`);
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：工具自注入的 `const { t } = useI18n()` 仍被清理并迁移到模块 import', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\nconst msg = t('k0');`,
+    );
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).not.toContain('const { t } = useI18n()');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 外层作用域（含模块顶层）的同名 t 绑定同样是冲突：注入的 hook 会遮蔽它
+// ---------------------------------------------------------------------------
+describe('React 注入：模块级同名 t 绑定不得被 hook 遮蔽', () => {
+  const cases: Array<{ name: string; prelude: string }> = [
+    { name: '模块级具名导入', prelude: `import { t } from '@/utils/tiny-template';` },
+    { name: '模块级变量声明', prelude: `const t = (s: string) => s.trim();` },
+    { name: '模块级函数声明', prelude: `function t(s: string) { return s.trim(); }` },
+    { name: '模块级默认导入', prelude: `import t from '@/utils/tiny-template';` },
+  ];
+
+  for (const c of cases) {
+    it(`${c.name}：跳过注入并告警，不产出遮蔽用户 t 的 useTranslation`, () => {
+      const code = `${c.prelude}
+export const Panel = ({ raw }: { raw: string }) => {
+  return <div title={t('k0')}>{t(raw)}</div>;
+};`;
+      const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+      const out = buildReactInjector().inject(code);
+      expect(out).not.toContain('useTranslation');
+      expect(
+        warn.mock.calls.some((call) => String(call[0]).includes('同名的非 i18n 本地绑定')),
+      ).toBe(true);
+      warn.mockRestore();
+    });
+  }
+
+  it('反向：工具自身的 tImport 全局 t 导入不算冲突（增量重跑仍照常注入 hook）', () => {
+    const code = `import { t } from '@/i18n';
+export const Panel = () => {
+  return <div title={t('k0')} />;
+};`;
+    const out = buildReactInjector().inject(code);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+
+  it('反向：react-intl 模块级 `const intl = getIntl()` 是 i18n 来源，不算冲突', () => {
+    const code = `import { getIntl } from '@/i18n';
+const intl = getIntl();
+export const Panel = () => {
+  return <div title={intl.formatMessage({ id: 'k0' })} />;
+};`;
+    const out = buildReactInjector('react-intl').inject(code);
+    expect(out).toContain('const intl = useIntl();');
+  });
+
+  it('反向：嵌套块内的同名 t 只是无害内层遮蔽，照常注入', () => {
+    const code = `export const Panel = ({ raw }: { raw: string }) => {
+  if (raw) {
+    const t = raw.length;
+    console.log(t);
+  }
+  return <div title={t('k0')} />;
+};`;
+    const out = buildReactInjector().inject(code);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// react-gen 审计 R3/R4/R5/R7/R8：注入前的作用域 / 扩展名 / 同名注入名守卫
+// ---------------------------------------------------------------------------
+describe('React 注入端作用域与形态守卫（审计 R3/R4/R5/R7/R8）', () => {
+  it('R3: 方法自身已把 t 绑到别处 → 不再注入 this.props 解构（否则块级重复声明）', () => {
+    const code = `class Foo extends React.Component {
+  componentDidMount() {
+    const t = setTimeout(() => {}, 1);
+    this.log(t('k.saved'));
+  }
+  render() { return <div>{t('k.title')}</div>; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    // 只有 render 拿到解构；componentDidMount 已有自己的 t
+    expect((out.match(/const \{ t \} = this\.props;/g) ?? []).length, `注入输出：\n${out}`).toBe(1);
+    expect(out.indexOf('const { t } = this.props;')).toBeGreaterThan(out.indexOf('render()'));
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('R3: 箭头类成员形参名恰为 t → 不注入解构', () => {
+    const code = `class Foo extends React.Component {
+  onPick = (t: Tab) => { this.log(t('k.picked')); };
+  render() { return <div />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out, `注入输出：\n${out}`).not.toContain('const { t } = this.props;');
+  });
+
+  it('R4: .jsx 文件不注入类型实参与 import type，HOC 包裹照常', () => {
+    const code = `import React from 'react';
+export default class Foo extends React.Component {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code, 'C.jsx');
+    expect(out).not.toContain('import type');
+    expect(out).not.toContain('React.Component<');
+    expect(out).toContain('withTranslation()(FooWithOutIntl)');
+  });
+
+  it('R4 反向：.tsx 仍加宽类型并以 import type 注入 props 类型', () => {
+    const code = `import React from 'react';
+export default class Foo extends React.Component {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code, 'C.tsx');
+    expect(out).toContain('React.Component<WithTranslation>');
+    expect(out).toContain(`import type { WithTranslation } from 'react-i18next';`);
+  });
+
+  it('R5: 模块顶层已有非 i18n 来源的 useTranslation → 跳过注入并告警', () => {
+    const code = `import { useTranslation } from '@/hooks/useTranslation';
+export function Panel() {
+  return <div title={t('k0')} />;
+}
+`;
+    const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const out = buildReactInjector().inject(code);
+    expect((out.match(/import \{ useTranslation \}/g) ?? []).length).toBe(1);
+    expect(out).not.toContain(`from 'react-i18next'`);
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('待注入名同名'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('R5: 类组件的 HOC 名被占用 → 跳过注入', () => {
+    const code = `import { withTranslation } from '@/hoc/withTranslation';
+class Foo extends React.Component {
+  render() { return <div>{t('k0')}</div>; }
+}
+`;
+    const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const out = buildReactInjector().inject(code);
+    expect(out).not.toContain('FooWithOutIntl');
+    expect(out).not.toContain(`from 'react-i18next'`);
+    warn.mockRestore();
+  });
+
+  it('R7: props 类型名含 WithTranslation 子串 → 仍视为未包裹，照常注入 HOC 与类型加宽', () => {
+    const code = `class Panel extends React.Component<PanelWithTranslationToggleProps> {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out).toContain('PanelWithTranslationToggleProps & WithTranslation');
+    expect(out).toContain('withTranslation()(PanelWithOutIntl)');
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('R7 反向：交叉类型成员里的 WithTranslation 判为已包裹，不二次加宽', () => {
+    const code = `class Panel extends React.Component<Props & WithTranslation> {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out).not.toContain('WithTranslation & WithTranslation');
+    expect(out).not.toContain('withTranslation()(');
+    expect(out).toContain('const { t } = this.props;');
+  });
+
+  it('R8: 函数体与类方法体的字符串指令仍是首个语句', () => {
+    const fnCode = `export function App() {
+  'use no memo';
+  return <div title={t('k0')} />;
+}
+`;
+    const fnOut = buildReactInjector().inject(fnCode);
+    expect(fnOut.indexOf(`'use no memo'`)).toBeLessThan(fnOut.indexOf('useTranslation()'));
+
+    const classCode = `class Foo extends React.Component {
+  render() {
+    'use no memo';
+    return <div title={t('k0')} />;
+  }
+}
+`;
+    const classOut = buildReactInjector().inject(classCode);
+    expect(classOut.indexOf(`'use no memo'`)).toBeLessThan(
+      classOut.indexOf('const { t } = this.props;'),
+    );
   });
 });

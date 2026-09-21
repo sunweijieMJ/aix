@@ -2,10 +2,10 @@ import type { ResolvedConfig } from '../config';
 import { FILES } from '../utils/constants';
 import { FileUtils } from '../utils/file-utils';
 import { Glossary, type GlossaryMap } from '../utils/glossary';
-import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
+import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 /**
  * Pick 处理器
@@ -49,25 +49,20 @@ export class PickProcessor extends FileProcessor {
     // key 在 analyzeTranslationStatus 里读成 undefined、判为未翻译 → 同样无条件覆写
     // untranslated.json，销毁尚未 merge 的在途译文并伪报成功。故 source 与所有 target 一并
     // 校验（探测口径统一收口于 LanguageFileManager.findCorruptLocale）。
-    LanguageFileManager.assertLocalesNotCorrupt(
-      this.config,
-      this.isCustom,
-      [sourceLocale, ...targets],
-      {
-        checkLegacy: true,
-        buildMessage: (locale, file) =>
-          `locale「${locale}」解析失败：${file}，已中止 pick 以防销毁 untranslated.json 在途译文 / 伪报成功。请先修复 JSON 格式。`,
-      },
-    );
+    this.langFiles.assertLocalesNotCorrupt([sourceLocale, ...targets], {
+      checkLegacy: true,
+      buildMessage: (locale, file) =>
+        `locale「${locale}」解析失败：${file}，已中止 pick 以防销毁 untranslated.json 在途译文 / 伪报成功。请先修复 JSON 格式。`,
+    });
 
-    const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
+    const messages = this.langFiles.getMessages();
     const sourceMessages = (messages[sourceLocale] || {}) as Record<string, string>;
 
     // 在途译文保护（读入口）：translate 会把 LLM 译文写回 untranslated.json、由 merge 才合入
     // locale。这里必须严格读取——损坏时中止（与 merge/translate 的 loadJsonDictOrThrow 口径
     // 一致）：损坏文件里同样可能藏着在途译文，降级为 {} 再覆写等于销毁且无提示。
     // 读取结果同时供下方「合法空源」安全闸与 analyzeTranslationStatus 的保留逻辑复用。
-    const existingUntranslated = FileUtils.loadJsonDictOrThrow<Translations>(
+    const existingUntranslated = loadJsonDictOrThrow<Translations>(
       untranslatedPath,
       (p) =>
         `待翻译文件解析失败（JSON 格式错误）: ${p}\n` +
@@ -75,17 +70,21 @@ export class PickProcessor extends FileProcessor {
         '请修复 JSON 格式后重试。',
     );
 
+    // 与上方 untranslated 同为严格读取：silent 降级会把损坏的 translations.json 当 {}，
+    // 下方安全闸随之判「无在途译文」放行、无条件覆写把损坏文件里的译文一并抹掉。
+    // 读取结果同时供安全闸与「非 targets 语种字段透传」复用。
+    const existingTranslated = loadJsonDictOrThrow<Translations>(
+      translatedPath,
+      (p) =>
+        `已翻译文件解析失败（JSON 格式错误）: ${p}\n` +
+        '👉 该文件可能含尚未合入 locale 的译文；已中止 pick 以防覆写销毁。请修复 JSON 格式后重试。',
+    );
+
     // 安全闸：源 locale 合法但为空（如被误清空 / 重置为 {}）时，下方分析会产出两个空字典并
     // 无条件覆写 untranslated.json / translations.json，销毁尚未 merge 的在途译文且伪报成功。
     // 上面的损坏守卫只拦 JSON 解析失败，挡不住「合法空」这一入口；此处与 PruneProcessor 的
     // usedKeys===0 安全闸对齐：源为空且已存在非空在途文件时中止，宁可报错不静默破坏。
     if (Object.keys(sourceMessages).length === 0) {
-      const existingTranslated = FileUtils.safeLoadJsonFile<Record<string, unknown>>(
-        translatedPath,
-        {
-          silent: true,
-        },
-      );
       if (
         Object.keys(existingUntranslated).length > 0 ||
         Object.keys(existingTranslated).length > 0
@@ -110,6 +109,7 @@ export class PickProcessor extends FileProcessor {
       messages as unknown as Record<string, Record<string, string>>,
       glossary,
       existingUntranslated,
+      existingTranslated,
     );
     this.saveFiles(untranslatedPath, translatedPath, analysisResult);
     this.displayResults(analysisResult);
@@ -130,6 +130,7 @@ export class PickProcessor extends FileProcessor {
     allMessages: Record<string, Record<string, string>>,
     glossary: GlossaryMap | null,
     inFlight: Translations = {},
+    existingTranslated: Translations = {},
   ): {
     untranslatedEntries: Translations;
     translatedEntries: Translations;
@@ -151,6 +152,8 @@ export class PickProcessor extends FileProcessor {
     const perTargetUntranslated: Record<string, number> = Object.fromEntries(
       targets.map((t) => [t, 0]),
     );
+    /** 条目里既非 source 也不在当前 targets 的语种（原样透传，仅提示一次）。 */
+    const carriedLocales = new Set<string>();
 
     for (const key in sourceMessages) {
       if (!Object.prototype.hasOwnProperty.call(sourceMessages, key)) continue;
@@ -206,7 +209,11 @@ export class PickProcessor extends FileProcessor {
             hasUntranslated = true;
             preservedInFlight++;
           } else {
-            perTargetValue[target] = typeof existing === 'string' ? existing : '';
+            // 一律置空，不回写 existing：走到这里说明 existing 未过 isValidTranslation（纯标点 /
+            // 空白等垃圾值）。原样带进 untranslated.json 会与翻译 prompt 规则 3「目标已有值则
+            // 原样保留」合谋——LLM 把垃圾值当既有译文返回，merge 侧的 isValidTranslation 再拒收，
+            // 该 key 在 warn-only 策略下永远翻不出来而统计全绿。置空后 LLM 才会真正翻译它。
+            perTargetValue[target] = '';
             hasUntranslated = true;
             perTargetUntranslated[target] = (perTargetUntranslated[target] ?? 0) + 1;
           }
@@ -217,12 +224,33 @@ export class PickProcessor extends FileProcessor {
         [sourceLocale]: sourceValue,
         ...perTargetValue,
       };
+      // 透传旧字典条目里既非 source 也不在 targets 的语种字段：与 merge 的同名逻辑同口径。
+      // pick 每轮都整体重写两个字典，只装 source+targets 等于把 merge 承诺「原样保留」的
+      // 那些译文无声抹掉（它们从未落进 locale，git 之外找不回）。
+      const carriedFrom = inFlight[key] ?? existingTranslated[key];
+      if (carriedFrom && typeof carriedFrom === 'object') {
+        for (const [locale, value] of Object.entries(carriedFrom)) {
+          if (locale === sourceLocale || targets.includes(locale)) continue;
+          if (typeof value !== 'string') continue;
+          entry[locale] = value;
+          carriedLocales.add(locale);
+        }
+      }
 
       if (hasUntranslated) {
         untranslatedEntries[key] = entry;
       } else {
         translatedEntries[key] = entry;
       }
+    }
+
+    if (carriedLocales.size > 0) {
+      const line =
+        `⚠️  字典文件中存在不在 locales.targets 内的语种 [${[...carriedLocales].join(', ')}]：` +
+        `已原样保留在 ${FILES.TRANSLATIONS_JSON} / ${FILES.UNTRANSLATED_JSON} 中，` +
+        `但不会写入语言文件——如需落盘请把它们加进 locales.targets 后重跑。`;
+      LoggerUtils.warn(line);
+      this.report.addWarning(line);
     }
 
     return {
@@ -242,13 +270,17 @@ export class PickProcessor extends FileProcessor {
     translatedPath: string,
     analysisResult: ReturnType<typeof PickProcessor.prototype.analyzeTranslationStatus>,
   ): void {
-    FileUtils.writeTranslationsFile(untranslatedPath, analysisResult.untranslatedEntries);
+    writeTranslationsFile(
+      untranslatedPath,
+      analysisResult.untranslatedEntries,
+      this.config.io.indent,
+    );
     LoggerUtils.info(
       `📄 生成 ${FILES.UNTRANSLATED_JSON} 文件成功 (${this.getDirectoryDescription()})`,
     );
     LoggerUtils.info(`📝 待翻译条目: ${analysisResult.untranslatedCount} 个`);
 
-    FileUtils.writeTranslationsFile(translatedPath, analysisResult.translatedEntries);
+    writeTranslationsFile(translatedPath, analysisResult.translatedEntries, this.config.io.indent);
     LoggerUtils.info(
       `📄 生成 ${FILES.TRANSLATIONS_JSON} 文件成功 (${this.getDirectoryDescription()})`,
     );

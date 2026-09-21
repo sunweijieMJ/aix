@@ -4,7 +4,7 @@ import ts from 'typescript';
  * 语言消息内容接口
  * 可以是字符串或嵌套的消息对象
  */
-export interface ILangMsg {
+interface ILangMsg {
   [key: string]: string | ILangMsg;
 }
 
@@ -48,13 +48,33 @@ export interface ExtractedString {
    *   字符串形式（用于 locale 文件与 ID 生成）。
    */
   templateContext?:
-    | 'text-node'
-    | 'static-attribute'
-    | 'dynamic-attribute'
-    | 'interpolation'
-    | 'mixed-content';
+    'text-node' | 'static-attribute' | 'dynamic-attribute' | 'interpolation' | 'mixed-content';
   /** 属性名称（用于静态属性转动态绑定） */
   attributeName?: string;
+  /**
+   * 待替换源码区间的起点，**相对 template content**（即 `descriptor.template.content`）
+   * 的字符偏移。仅 Vue template 提取路径填充；script 侧走 AST 定位、React 侧不用，均为空。
+   *
+   * 区间语义（各提取路径必须一致，否则转换端替换出半截代码）：
+   *  - text-node / mixed-content：trim 后的文本片段本身；
+   *  - static-attribute：整个 `name="value"`（替换体是 `:name="$t(...)"`，故连属性名一起换）；
+   *  - dynamic-attribute / interpolation：表达式内那个字面量的**完整**源码，**含**引号
+   *    或反引号（替换体 `$t(...)` 不带引号，漏掉定界符会留下孤引号）。
+   *
+   * Why 用绝对偏移而不是 line/column + indexOf：后者在同行有多个相同字面量、字面量
+   * 距节点起始行超过 5 行、或属性值跨行时都会定位错或定位不到——前者静默替换到别处，
+   * 后者直接中止整个文件的转换。
+   */
+  startOffset?: number;
+  /**
+   * 提取时该区间的源码原文。转换端在替换前用它核对
+   * `templateContent.slice(startOffset, startOffset + sourceSlice.length) === sourceSlice`，
+   * 对不上即中止（宁可不改，也不产出坏代码）。
+   *
+   * 同时它的长度即区间终点——与 startOffset 一起表达区间，不另存 endOffset，
+   * 避免"偏移与原文各存一份、改一处忘另一处"的不一致。
+   */
+  sourceSlice?: string;
 }
 
 /**
@@ -70,7 +90,7 @@ export enum ModeName {
   GENERATE = 'generate',
   /** 提取模式 - 从现有国际化文件中提取未翻译的条目，生成待翻译文件 */
   PICK = 'pick',
-  /** 翻译模式 - 调用AI翻译服务，将待翻译文件中的中文翻译为英文 */
+  /** 翻译模式 - 调用AI翻译服务，把待翻译文件中的源语言文案翻成 locales.targets 里的每个目标语种 */
   TRANSLATE = 'translate',
   /** 合并模式 - 将翻译完成的文件合并回主国际化文件 */
   MERGE = 'merge',
@@ -84,7 +104,11 @@ export enum ModeName {
   DOCTOR = 'doctor',
   /** CSV 导出模式 - 把待翻译/已翻译条目导出为 CSV 发人翻译或审核 */
   CSV_EXPORT = 'csv-export',
-  /** CSV 回流模式 - 把翻译/审核好的 CSV 写回 untranslated.json */
+  /**
+   * CSV 回流模式 - 把翻译/审核好的 CSV 写回中间文件。按 key 实际归属双路由：
+   * 命中 untranslated.json 的写回 untranslated.json（待翻流程），否则落到
+   * translations.json（审核已翻流程），两者都不命中才报未知 key。
+   */
   CSV_IMPORT = 'csv-import',
   /** 清理模式 - 删除源码已不再引用的孤儿 key */
   PRUNE = 'prune',

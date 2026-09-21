@@ -22,7 +22,14 @@ npm install @aix/code-editor
 yarn add @aix/code-editor
 ```
 
-## 使用
+组件样式与主题变量需要在应用入口各引入一次：
+
+```ts
+import '@aix/code-editor/style';
+import '@aix/theme/style';
+```
+
+## 快速开始
 
 ### 基础用法
 
@@ -103,13 +110,15 @@ const insertText = () => {
 
 ## API
 
+**CodeEditor** — 代码编辑器：基于 CodeMirror 6，支持多语言高亮、行号、折叠与 lint。
+
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `modelValue` | `string` | - | - | 编辑器内容（v-model 双向绑定） |
-| `language` | `CodeLanguage` | `'javascript'` | - | 编程语言 |
-| `theme` | `CodeEditorTheme` | `'light'` | - | 主题 |
+| `language` | `'javascript' \| 'typescript' \| 'json' \| 'html' \| 'css' \| 'python' \| 'java' \| 'go' \| 'rust' \| 'cpp' \| 'php' \| 'sql' \| 'yaml' \| 'xml' \| 'markdown' \| 'sass' \| 'vue' \| 'angular' \| 'liquid' \| 'wast'` | `'javascript'` | - | 编程语言 |
+| `theme` | `'light' \| 'dark'` | `'light'` | - | 编辑器配色主题，与 @aix/theme 的亮暗模式各自独立，需自行联动 |
 | `readonly` | `boolean` | `false` | - | 是否只读（保留光标，不可编辑） |
 | `disabled` | `boolean` | `false` | - | 是否禁用（完全不可交互） |
 | `placeholder` | `string` | - | - | 占位文本 |
@@ -123,53 +132,72 @@ const insertText = () => {
 | `maxHeight` | `string` | - | - | 编辑器最大高度 |
 | `lint` | `boolean` | `true` | - | 是否启用语法校验 |
 | `lintOptions` | `CodeEditorLintConfig` | - | - | 语法校验配置 |
-| `extensions` | `Array<Extension>` | - | - | 用户自定义 CodeMirror 扩展 |
+| `extensions` | `Extension[]` | - | - | 用户自定义 CodeMirror 扩展 |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `update:modelValue` | `string` | 内容变化（v-model） |
-| `change` | `string` | 内容变化 |
-| `focus` | `EditorView` | 获得焦点 |
-| `blur` | `EditorView` | 失去焦点 |
-| `ready` | `EditorView` | 编辑器就绪 |
+| `update:modelValue` | `value: string` | 内容变化（v-model） |
+| `change` | `value: string` | 内容变化 |
+| `focus` | `view: EditorView` | 获得焦点 |
+| `blur` | `view: EditorView` | 失去焦点 |
+| `ready` | `view: EditorView` | 编辑器就绪 |
+
+### Expose
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `editorView` | `Ref<EditorView \| null>` | EditorView 实例 |
+| `isFocused` | `Ref<boolean>` | 是否获得焦点 |
+| `getValue` | `() => string` | 获取编辑器内容 |
+| `setValue` | `(value: string) => void` | 设置编辑器内容 |
+| `focus` | `() => void` | 聚焦编辑器 |
+| `blur` | `() => void` | 取消聚焦 |
+| `getSelection` | `() => string` | 获取选中文本 |
+| `replaceSelection` | `(text: string) => void` | 替换选中内容 |
+| `insert` | `(text: string) => void` | 在光标位置插入文本 |
+| `undo` | `() => void` | 撤销 |
+| `redo` | `() => void` | 重做 |
+| `getLineCount` | `() => number` | 获取总行数 |
+| `getCursorPosition` | `() => { line: number; col: number }` | 获取光标位置 |
+| `diagnosticCount` | `Ref<number>` | 当前诊断（错误/警告）数量 |
+
 ## 类型定义
 
 ```typescript
+/** Lint 配置选项 */
+export interface CodeEditorLintConfig {
+  /**
+   * 检查延迟（毫秒），文档变更后等待多久执行 lint
+   * @default 750
+   */
+  delay?: number;
+}
+
 /** 支持的编程语言 */
 export type CodeLanguage =
-  | 'javascript' | 'typescript' | 'json' | 'html' | 'css'
-  | 'python' | 'java' | 'go' | 'rust' | 'cpp'
-  | 'php' | 'sql' | 'yaml' | 'xml' | 'markdown'
-  | 'sass' | 'vue' | 'angular' | 'liquid' | 'wast';
+  | 'javascript'
+  | 'typescript'
+  | 'json'
+  | 'html'
+  | 'css'
+  | 'python'
+  | 'java'
+  | 'go'
+  | 'rust'
+  | 'cpp'
+  | 'php'
+  | 'sql'
+  | 'yaml'
+  | 'xml'
+  | 'markdown'
+  | 'sass'
+  | 'vue'
+  | 'angular'
+  | 'liquid'
+  | 'wast';
 
 /** 编辑器主题 */
 export type CodeEditorTheme = 'light' | 'dark';
-
-export interface CodeEditorProps {
-  modelValue?: string;
-  language?: CodeLanguage;
-  theme?: CodeEditorTheme;
-  readonly?: boolean;
-  disabled?: boolean;
-  placeholder?: string;
-  lineNumbers?: boolean;
-  foldGutter?: boolean;
-  highlightActiveLine?: boolean;
-  bracketMatching?: boolean;
-  tabSize?: number;
-  height?: string;
-  minHeight?: string;
-  maxHeight?: string;
-  extensions?: Extension[];
-}
-
-export interface CodeEditorEmits {
-  (e: 'update:modelValue', value: string): void;
-  (e: 'change', value: string): void;
-  (e: 'focus', view: EditorView): void;
-  (e: 'blur', view: EditorView): void;
-  (e: 'ready', view: EditorView): void;
-}
 ```

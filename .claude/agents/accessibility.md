@@ -442,29 +442,72 @@ export function useKeyboardNavigation(
 
 模态框等组件需要焦点陷阱：
 
+> ⚠️ **本仓没有焦点陷阱的现成实现**：`@aix/hooks` 的 12 个 composable 里没有
+> `useFocusTrap`，`@vueuse/integrations` 也不是本仓依赖。需要时按下面的样子手写，
+> 并考虑抽进 `@aix/hooks`（新增依赖要走人工决策）。
+
 ```typescript
-// packages/dialog/src/useFocusTrap.ts
-import { useFocusTrap } from '@vueuse/integrations/useFocusTrap';
+// 手写焦点陷阱：Tab / Shift+Tab 在容器内循环
+import { onScopeDispose, watch, nextTick, type Ref } from 'vue';
 
-export function useDialogFocusTrap(
-  dialogRef: Ref<HTMLElement | undefined>,
-  visible: Ref<boolean>
-) {
-  const { activate, deactivate } = useFocusTrap(dialogRef, {
-    immediate: false,
-    allowOutsideClick: true,
-    escapeDeactivates: false,
-  });
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),' +
+  'textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-  watch(visible, (newVisible) => {
-    if (newVisible) {
-      nextTick(() => activate());
-    } else {
-      deactivate();
+/**
+ * 可见性判定不能用 `offsetParent !== null`：`position: fixed` 的元素按规范
+ * `offsetParent` 就是 null，会把弹层里固定定位的关闭按钮排除掉，
+ * 导致 first/last 取错、Tab 在边界处漏出去。
+ */
+function isVisible(el: HTMLElement): boolean {
+  return typeof el.checkVisibility === 'function'
+    ? el.checkVisibility()
+    : el.getClientRects().length > 0;
+}
+
+export function useFocusTrap(container: Ref<HTMLElement | undefined>, active: Ref<boolean>) {
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key !== 'Tab' || !container.value) return;
+    const nodes = [...container.value.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isVisible);
+    if (nodes.length === 0) return;
+
+    const first = nodes[0]!;
+    const last = nodes[nodes.length - 1]!;
+    const current = document.activeElement;
+
+    // 焦点已经跑到容器外（例如上一个聚焦元素被移除、焦点落回 body）时，
+    // 两个边界分支都不会命中，"陷阱"就失效了——这里必须把它拉回来
+    if (!(current instanceof HTMLElement) || !container.value.contains(current)) {
+      e.preventDefault();
+      first.focus();
+      return;
     }
-  });
 
-  return { activate, deactivate };
+    if (e.shiftKey && current === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && current === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  async function arm() {
+    document.addEventListener('keydown', onKeydown);
+    await nextTick();
+    container.value?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+  }
+
+  function disarm() {
+    document.removeEventListener('keydown', onKeydown);
+  }
+
+  // immediate 必须有：弹层以「已打开」状态挂载时（<Dialog :visible="true" /> 或
+  // defaultOpen），watch 默认不触发，监听器永远装不上，Tab 直接走出弹层
+  watch(active, (on) => (on ? arm() : disarm()), { immediate: true });
+
+  // 组件在弹层打开状态下被直接卸载时，监听器必须跟着摘掉
+  onScopeDispose(disarm);
 }
 ```
 
@@ -763,18 +806,12 @@ describe('Dialog Focus Management', () => {
 # 使用 axe-core 进行自动化检测
 pnpm add -D axe-core @axe-core/playwright
 
-# 在 Storybook 中集成 a11y 插件
-pnpm add -D @storybook/addon-a11y
 ```
 
-```typescript
-// .storybook/main.ts
-export default {
-  addons: [
-    '@storybook/addon-a11y',
-  ],
-};
-```
+> ⚠️ **本仓没有装 `@storybook/addon-a11y`**（`.storybook/main.ts` 只有
+> `addon-links` / `addon-docs` / `addon-vitest`）。在 story 里写 `parameters.a11y`
+> 不会生效。当前无障碍检查走 `/a11y-checker` skill 和本 Agent 的清单；
+> 如果要引入该插件，属于工具链变更，请先和维护者确认再改 `main.ts`。
 
 ---
 

@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+/** 默认控制栏：播放 / 暂停、音量与全屏，点播与直播都能用。 */
 import { formatDuration } from '@aix/hooks';
 import { computed } from 'vue';
 import type { PlayerState, ControlMethods } from '../types';

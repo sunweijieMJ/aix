@@ -51,7 +51,7 @@ export interface CodeEditorProps {
   language?: CodeLanguage;
 
   /**
-   * 主题
+   * 编辑器配色主题，与 @aix/theme 的亮暗模式各自独立，需自行联动
    * @default 'light'
    */
   theme?: CodeEditorTheme;

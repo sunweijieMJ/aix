@@ -25,10 +25,10 @@
     "@hono/zod-openapi": "^1.6.1",
     "@libsql/client": "^0.17.4",
     "adm-zip": "^0.6.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "catalog:",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.3",
-    "zod": "^4.4.3"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",

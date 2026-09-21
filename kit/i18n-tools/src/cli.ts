@@ -22,31 +22,51 @@ import {
 } from './core';
 import {
   FileUtils,
+  getToolVersion,
   InteractiveUtils,
   isModeExplicitlySet,
   loadEnv,
   LoggerUtils,
   MODE_DESCRIPTIONS,
+  MODE_ICONS,
+  MODE_LIST,
   ModeName,
 } from './utils';
 
 type FrameworkInfo = { extensions: string[]; displayName: string; libraryName: string };
 
-/** CLI 版本必须绑定工具包自身，不能让 yargs 从消费项目的 package.json 猜测。 */
-const TOOL_VERSION = (() => {
-  const packagePath = new URL('../package.json', import.meta.url);
-  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf-8')) as { version: string };
-  return pkg.version;
-})();
+/**
+ * 「以指定退出码结束本次运行」的控制信号。
+ *
+ * 校验类辅助函数不直接 process.exit：stdout 是管道时 exit 会截断尚未 flush 的输出，
+ * 用户拿不到刚打印的那条错误。它们抛出本类，由 main 顶层统一打印 message 并置
+ * process.exitCode，让 node 正常收尾（与 loadConfig 失败分支同款处理）。
+ *
+ * code 是语义化的：1 = 一般失败，2 = 覆盖率阈值不达标（CI 可单独识别这一档）。
+ */
+class CliExit extends Error {
+  constructor(
+    readonly code: number,
+    message = '',
+  ) {
+    super(message);
+    this.name = 'CliExit';
+  }
+}
+
+/**
+ * CLI 版本必须绑定工具包自身，不能让 yargs 从消费项目的 package.json 猜测。
+ * 读不到时退化为 'unknown'：--version 显示不出来不该让整个 CLI 起不来。
+ */
+const TOOL_VERSION = getToolVersion() ?? 'unknown';
 
 /**
  * 提取框架展示信息，避免 CLI 层直接耦合具体扩展名/展示名。
  *
- * Why: 此函数原本每次调用都 `createFrameworkAdapter(config)`，在 GENERATE/RESTORE/AUTOMATIC
- *      及顶部状态打印间被反复构造（含全部策略链 importManager/transformer 等）。
- *      改为接受外部预构造的 adapter，由 main 顶部统一构造一次。
+ * adapter 必须由调用方传入（main 顶部统一构造一次）：在此就地 createFrameworkAdapter
+ * 会在 GENERATE/RESTORE/AUTOMATIC 及顶部状态打印间反复构造整条策略链。
  */
-const getFrameworkInfo = (adapter: ReturnType<typeof createFrameworkAdapter>): FrameworkInfo => ({
+const getFrameworkInfo = (adapter: FrameworkAdapter): FrameworkInfo => ({
   extensions: adapter.getSupportedExtensions(),
   displayName: adapter.getDisplayName(),
   libraryName: adapter.getLibraryName(),
@@ -55,11 +75,11 @@ const getFrameworkInfo = (adapter: ReturnType<typeof createFrameworkAdapter>): F
 /**
  * 解析「要处理的文件/目录路径」。统一三种入口的非交互化：
  *  1. 传了 --path：校验后直接使用（无效即 exit(1)，给出明确错误而非进入 prompt）；
- *  2. 未传 --path 且 interactive：回退到 inquirer 询问；
+ *  2. 未传 --path 且 interactive：回退到 @inquirer/prompts 询问；
  *  3. 未传 --path 且非交互（显式 --mode / --ci / 无 TTY）：直接报错退出，
- *     避免在 CI / 管道里调到 inquirer 卡死或 EOF 崩溃。
+ *     避免在 CI / 管道里调到 @inquirer/prompts 卡死或 EOF 崩溃。
  *
- * 这是「非交互 ⇒ 绝不碰 inquirer」规则在 generate / restore / automatic 三条
+ * 这是「非交互 ⇒ 绝不碰 @inquirer/prompts」规则在 generate / restore / automatic 三条
  * 路径上的落点（其余 prompt 早已包在 main 的 `if (interactive)` 内）。
  */
 const resolveTargetPath = async (
@@ -75,8 +95,7 @@ const resolveTargetPath = async (
       frameworkInfo.displayName,
     );
     if (!validation.isValid) {
-      LoggerUtils.error(`❌ --path 无效：${validation.error || '无效路径'}（${pathArg}）`);
-      process.exit(1);
+      throw new CliExit(1, `❌ --path 无效：${validation.error || '无效路径'}（${pathArg}）`);
     }
     return pathArg;
   }
@@ -88,11 +107,11 @@ const resolveTargetPath = async (
     );
   }
   const action = mode === ModeName.RESTORE ? '还原' : '提取国际化文本';
-  LoggerUtils.error(
-    `❌ 非交互模式下（--mode / --ci）需用 --path 指定要${action}的文件或目录路径，` +
+  throw new CliExit(
+    1,
+    `❌ 非交互模式下（--mode / --ci / 无 TTY）需用 --path 指定要${action}的文件或目录路径，` +
       `例如：--path src/views/demo`,
   );
-  process.exit(1);
 };
 
 /**
@@ -137,10 +156,10 @@ const resolveApplyPlanPath = (config: ResolvedConfig, raw: string): string => {
     const plansRoot = GeneratePlanWriter.getDefaultPlansRoot(config.root);
     const found = GeneratePlanWriter.resolveLatest(plansRoot);
     if (!found) {
-      LoggerUtils.error(
+      throw new CliExit(
+        1,
         `❌ 在 ${plansRoot} 下找不到任何 plan。请先运行 \`generate --dry-run\` 生成。`,
       );
-      process.exit(1);
     }
     LoggerUtils.info(`📂 latest 解析为：${found}`);
     return found;
@@ -157,6 +176,9 @@ const resolveApplyPlanPath = (config: ResolvedConfig, raw: string): string => {
 /**
  * 从 plan 文件回放（apply-plan）。绕过 LLM 与 AST，直接按 plan 落盘。
  * 适用于"先 dry-run 看一眼、确认 OK 再正式提交"工作流。
+ *
+ * 返回 processor：回放会把 plan 里的覆盖率快照写回 report，main 据此做阈值卡点
+ * （dry-run + apply 两段式工作流下，CI 门禁只有在 apply 这一步才有落盘可卡）。
  */
 const executeApplyPlan = async (
   config: ResolvedConfig,
@@ -164,47 +186,67 @@ const executeApplyPlan = async (
   isCustom: boolean,
   rawPlanPath: string,
   keepPlan: boolean,
-): Promise<void> => {
+  interactive: boolean,
+): Promise<GenerateProcessor> => {
   const planPath = resolveApplyPlanPath(config, rawPlanPath);
-  const processor = new GenerateProcessor(config, isCustom, false, adapter);
+  // interactive 透传给 locale 漂移守卫：交互下漂移可逐条确认后继续，
+  // 非交互（--mode/--ci 默认）下漂移一律拒绝并提示重跑 dry-run。
+  const processor = new GenerateProcessor(config, isCustom, interactive, adapter);
   await processor.applyFromPlan(planPath, { keepPlan });
+  return processor;
 };
 
 /**
  * 检查覆盖率阈值。覆盖率以「中文片段调用点」为单位计算，规则见
- * GenerateProcessor.recordAndRenderCoverage。阈值未设置或本次未跑 generate
+ * CoverageReporter.recordAndRender。阈值未设置或本次未跑 generate
  * （coverage 未填充）时直接返回。
  *
  * 命中阈值时仅打错并 exit(2)——区别于一般失败的 exit(1)：CI pipeline 可以
  * 据此专门挂"i18n 覆盖率不足"这一档警示，而不是把所有错误都归到一类。
  */
 const enforceCoverageThreshold = (
-  processor: { getCoverage(): { coverageRate: number } | undefined },
+  processor: {
+    getCoverage(): { coverageRate: number } | undefined;
+    isCancelled(): boolean;
+  },
   threshold: number | undefined,
 ): void => {
   if (threshold === undefined) return;
+  // 取消的运行未落盘：判失败会把用户主动放弃误报成 CI 失败，且失败文案（改动已写入）与事实相反。
+  if (processor.isCancelled()) {
+    LoggerUtils.info('ℹ️  本次运行已取消、未落盘，跳过 --coverage-threshold 判定');
+    return;
+  }
   const coverage = processor.getCoverage();
   if (!coverage) return;
   const actualPct = coverage.coverageRate * 100;
   if (actualPct < threshold) {
-    LoggerUtils.error(
-      `❌ 国际化覆盖率 ${actualPct.toFixed(1)}% 低于阈值 ${threshold}%（--coverage-threshold）`,
+    throw new CliExit(
+      2,
+      `❌ 国际化覆盖率 ${actualPct.toFixed(1)}% 低于阈值 ${threshold}%（--coverage-threshold）。` +
+        `本轮改动已写入源码与语言文件（阈值判定在落盘之后，便于 review diff）；不接受请用 git 回滚。`,
     );
-    process.exit(2);
   }
 };
 
 /**
- * 执行restore操作（还原多语言组件）
+ * 执行restore操作（还原多语言组件）。
+ *
+ * 默认写副本到 `<rootDir>/restored/`：还原是逐字面量的文本回填，无法区分「本工具生成的
+ * t() 」与「用户自己手写的 t()」，就地改写会连同用户原有的国际化调用与 import 一起抹掉。
+ * 因此就地改写必须由 `--overwrite` 显式 opt-in；`--dry-run` 则只在内存里跑一遍给出预览。
  */
 const executeRestore = async (
   config: ResolvedConfig,
   adapter: FrameworkAdapter,
   isCustom: boolean,
   targetPath: string,
+  opts: { overwrite: boolean; dryRun: boolean },
 ): Promise<void> => {
   const processor = new RestoreProcessor(config, isCustom, adapter);
-  await processor.execute([targetPath], path.dirname(targetPath), true);
+  // outputDir 传 undefined：由 RestoreProcessor 回退到 `<rootDir>/restored/`，
+  // 与它的「输出目录内文件自动排除」防套娃逻辑同源。
+  await processor.execute([targetPath], undefined, opts.overwrite, { dryRun: opts.dryRun });
 };
 
 /**
@@ -262,7 +304,7 @@ const executePrune = async (
   config: ResolvedConfig,
   adapter: FrameworkAdapter,
   isCustom: boolean,
-  opts: { dryRun: boolean; ci: boolean },
+  opts: { dryRun: boolean; ci: boolean; interactive: boolean; includeStaleTarget: boolean },
 ): Promise<void> => {
   const processor = new PruneProcessor(config, isCustom, adapter, opts);
   await processor.execute();
@@ -291,7 +333,7 @@ const executeCsvExport = async (
 const executeCsvImport = async (
   config: ResolvedConfig,
   isCustom: boolean,
-  opts: { input: string; langs?: string[]; dryRun: boolean; ci: boolean },
+  opts: { input: string; langs?: string[]; dryRun: boolean; ci: boolean; interactive: boolean },
 ): Promise<void> => {
   const processor = new CsvImportProcessor(config, isCustom, opts);
   await processor.execute();
@@ -309,14 +351,7 @@ const main = async (): Promise<void> => {
     .usage(
       `🌐 国际化工具集 - 自动化多语言处理
 
-🚀 ${ModeName.AUTOMATIC} - ${MODE_DESCRIPTIONS[ModeName.AUTOMATIC]}
-📝 ${ModeName.GENERATE} - ${MODE_DESCRIPTIONS[ModeName.GENERATE]}
-📤 ${ModeName.PICK} - ${MODE_DESCRIPTIONS[ModeName.PICK]}
-🤖 ${ModeName.TRANSLATE} - ${MODE_DESCRIPTIONS[ModeName.TRANSLATE]}
-📥 ${ModeName.MERGE} - ${MODE_DESCRIPTIONS[ModeName.MERGE]}
-🔄 ${ModeName.RESTORE} - ${MODE_DESCRIPTIONS[ModeName.RESTORE]}
-📦 ${ModeName.EXPORT} - ${MODE_DESCRIPTIONS[ModeName.EXPORT]}
-🩺 ${ModeName.DOCTOR} - ${MODE_DESCRIPTIONS[ModeName.DOCTOR]}
+${MODE_LIST.map((mode) => `${MODE_ICONS[mode]} ${mode} - ${MODE_DESCRIPTIONS[mode]}`).join('\n')}
 
 使用方式: $0 [选项]`,
     )
@@ -327,19 +362,7 @@ const main = async (): Promise<void> => {
     .option('mode', {
       alias: 'm',
       describe: '操作模式',
-      choices: [
-        ModeName.AUTOMATIC,
-        ModeName.GENERATE,
-        ModeName.PICK,
-        ModeName.TRANSLATE,
-        ModeName.MERGE,
-        ModeName.EXPORT,
-        ModeName.RESTORE,
-        ModeName.DOCTOR,
-        ModeName.CSV_EXPORT,
-        ModeName.CSV_IMPORT,
-        ModeName.PRUNE,
-      ] as const,
+      choices: MODE_LIST,
       default: ModeName.GENERATE,
     })
     .option('custom', {
@@ -357,11 +380,13 @@ const main = async (): Promise<void> => {
     })
     .option('interactive', {
       alias: 'i',
-      describe: '交互式选择操作选项（未指定 --mode 时默认开启）',
+      describe: '交互式选择操作选项（未指定 --mode / --ci 且 stdin 为 TTY 时默认开启）',
       type: 'boolean',
     })
     .option('skip-llm', {
-      describe: '跳过LLM API调用，使用本地ID生成策略',
+      describe:
+        '不调用 LLM：generate 改用本地 ID 生成策略，automatic 一并跳过 translate 步骤' +
+        '（translate 模式为显式要求翻译，不受此选项影响）',
       type: 'boolean',
       default: false,
     })
@@ -371,7 +396,15 @@ const main = async (): Promise<void> => {
     })
     .option('dry-run', {
       describe:
-        '只生成 plan 文件到 .i18n-tools/plans/，不修改源码与语言文件（仅 generate 模式生效）',
+        '预览模式，不落盘：generate 只生成 plan 文件到 .i18n-tools/plans/；' +
+        'restore / csv-import / prune 只报告将发生的改动',
+      type: 'boolean',
+      default: false,
+    })
+    .option('overwrite', {
+      describe:
+        'restore：就地改写源文件（默认写副本到 <rootDir>/restored/）。' +
+        '还原无法区分工具生成与用户手写的 t()，就地改写需显式 opt-in',
       type: 'boolean',
       default: false,
     })
@@ -392,10 +425,18 @@ const main = async (): Promise<void> => {
         '用于规避 Windows MAX_PATH 等深路径风险，传入后会在该目录下创建 generate-<ts>-<pid>/',
       type: 'string',
     })
+    .option('include-stale-target', {
+      describe:
+        'prune：一并删除「target 有、source 无」的残留 key（判据同 doctor 的 stale-target-key）。' +
+        '只删对应 target 文件，默认关闭',
+      type: 'boolean',
+      default: false,
+    })
     .option('ci', {
       describe:
         'CI 模式（非交互）：doctor 发现 error 级问题时以非零状态码退出；' +
-        'prune / csv-import 跳过破坏性写入前的二次确认，直接执行',
+        'prune / csv-import 跳过破坏性写入前的二次确认，直接执行' +
+        '（非交互模式下这两个命令必须显式传 --ci 才会执行破坏性写入，否则报错退出）',
       type: 'boolean',
       default: false,
     })
@@ -414,17 +455,28 @@ const main = async (): Promise<void> => {
       default: 'untranslated',
     })
     .option('output', {
+      // 不放进「CSV 选项」组：export 模式同样消费它（覆盖 io.exportDir），归到 CSV 组会让
+      // 只跑 export 的用户翻遍帮助也找不到怎么改输出目录。
       describe:
-        'export/csv-export 输出目录（export 模式覆盖 io.exportDir），csv-import 输入文件路径',
+        '输出位置。export：语言包输出目录（覆盖 io.exportDir）；' +
+        'csv-export：CSV 输出路径或目录；csv-import：输入的 CSV 文件路径',
       type: 'string',
     })
     .help()
     .alias('help', 'h')
-    .group(['config', 'mode', 'custom', 'path'], '📋 基本选项:')
-    .group(['interactive', 'skip-llm'], '⚙️  高级选项:')
-    .group(['langs', 'filter', 'source', 'output'], '📊 CSV 选项:')
+    .group(['config', 'mode', 'custom', 'path', 'output'], '📋 基本选项:')
+    .group(['interactive', 'skip-llm', 'overwrite'], '⚙️  高级选项:')
+    .group(['langs', 'filter', 'source'], '📊 CSV 选项:')
     .group(
-      ['dry-run', 'apply-plan', 'keep-plan', 'plan-output-dir', 'coverage-threshold', 'ci'],
+      [
+        'dry-run',
+        'apply-plan',
+        'keep-plan',
+        'plan-output-dir',
+        'coverage-threshold',
+        'include-stale-target',
+        'ci',
+      ],
       '🩺 CI / Review 选项:',
     )
     .example('$0 --config ./i18n.config.ts', '指定配置文件')
@@ -441,6 +493,7 @@ const main = async (): Promise<void> => {
     .example('$0 --mode doctor --ci', 'CI 模式：发现 error 即非零退出')
     .example('$0 --mode prune --dry-run', '预览将删除的孤儿 key，不改文件')
     .example('$0 --mode prune', '确认后从所有 locale 删除孤儿 key')
+    .example('$0 --mode prune --include-stale-target --dry-run', '连 target-only 残留译文一起预览')
     .example('$0 --mode pick', '从国际化文件中提取未翻译的条目')
     .example('$0 --mode translate', '使用AI翻译服务翻译中文为英文')
     .example('$0 --mode merge --custom', '将定制目录的翻译结果合并回主文件')
@@ -452,7 +505,12 @@ const main = async (): Promise<void> => {
     )
     .example('$0 --mode csv-import --output ./i18n-en-US.csv', '把审核好的 CSV 回流写回')
     .example('$0 --mode csv-import --output ./x.csv --dry-run', '回流前仅预览改动')
-    .example('$0 --mode restore', '将国际化调用还原为中文（调试用）')
+    .example('$0 --mode restore --path src/views/demo', '还原为中文，副本写到 <rootDir>/restored/')
+    .example('$0 --mode restore --path src/views/demo --dry-run', '预览将还原的调用与将清理的导入')
+    .example(
+      '$0 --mode restore --path src/views/demo --overwrite',
+      '就地改写源文件（会一并还原用户手写的 t()，谨慎使用）',
+    )
     .example('$0 -i', '启动交互式模式，逐步选择操作')
     .example('$0 --mode automatic', '启动全自动处理流程')
     .epilog(
@@ -461,12 +519,22 @@ const main = async (): Promise<void> => {
 • 完整工作流程: generate → pick → translate → merge → export
 • 定制目录用于项目特定的国际化内容，与主目录分开管理
 • 需要在项目根目录创建 i18n.config.ts 配置文件`,
-    );
+    )
+    // 未知 flag 必须硬失败：yargs 默认把 `--dry-runn` / `--overwite` 这类拼错当自由参数收下，
+    // 命令照常执行、退出码 0——用户以为"预览"了，实际是一次真跑。strict 之后拼错即报错退出，
+    // 前提是所有被 argv 读取的键都在上面 .option 声明过（否则合法用法会被误杀）。
+    .strict();
 
   const argv = await yargsObj.parse();
 
-  // 加载配置（将相对路径转为绝对路径）
-  const configPath = argv.config ? path.resolve(process.cwd(), argv.config as string) : undefined;
+  // 加载配置（将相对路径转为绝对路径）。yargs 对重复出现的 --config 收成数组（package.json
+  // 里 `i18n` 脚本常已固定一次 --config，用户临时换配置再传一次即触发），按 yargs 惯例取最后一个。
+  const rawConfig = argv.config as string | string[] | undefined;
+  const configArg = Array.isArray(rawConfig) ? rawConfig[rawConfig.length - 1] : rawConfig;
+  if (Array.isArray(rawConfig) && rawConfig.length > 1) {
+    LoggerUtils.warn(`⚠️  --config 传入了 ${rawConfig.length} 次，采用最后一个：${configArg}`);
+  }
+  const configPath = configArg ? path.resolve(process.cwd(), configArg) : undefined;
   const config = await loadConfig(configPath);
   if (!config) {
     LoggerUtils.error(
@@ -484,7 +552,10 @@ export default defineConfig({
     shared: { apiKey: process.env.LLM_API_KEY, model: 'gpt-4o' },
   },
 });`);
-    process.exit(1);
+    // exitCode + return（而非 process.exit）：exit 会在 stdout 是管道时截断尚未 flush 的
+    // 输出，用户拿不到刚打印的错误与示例配置。main 返回后进程自然带非零码退出。
+    process.exitCode = 1;
+    return;
   }
 
   // 初始化参数
@@ -505,15 +576,20 @@ export default defineConfig({
     LoggerUtils.error(
       '❌ 未配置 io.customDir，无法使用 --custom。请在 i18n.config 中显式配置定制目录后再启用此选项。',
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const custom = hasCustomLocale && Boolean(argv.custom);
 
   // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启。
   // --ci 自述「非交互」，必须真正隐含非交互：否则 `i18n-tools --ci`（漏带 --mode）会在
-  // 无 TTY 的 CI 里进入 promptForTopLevelMode 卡死/报错。-i 显式开启仍优先（用户主动要交互）。
+  // 无 TTY 的 CI 里进入 promptForTopLevelMode 卡死/报错。
+  // stdin 非 TTY 同样默认关闭：管道里裸跑（漏带 --mode/--ci）时 @inquirer/prompts 会把管道内容
+  // 当成按键，空行即选中默认项「自动模式」并真跑。-i 显式开启仍优先（用户主动要交互，
+  // 例如在 TTY 外自行喂输入）。
   const modeExplicitlySet = isModeExplicitlySet(process.argv.slice(2));
-  const interactive = argv.interactive ?? (!modeExplicitlySet && !argv.ci);
+  const interactive =
+    argv.interactive ?? (!modeExplicitlySet && !argv.ci && process.stdin.isTTY === true);
 
   // 交互模式处理
   if (interactive) {
@@ -566,10 +642,12 @@ export default defineConfig({
         Number.isNaN(cliCoverageThreshold) ? '非数字（无法解析）' : cliCoverageThreshold
       }`,
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const coverageThreshold = cliCoverageThreshold ?? config.ci.coverageThreshold;
   const dryRun = Boolean(argv['dry-run']);
+  const overwrite = Boolean(argv['overwrite']);
   const langsArg = argv['langs'] as string | undefined;
   const csvLangs = langsArg
     ? langsArg
@@ -583,31 +661,90 @@ export default defineConfig({
   const applyPlanPath = argv['apply-plan'] as string | undefined;
   const keepPlan = Boolean(argv['keep-plan']);
   const planOutputDir = argv['plan-output-dir'] as string | undefined;
+  const includeStaleTarget = Boolean(argv['include-stale-target']);
   const pathArg = (argv['path'] as string | undefined)?.trim() || undefined;
 
   // dry-run 与 apply-plan 的「生效模式集合」不同，必须分开提示：
-  //  - --dry-run 在 generate / csv-import / prune 三种模式都被真正消费（各自有预览语义），
-  //    仅在其余模式无意义；
+  //  - --dry-run 在 generate / restore / csv-import / prune 四种模式都被真正消费（各自有
+  //    预览语义），仅在其余模式无意义；
   //  - --apply-plan 只有 generate 分支消费，其它模式（含 csv-import / prune）一律忽略。
-  // 旧实现把二者并入同一条件并整体排除 csv-import/prune，导致 `--apply-plan --mode prune`
-  // 这类误用被静默丢弃、连警告都没有，违背该守卫「写错命令即提示」的初衷。
+  // 二者不得并入同一条件：合并后必然多算或少算一个模式，误用（如 `--apply-plan --mode
+  // prune`）会被静默丢弃、连警告都没有，违背该守卫「写错命令即提示」的初衷。
   // 静默忽略本身比抛错更友好（兼容 automatic 串调 generate 的复杂场景），但要显式提示。
   if (
     dryRun &&
     mode !== ModeName.GENERATE &&
+    mode !== ModeName.RESTORE &&
     mode !== ModeName.CSV_IMPORT &&
     mode !== ModeName.PRUNE
   ) {
     LoggerUtils.warn(
-      `⚠️  --dry-run 仅在 --mode generate / csv-import / prune 下生效，当前模式 ${mode}，将被忽略`,
+      `⚠️  --dry-run 仅在 --mode generate / restore / csv-import / prune 下生效，当前模式 ${mode}，将被忽略`,
     );
+  }
+  // `--mode translate` 是「就是要翻译」的显式请求，跳过它等于什么都不做；
+  // 与其静默按 skipLLM 空转，不如照「仅 xx 模式生效」口径提示后照常翻译。
+  if (skipLLM && mode === ModeName.TRANSLATE) {
+    LoggerUtils.warn('⚠️  translate 模式忽略 --skip-llm：该模式本身就是显式要求调用 AI 翻译');
+  }
+  if (overwrite && mode !== ModeName.RESTORE) {
+    LoggerUtils.warn(`⚠️  --overwrite 仅在 --mode restore 下生效，当前模式 ${mode}，将被忽略`);
   }
   if (applyPlanPath && mode !== ModeName.GENERATE) {
     LoggerUtils.warn(`⚠️  --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`);
   }
+  // 其余「只在特定模式/组合下被消费」的选项同样必须提示后再丢弃：静默忽略会让用户以为
+  // 参数生效了（如 `--mode merge --path src/x` 看似限定了范围，实际全量跑）。
+  if (keepPlan && !applyPlanPath) {
+    LoggerUtils.warn(
+      '⚠️  --keep-plan 仅在 --apply-plan 回放时生效，本次未传 --apply-plan，将被忽略',
+    );
+  }
+  if (planOutputDir && !dryRun) {
+    LoggerUtils.warn('⚠️  --plan-output-dir 仅在 --dry-run 下生效，本次未传 --dry-run，将被忽略');
+  }
+  if (includeStaleTarget && mode !== ModeName.PRUNE) {
+    LoggerUtils.warn(
+      `⚠️  --include-stale-target 仅在 --mode prune 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
+  if (langsArg && mode !== ModeName.CSV_EXPORT && mode !== ModeName.CSV_IMPORT) {
+    LoggerUtils.warn(
+      `⚠️  --langs 仅在 --mode csv-export / csv-import 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
+  // filter / source 有 yargs 默认值，只有偏离默认才说明用户显式传了。
+  if (csvFilter !== 'all' && mode !== ModeName.CSV_EXPORT) {
+    LoggerUtils.warn(`⚠️  --filter 仅在 --mode csv-export 下生效，当前模式 ${mode}，将被忽略`);
+  }
+  if (csvSource !== 'untranslated' && mode !== ModeName.CSV_EXPORT) {
+    LoggerUtils.warn(`⚠️  --source 仅在 --mode csv-export 下生效，当前模式 ${mode}，将被忽略`);
+  }
+  if (
+    pathArg &&
+    mode !== ModeName.GENERATE &&
+    mode !== ModeName.RESTORE &&
+    mode !== ModeName.AUTOMATIC
+  ) {
+    LoggerUtils.warn(
+      `⚠️  --path 仅在 --mode generate / restore / automatic 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
+  // translate 有单独的提示（上方）：它会照常翻译，语义与「被忽略」不同，故排除在外。
+  if (
+    skipLLM &&
+    mode !== ModeName.GENERATE &&
+    mode !== ModeName.AUTOMATIC &&
+    mode !== ModeName.TRANSLATE
+  ) {
+    LoggerUtils.warn(
+      `⚠️  --skip-llm 仅在 --mode generate / automatic / translate 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
   if (dryRun && applyPlanPath) {
     LoggerUtils.error('❌ --dry-run 与 --apply-plan 互斥，请只指定其一');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   try {
@@ -627,15 +764,17 @@ export default defineConfig({
         break;
       case ModeName.GENERATE: {
         if (applyPlanPath) {
-          // apply-plan 仅回放 plan、不重算覆盖率，coverage 阈值在此路径恒不生效。
-          // 显式告警，避免「配了 --coverage-threshold 却以为已卡点」的假绿。
-          if (coverageThreshold !== undefined) {
-            LoggerUtils.warn(
-              `⚠️  --coverage-threshold（或 ci.coverageThreshold）在 --apply-plan 回放路径下不生效：\n` +
-                `   apply 只回放已审核的 plan、不重新计算覆盖率。如需覆盖率卡点，请在直跑 generate 时设置阈值。`,
-            );
-          }
-          await executeApplyPlan(config, adapter, custom, applyPlanPath, keepPlan);
+          // 阈值判定的数据来自 plan 里 dry-run 结算的覆盖率快照（apply 不重跑提取）。
+          // 旧版 plan 无该快照时 getCoverage() 为空，enforce 静默跳过，回放侧已打过 info。
+          const applier = await executeApplyPlan(
+            config,
+            adapter,
+            custom,
+            applyPlanPath,
+            keepPlan,
+            interactive,
+          );
+          enforceCoverageThreshold(applier, coverageThreshold);
           break;
         }
         const targetPath = await resolveTargetPath(
@@ -678,14 +817,21 @@ export default defineConfig({
           pathArg,
           interactive,
         );
-        await executeRestore(config, adapter, custom, targetPath);
+        await executeRestore(config, adapter, custom, targetPath, { overwrite, dryRun });
         break;
       }
       case ModeName.DOCTOR:
         await executeDoctor(config, adapter, custom, Boolean(argv.ci));
         break;
       case ModeName.PRUNE:
-        await executePrune(config, adapter, custom, { dryRun, ci: Boolean(argv.ci) });
+        // interactive 透传：非交互（--mode/--ci 推导）且未 --ci 时 prune 直接报错，
+        // 绝不弹 @inquirer/prompts 确认——stdin 常开管道下会无限挂起（「非交互 ⇒ 绝不碰 @inquirer/prompts」）。
+        await executePrune(config, adapter, custom, {
+          dryRun,
+          ci: Boolean(argv.ci),
+          interactive,
+          includeStaleTarget,
+        });
         break;
       case ModeName.CSV_EXPORT:
         await executeCsvExport(config, custom, {
@@ -702,7 +848,8 @@ export default defineConfig({
             importInput = await InteractiveUtils.promptForCsvPath();
           } else {
             LoggerUtils.error('❌ csv-import 需要 --output 指定 CSV 文件路径');
-            process.exit(1);
+            process.exitCode = 1;
+            return;
           }
         }
         await executeCsvImport(config, custom, {
@@ -710,15 +857,30 @@ export default defineConfig({
           langs: csvLangs,
           dryRun,
           ci: Boolean(argv.ci),
+          // 同 PRUNE：非交互且未 --ci 时写回前报错退出，防 @inquirer/prompts 挂起
+          interactive,
         });
         break;
       }
-      default:
-        LoggerUtils.error(`没有匹配的模式: ${mode}`);
+      default: {
+        // yargs 的 choices 已挡住未知值，走到这里只可能是新增模式漏了 case：
+        // never 断言让编译期先报出来，运行期则以非零码退出而非「打条 error 后返回 0」。
+        const unhandled: never = mode;
+        LoggerUtils.error(`没有匹配的模式: ${String(unhandled)}`);
+        process.exitCode = 1;
+        return;
+      }
     }
   } catch (error) {
+    // CliExit 是守卫的正常出口（文案已随信号带上），不是异常，故不套「执行 X 操作时发生错误」。
+    if (error instanceof CliExit) {
+      if (error.message) LoggerUtils.error(error.message);
+      process.exitCode = error.code;
+      return;
+    }
     LoggerUtils.error(`执行 ${mode} 操作时发生错误:`, error);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 };
 

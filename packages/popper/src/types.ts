@@ -10,7 +10,7 @@ export type TriggerType = 'hover' | 'click' | 'focus' | 'contextmenu' | 'manual'
 
 export interface PopperProps {
   /**
-   * 浮动元素相对于参考元素的位置
+   * 浮动元素相对于参考元素的位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'bottom'
    */
   placement?: Placement;
@@ -134,7 +134,7 @@ export interface TooltipProps {
   content?: string;
 
   /**
-   * 弹出位置
+   * 弹出位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'top'
    */
   placement?: Placement;
@@ -169,6 +169,11 @@ export interface TooltipProps {
   arrowSize?: number;
 
   /**
+   * 浮动元素的自定义 class
+   */
+  popperClass?: string | string[] | Record<string, boolean>;
+
+  /**
    * 过渡动画名称
    * @default 'aix-popper-fade'
    */
@@ -188,13 +193,18 @@ export interface TooltipProps {
 }
 
 export interface TooltipEmits {
+  /** 显示状态变更 */
   (e: 'update:open', value: boolean): void;
+  /** 显示后触发 */
   (e: 'show'): void;
+  /** 隐藏后触发 */
   (e: 'hide'): void;
 }
 
 export interface TooltipExpose {
+  /** 显示 */
   show: () => void;
+  /** 隐藏 */
   hide: () => void;
 }
 
@@ -213,7 +223,7 @@ export interface PopoverProps {
   trigger?: Extract<TriggerType, 'click' | 'hover' | 'focus' | 'manual'>;
 
   /**
-   * 弹出位置
+   * 弹出位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'top'
    */
   placement?: Placement;
@@ -283,18 +293,24 @@ export interface PopoverProps {
 }
 
 export interface PopoverEmits {
+  /** 显示状态变更 */
   (e: 'update:open', value: boolean): void;
+  /** 显示后触发 */
   (e: 'show'): void;
+  /** 隐藏后触发 */
   (e: 'hide'): void;
 }
 
 export interface PopoverExpose {
+  /** 显示 */
   show: () => void;
+  /** 隐藏 */
   hide: () => void;
 }
 
 // ==================== Dropdown ====================
 
+/** Dropdown `items` 里的一项，点击后以 `command` 触发 `command` 事件 */
 export interface DropdownMenuItem {
   /** 命令标识 */
   command: string | number;
@@ -320,7 +336,7 @@ export interface DropdownProps {
   trigger?: Extract<TriggerType, 'click' | 'hover'>;
 
   /**
-   * 弹出位置
+   * 弹出位置，取 `'top' | 'right' | 'bottom' | 'left'` 及其 `-start` / `-end` 变体，共 12 个方位（Floating UI 的 Placement）
    * @default 'bottom-start'
    */
   placement?: Placement;
@@ -387,7 +403,9 @@ export interface DropdownEmits {
 }
 
 export interface DropdownExpose {
+  /** 显示 */
   show: () => void;
+  /** 隐藏 */
   hide: () => void;
 }
 
@@ -411,12 +429,15 @@ export interface DropdownItemProps {
 }
 
 export interface DropdownItemEmits {
+  /** 菜单项被点击时触发，载荷为 command；一般用 Dropdown 的 command 事件统一处理，需要单项自己响应时用它 */
   (e: 'click', command: string | number | undefined): void;
 }
 
 // ==================== Shared Context ====================
 
+/** Dropdown 通过 `DROPDOWN_INJECTION_KEY` 注入给 DropdownItem 的上下文 */
 export interface DropdownContext {
+  /** DropdownItem 被点击时回调，带上该项的 `command` */
   handleItemClick: (command?: string | number) => void;
 }
 
@@ -474,5 +495,6 @@ export interface ContextMenuExpose {
    * - 传 `HTMLElement`：以该元素为锚定参考，菜单会跟随其位移（autoUpdate）。
    */
   show: (target: MouseEvent | HTMLElement) => void;
+  /** 隐藏菜单 */
   hide: () => void;
 }

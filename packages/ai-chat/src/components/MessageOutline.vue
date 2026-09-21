@@ -57,6 +57,7 @@ export interface MessageOutlineEmits {
 </script>
 
 <script setup lang="ts">
+/** 对话大纲：贴边的消息刻度条，点击跳到对应消息。 */
 import { useId, useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { computed, ref, watch } from 'vue';

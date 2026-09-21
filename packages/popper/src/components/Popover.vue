@@ -6,6 +6,7 @@
     :aria-controls="isOpen ? popoverId : undefined"
     v-on="referenceListeners"
   >
+    <!-- @slot 参考元素（触发元素） -->
     <slot name="reference" />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
@@ -21,6 +22,7 @@
         v-on="floatingListeners"
       >
         <div v-if="title || $slots.title" :id="titleId" class="aix-popover__title">
+          <!-- @slot 自定义标题（优先于 title prop） -->
           <slot name="title">{{ title }}</slot>
         </div>
         <div
@@ -30,6 +32,7 @@
           :style="arrowStyles"
         />
         <div class="aix-popover__body">
+          <!-- @slot 弹出内容 -->
           <slot />
         </div>
       </div>
@@ -38,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+/** 气泡卡片：点击或悬停触发，相比 Tooltip 可承载标题与富内容。 */
 import { useId, useZIndex } from '@aix/hooks';
 import { computed, ref, watch, type CSSProperties } from 'vue';
 import { usePopper } from '../composables/usePopper';

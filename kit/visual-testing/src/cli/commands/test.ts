@@ -140,26 +140,44 @@ async function runTest(
     formatReportPaths(config.directories.reports, config.report.formats, config.report.conclusion),
   );
 
-  // CI 模式下按 severity 阈值判断是否退出非零
+  // CI 门禁
   const hasFailed = results.some((r) => !r.passed);
   if (hasFailed && (options.ci || config.ci.failOnDiff)) {
-    const severityOrder: Record<string, number> = {
-      critical: 0,
-      major: 1,
-      minor: 2,
-      trivial: 3,
-    };
-    const thresholdLevel = severityOrder[config.ci.failOnSeverity] ?? 1;
-
-    const hasSignificantIssues = results.some((r) => {
-      if (r.passed) return false;
-      // 无 LLM 分析时，视为显著问题
-      if (!r.analysis) return true;
-      return r.analysis.differences.some((d) => (severityOrder[d.severity] ?? 0) <= thresholdLevel);
-    });
-
-    if (hasSignificantIssues) {
+    if (shouldFailCi(results, config.ci)) {
       process.exitCode = 1;
     }
   }
+}
+
+/**
+ * 判断 CI 是否应以非零码退出
+ *
+ * - gate = 'pixel'：任一用例像素比对未通过即失败。确定性，与 LLM 是否启用无关。
+ * - gate = 'severity'：按 LLM / 规则引擎的 severity 是否达到 failOnSeverity 判定（旧行为）。
+ *   注意该模式下结论依赖模型输出，同一 diff 不同运行可能得到不同结果。
+ */
+export function shouldFailCi(
+  results: Array<{ passed: boolean; analysis?: { differences: Array<{ severity: string }> } }>,
+  ci: { gate: 'pixel' | 'severity'; failOnSeverity: string },
+): boolean {
+  const failed = results.filter((r) => !r.passed);
+  if (failed.length === 0) return false;
+
+  if (ci.gate === 'pixel') {
+    return true;
+  }
+
+  const severityOrder: Record<string, number> = {
+    critical: 0,
+    major: 1,
+    minor: 2,
+    trivial: 3,
+  };
+  const thresholdLevel = severityOrder[ci.failOnSeverity] ?? 1;
+
+  return failed.some((r) => {
+    // 无分析结果时无法按 severity 判定，保守视为失败
+    if (!r.analysis) return true;
+    return r.analysis.differences.some((d) => (severityOrder[d.severity] ?? 0) <= thresholdLevel);
+  });
 }

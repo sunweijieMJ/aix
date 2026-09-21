@@ -29,6 +29,18 @@ export interface BaseI18nLibrary {
   readonly usesDoubleBracePlaceholders: boolean;
 
   /**
+   * 该库是否把 `ns:key` 当作「命名空间 + key」的运行时约定，对账与还原据此决定剥离口径：
+   *  - true（vue-i18next）：locale 按 namespace 分文件、存裸 key，与工具自身有没有配
+   *    framework.namespace 无关，一律剥掉 key 里首个冒号之前的部分；
+   *  - false（vue-i18n / react-intl / react-i18next）：冒号是 key 自身的一部分，只剥恰为已配
+   *    `framework.namespace` 的前缀（react-i18next 见 stripNamespacePrefix）。
+   *
+   * prune / doctor 的 key 归一（createKeyNormalizer）与 restore 的查表必须读同一个标志，
+   * 否则对账会把在用 key 判成孤儿、从所有 locale 永久删除。
+   */
+  readonly supportsNamespace: boolean;
+
+  /**
    * 转义一段「字面量文本」里的花括号，使其在该库运行时被当作普通字符而非插值占位符。
    *
    * 仅对**单花括号库**（vue-i18n / react-intl，单 `{` 即插值）需要：

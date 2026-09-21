@@ -24,7 +24,6 @@ RFC (Request for Comments) 是本项目的技术设计文档规范。每当设�
 | [项目脚手架工具](./create-app-cli.md) | 统一 CLI 脚手架，支持多模板、微前端、特性组合 |
 | [视觉比对测试](./visual-testing-rfc.md) | 基于 Figma + LLM 的视觉回归测试方案 |
 | [AI 自动修复](./sentinel-design-draft.md) | 基于 Sentry + Claude Code 的自动发现问题与修复系统 |
-| [定制化项目代码合并方案](./override-layer-architecture.md) | 基于覆盖层的定制代码隔离与自动合并方案 |
 | [埋点数据采集](./tracker.md) | 基于适配器模式的前端埋点组件包，支持多平台上报 |
 | [AI 编码规范预设](./ai-preset.md) | 跨 AI 平台编码规范管理 CLI，支持 Claude/Cursor/Copilot 多平台输出 |
 

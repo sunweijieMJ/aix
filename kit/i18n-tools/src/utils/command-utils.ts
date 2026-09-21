@@ -34,6 +34,10 @@ export function isModeExplicitlySet(args: string[]): boolean {
 
 /**
  * 使用 prettier + eslint 格式化单个文件。
+ *
+ * 失败向上抛（不在此吞掉）：格式化是美化步骤，「失败是否可忽略、按什么级别播报」由调用方
+ * 定——generate 走 warn 继续，restore 走 error 但仍视为已还原。函数内部就地记 error 会让
+ * 两处 catch 变成永不执行的死代码，日志级别也与调用方的意图相反。
  */
 export async function formatWithPrettier(filePath: string): Promise<void> {
   LoggerUtils.info(`🎨  正在格式化: ${filePath}`);
@@ -49,11 +53,10 @@ export async function formatWithPrettier(filePath: string): Promise<void> {
   try {
     await execFileAsync(npxBin, ['prettier', '--write', fileArg], options);
     await execFileAsync(npxBin, ['eslint', '--fix', fileArg], options);
-    LoggerUtils.success(`   - ✅  格式化成功`);
   } catch (error) {
-    LoggerUtils.error(
-      `   - ❗  格式化失败，请确保项目已正确安装并配置 Prettier 和 ESLint。`,
-      error,
-    );
+    throw new Error(`格式化失败（${filePath}），请确保项目已正确安装并配置 Prettier 和 ESLint。`, {
+      cause: error,
+    });
   }
+  LoggerUtils.success(`   - ✅  格式化成功`);
 }

@@ -152,9 +152,17 @@ export class MonitoringManager {
 
   /**
    * 执行完整健康检查
+   *
+   * @param dataDir - 数据目录。传入时会检查数据文件的可用性——这才是
+   *   健康检查真正要回答的问题。只看进程内存和错误率的话，
+   *   一个刚起来、数据目录被删光的进程也会报 healthy。
    */
-  async performHealthCheck(): Promise<HealthCheckResult> {
+  async performHealthCheck(dataDir?: string): Promise<HealthCheckResult> {
     const checks: HealthCheck[] = [];
+
+    if (dataDir) {
+      checks.push(...(await checkDataIntegrity(dataDir)));
+    }
 
     // 内存检查
     const memoryUsage = process.memoryUsage();
@@ -206,6 +214,70 @@ export class MonitoringManager {
  */
 export function createMonitoringManager(): MonitoringManager {
   return new MonitoringManager();
+}
+
+/** 数据陈旧告警阈值（30 天） */
+const STALE_DATA_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * 检查数据目录里的索引文件是否可用
+ */
+async function checkDataIntegrity(dataDir: string): Promise<HealthCheck[]> {
+  const { readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const checks: HealthCheck[] = [];
+
+  const readJson = async <T>(fileName: string): Promise<T | null> => {
+    try {
+      return JSON.parse(await readFile(join(dataDir, fileName), 'utf8')) as T;
+    } catch {
+      return null;
+    }
+  };
+
+  // 组件索引：缺了它整个服务就是空壳
+  const componentIndex = await readJson<{ components?: unknown[] }>('components-index.json');
+  const componentCount = componentIndex?.components?.length ?? 0;
+  checks.push({
+    name: '组件索引',
+    status: componentIndex === null ? 'fail' : componentCount > 0 ? 'pass' : 'warn',
+    message:
+      componentIndex === null
+        ? `无法读取 ${join(dataDir, 'components-index.json')}，请先运行 extract`
+        : `${componentCount} 个组件`,
+  });
+
+  // 以下三份索引缺失只影响对应能力，不致命
+  const optional: Array<[string, string, (data: any) => number]> = [
+    ['工具包索引', 'packages-index.json', (d) => d?.packages?.length ?? 0],
+    ['图标索引', 'icons-index.json', (d) => d?.icons?.length ?? 0],
+    ['文档快照', 'docs-index.json', (d) => Object.keys(d?.docs ?? {}).length],
+  ];
+
+  for (const [name, file, count] of optional) {
+    const data = await readJson<unknown>(file);
+    checks.push({
+      name,
+      status: data === null ? 'warn' : 'pass',
+      message: data === null ? `缺失 ${file}` : `${count(data)} 条`,
+    });
+  }
+
+  // 数据时效
+  const metadata = await readJson<{ extractedAt?: string }>('metadata.json');
+  if (metadata?.extractedAt) {
+    const age = Date.now() - new Date(metadata.extractedAt).getTime();
+    const days = Math.floor(age / (24 * 60 * 60 * 1000));
+    checks.push({
+      name: '数据时效',
+      status: age > STALE_DATA_MS ? 'warn' : 'pass',
+      message: `${days} 天前提取`,
+    });
+  } else {
+    checks.push({ name: '数据时效', status: 'warn', message: '缺少 metadata.json' });
+  }
+
+  return checks;
 }
 
 /**

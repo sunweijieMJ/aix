@@ -74,6 +74,8 @@ export default withMermaid(
             items: [
               { text: '架构设计', link: '/guide/architecture' },
               { text: '编码规范', link: '/guide/development-standards' },
+              { text: '组件文档规范', link: '/guide/component-docs-standard' },
+              { text: '组件 JSDoc 注释规范', link: '/guide/component-jsdoc' },
               { text: '贡献指南', link: '/guide/contributing' },
             ],
           },
@@ -92,12 +94,25 @@ export default withMermaid(
             ],
           },
           {
+            text: '导航组件',
+            items: [{ text: 'Menu 菜单', link: '/components/menu' }],
+          },
+          {
+            text: 'AI 组件',
+            items: [{ text: 'AiChat AI 对话', link: '/components/ai-chat' }],
+          },
+          {
             text: '媒体组件',
             items: [
               { text: 'VideoPlayer 视频播放器', link: '/components/video' },
+              { text: 'Audio 语音', link: '/components/audio' },
               { text: 'Subtitle 字幕', link: '/components/subtitle' },
               { text: 'PdfViewer PDF 预览器', link: '/components/pdf-viewer' },
             ],
+          },
+          {
+            text: '图形组件',
+            items: [{ text: 'FlowGraph 流程图', link: '/components/flow-graph' }],
           },
           {
             text: '编辑器组件',
@@ -128,10 +143,6 @@ export default withMermaid(
             items: [
               { text: '国际化工具', link: '/rfcs/i18n-tools' },
               { text: 'MCP Server', link: '/rfcs/mcp-server' },
-              {
-                text: '定制化项目代码合并方案',
-                link: '/rfcs/override-layer-architecture',
-              },
               { text: '埋点数据采集', link: '/rfcs/tracker' },
               { text: 'AI 编码规范预设', link: '/rfcs/ai-preset' },
             ],
@@ -234,6 +245,18 @@ export default withMermaid(
       },
       optimizeDeps: {
         include: ['mermaid'],
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            // CodeMirror 必须整体落在同一个 chunk：VitePress 给每个页面生成
+            // 完整与 lean 两份 chunk，各自内联一份 @codemirror/state 时
+            // 扩展的 instanceof 校验会失败，编辑器初始化直接抛错
+            manualChunks(id: string) {
+              if (id.includes('/@codemirror/') || id.includes('/@lezer/')) return 'codemirror';
+            },
+          },
+        },
       },
       css: {
         preprocessorOptions: {

@@ -2,10 +2,10 @@
 name: story-generator
 description: Use when the user asks to generate Storybook story / story 文件 / stories for a Vue component. Analyzes Props to produce common-case stories and interaction tests for AIX 组件库.
 license: MIT
-compatibility: Requires Vue 3, TypeScript
+compatibility: Requires Vue 3, TypeScript, Storybook 10
 metadata:
   author: aix
-  version: "1.0.0"
+  version: "1.1.0"
   category: documentation
 ---
 
@@ -26,18 +26,26 @@ metadata:
 /story-generator packages/button/src/Button.vue
 
 # 方式 2: 生成完整的 story（包含交互测试）
-/story-generator packages/select/src/Select.vue --with-interaction
+/story-generator packages/popper/src/components/Popover.vue --with-interaction
 
 # 方式 3: 交互式模式
 /story-generator
 ```
 
-### 参数说明
+> ℹ️ 本 Skill 是 prompt 指南，上面的 `--with-interaction` 是**给模型解读的语义提示，
+> 不是真实 CLI 参数**（项目内没有同名可执行脚本）。用自然语言说"顺便带上交互测试"即可。
 
-| 参数 | 说明 | 默认值 | 示例 |
-|------|------|-------|------|
-| 组件路径 | 组件文件路径 | 必需 | `packages/button/src/Button.vue` |
-| `--with-interaction` | 是否生成交互测试 | `false` | `--with-interaction` |
+### 本仓 Story 的硬约定（照抄前先看这三条）
+
+| 约定 | 正确写法 | 常见错法 |
+|------|---------|---------|
+| 交互测试导入路径 | `from 'storybook/test'` | ❌ `from '@storybook/test'`——**本仓没装这个包**，SB10 已并入 `storybook/test` |
+| 事件桩 | `args: { onClick: fn() }` | ❌ `argTypes: { onClick: { action: 'clicked' } }`——全仓 `action:` 用法 0 处 |
+| `title` 分组 | 挂到已有顶层分组：`Components/` `Media/` `AI Chat/` | ❌ 自造前缀。先 `grep "title:" packages/<pkg>/stories/*.stories.ts` 看邻居 |
+
+`Meta` / `StoryObj` 从 `@storybook/vue3` 导入；`.storybook/preview.ts` 已全局装好
+locale + theme context，story 里不需要自己包 provider，切 Storybook 工具栏即可验证
+多语言与暗色主题。
 
 ## 执行流程
 
@@ -61,9 +69,9 @@ name?: string;
 disabled?: boolean;
 // argTypes: { disabled: { control: 'boolean' } }
 
-// 联合类型 → select 控制器
-type?: 'primary' | 'default' | 'danger';
-// argTypes: { type: { control: 'select', options: ['primary', 'default', 'danger'] } }
+// 联合类型 → select 控制器（options 照抄源码里的联合类型，不要自行增删成员）
+type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
+// argTypes: { type: { control: 'select', options: ['primary','default','dashed','text','link'] } }
 
 // number → number 控制器
 maxCount?: number;
@@ -76,16 +84,23 @@ maxCount?: number;
 
 ```typescript
 import type { Meta, StoryObj } from '@storybook/vue3';
+import { fn } from 'storybook/test';
 import Button from '../src/Button.vue';
 
 const meta: Meta<typeof Button> = {
+  // 挂到该包已有的顶层分组下；Button 本身在本仓就是裸 'Button'
   title: 'Components/Button',
   component: Button,
   tags: ['autodocs'],
+  // 事件用 fn() 桩，不要用 argTypes 的 action
+  args: {
+    onClick: fn(),
+  },
   argTypes: {
     type: {
       control: 'select',
-      options: ['primary', 'default', 'danger'],
+      // 枚举必须照抄组件真实的联合类型，不要凭"按钮总该有 danger"编
+      options: ['primary', 'default', 'dashed', 'text', 'link'],
       description: '按钮类型',
     },
     size: {
@@ -96,10 +111,6 @@ const meta: Meta<typeof Button> = {
     disabled: {
       control: 'boolean',
       description: '是否禁用',
-    },
-    onClick: {
-      action: 'clicked',
-      description: '点击事件',
     },
   },
 };
@@ -170,7 +181,9 @@ export const Types: Story = {
       <div style="display: flex; gap: 16px; align-items: center;">
         <Button type="default">Default</Button>
         <Button type="primary">Primary</Button>
-        <Button type="danger">Danger</Button>
+        <Button type="dashed">Dashed</Button>
+        <Button type="text">Text</Button>
+        <Button type="link">Link</Button>
       </div>
     `,
   }),
@@ -182,7 +195,8 @@ export const Types: Story = {
 如果使用 `--with-interaction`，添加交互测试：
 
 ```typescript
-import { within, userEvent, expect } from '@storybook/test';
+// SB10 的路径是 'storybook/test'，不是 '@storybook/test'（后者本仓未安装）
+import { within, userEvent, expect } from 'storybook/test';
 
 export const WithInteraction: Story = {
   args: {
@@ -198,18 +212,15 @@ export const WithInteraction: Story = {
     },
     template: '<Button v-bind="args" @click="handleClick">Click Me</Button>',
   }),
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    const button = canvas.getByRole('button');
+    // getByRole 返回 HTMLElement，取 .disabled 需要收窄到 HTMLButtonElement
+    const button = canvas.getByRole('button') as HTMLButtonElement;
 
-    // 点击测试
-    await userEvent.click(button);
     await expect(button).toBeVisible();
-
-    // 禁用状态测试
-    if (!button.disabled) {
-      await userEvent.click(button);
-    }
+    await userEvent.click(button);
+    // 断言事件真的触发了，而不是只断言元素可见
+    await expect(args.onClick).toHaveBeenCalled();
   },
 };
 ```
@@ -250,7 +261,7 @@ mkdir -p packages/{package-name}/stories
 
 为每个主要的 Props 值生成一个 story：
 - 默认值 story
-- 主要状态 story（如 primary, danger）
+- 主要状态 story（取组件真实枚举，如 Button 的 primary / dashed / text / link）
 - 禁用状态 story
 
 ### 2. 对比 Story
@@ -317,17 +328,21 @@ export const WithInteraction: Story = { ... };
 ### 3. ArgTypes 配置
 
 ```typescript
+// 事件桩放 args，不放 argTypes
+args: {
+  onClick: fn(),
+},
 argTypes: {
   // Props
   type: {
     control: 'select',
     options: [...],
     description: 'Props 说明',
+    table: { type: { summary: 'string' }, defaultValue: { summary: 'default' } },
   },
 
-  // Events
+  // Events：只描述，不用 action
   onClick: {
-    action: 'clicked',
     description: 'Event 说明',
   },
 

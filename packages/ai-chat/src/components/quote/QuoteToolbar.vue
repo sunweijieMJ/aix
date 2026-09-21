@@ -38,12 +38,15 @@ export interface QuoteToolbarProps {
   contextEl?: HTMLElement | null;
 }
 export interface QuoteToolbarEmits {
+  /** 点击某个动作，参数为动作 key */
   (e: 'invoke', key: string): void;
+  /** 关闭工具栏 */
   (e: 'close'): void;
 }
 </script>
 
 <script setup lang="ts">
+/** 划词引用的工具条皮肤：贴选区浮动，操作横排成一条。 */
 import { useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { ref, watch, watchEffect } from 'vue';

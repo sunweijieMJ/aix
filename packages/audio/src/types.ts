@@ -217,9 +217,15 @@ export interface WaveformCanvasProps {
   barGap?: number;
   /** 柱宽（px） */
   barWidth?: number;
-  /** 未激活颜色（支持 CSS 变量语法） */
+  /**
+   * 未激活颜色（支持 CSS 变量语法）
+   * @default 'var(--aix-waveform-inactive, var(--aix-colorTextQuaternary, #c9cdd4))'
+   */
   inactiveColor?: string;
-  /** 激活颜色（支持 CSS 变量语法） */
+  /**
+   * 激活颜色（支持 CSS 变量语法）
+   * @default 'var(--aix-waveform-active, var(--aix-colorPrimary, #1677ff))'
+   */
   activeColor?: string;
 }
 
@@ -227,7 +233,7 @@ export interface WaveformCanvasProps {
 export interface AudioPlayerProps {
   /** 音频 URL 或 Blob */
   src: string | Blob;
-  /** 波形数据 */
+  /** 波形数据点（0-1 归一化），为空则不画波形 */
   waveform?: number[];
   /** 是否显示波形，默认 true */
   showWaveform?: boolean;
@@ -237,9 +243,13 @@ export interface AudioPlayerProps {
 
 /** AudioPlayer Emits */
 export interface AudioPlayerEmits {
+  /** 开始播放 */
   (e: 'play'): void;
+  /** 暂停 */
   (e: 'pause'): void;
+  /** 播放结束 */
   (e: 'ended'): void;
+  /** 播放进度更新，参数为当前时间（秒） */
   (e: 'timeupdate', time: number): void;
   /** 加载或播放失败（含自动播放被浏览器拦截） */
   (e: 'error', error: Error): void;

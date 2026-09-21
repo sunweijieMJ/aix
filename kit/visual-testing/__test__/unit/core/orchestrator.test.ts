@@ -165,6 +165,13 @@ function mockConfig(overrides: Partial<VisualTestConfig> = {}): VisualTestConfig
         disableAnimations: true,
         hideSelectors: [],
       },
+      deviceScaleFactor: 1,
+      context: {
+        cookies: [],
+        locale: 'zh-CN',
+        timezoneId: 'Asia/Shanghai',
+        reducedMotion: 'reduce',
+      },
       browsers: [{ type: 'chromium', headless: true }],
     },
     comparison: {
@@ -199,6 +206,7 @@ function mockConfig(overrides: Partial<VisualTestConfig> = {}): VisualTestConfig
     },
     ci: {
       failOnDiff: true,
+      gate: 'pixel',
       failOnSeverity: 'major',
     },
     performance: {
@@ -349,6 +357,13 @@ describe('VisualTestOrchestrator', () => {
               disableAnimations: true,
               hideSelectors: [],
             },
+            deviceScaleFactor: 1,
+            context: {
+              cookies: [],
+              locale: 'zh-CN',
+              timezoneId: 'Asia/Shanghai',
+              reducedMotion: 'reduce',
+            },
             browsers: [{ type: 'chromium', headless: true }],
           },
           targets: [
@@ -381,6 +396,13 @@ describe('VisualTestOrchestrator', () => {
               extraDelay: 0,
               disableAnimations: true,
               hideSelectors: [],
+            },
+            deviceScaleFactor: 1,
+            context: {
+              cookies: [],
+              locale: 'zh-CN',
+              timezoneId: 'Asia/Shanghai',
+              reducedMotion: 'reduce',
             },
             browsers: [
               { type: 'chromium', headless: true },

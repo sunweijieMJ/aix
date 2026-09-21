@@ -25,6 +25,7 @@
 
 <script lang="ts">
 export interface QuoteSheetProps {
+  /** 动作列表（已解析为可直接渲染的项） */
   items: ResolvedQuoteAction[];
   /** 定位锚：长按触点（视口坐标）造零尺寸 rect */
   getAnchorRect: () => DOMRect;
@@ -32,12 +33,15 @@ export interface QuoteSheetProps {
   contextEl?: HTMLElement | null;
 }
 export interface QuoteSheetEmits {
+  /** 点击某个动作，参数为动作 key */
   (e: 'invoke', key: string): void;
+  /** 关闭面板 */
   (e: 'close'): void;
 }
 </script>
 
 <script setup lang="ts">
+/** 划词引用的面板皮肤：贴选区浮动，操作纵向成列表，适合项数较多时。 */
 import { useClickOutside, useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { computed, ref, watch, watchEffect } from 'vue';

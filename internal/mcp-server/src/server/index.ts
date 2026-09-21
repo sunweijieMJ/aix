@@ -1,48 +1,22 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { dirname, join } from 'node:path';
+// SDK 的高阶服务端与本文件导出的 McpServer 同名，用别名区分
+import { McpServer as SdkMcpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
-  CallToolRequestSchema,
-  GetPromptRequestSchema,
-  ListPromptsRequestSchema,
   ListResourcesRequestSchema,
-  ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createConfigManager } from '../config';
 import type { ServerConfig } from '../config';
-import {
-  COMPONENT_LIBRARY_CONFIG,
-  DEFAULT_WS_HOST,
-  DEFAULT_WS_PORT,
-  TEXT_TEMPLATES,
-} from '../constants';
+import { COMPONENT_LIBRARY_CONFIG } from '../constants';
 import { createResourceManager } from '../mcp-resources/index';
 import { createTools } from '../mcp-tools/index';
 import { getAllPrompts } from '../prompts/index';
-import { createWebSocketTransport } from '../transports/websocket';
-import type { ComponentIndex, ToolPackageIndex } from '../types/index';
-import { createCacheManager } from '../utils/cache';
-import { log } from '../utils/logger';
+import type { ComponentIndex, ToolArguments, ToolPackageIndex } from '../types/index';
+import { LogLevel, cliLogger, log } from '../utils/logger';
 import { createMonitoringManager } from '../utils/monitoring';
-
-/**
- * 获取 MCP Server 项目根目录
- * 无论代码运行在 src/ 还是 dist/ 目录下都能正确定位
- */
-function getMCPServerRoot(): string {
-  const currentFileDir = dirname(fileURLToPath(import.meta.url));
-
-  // 检查当前文件是否在构建输出目录中（兼容 Windows 和 Unix 路径）
-  const isInBuildDir = currentFileDir.includes('/dist') || currentFileDir.includes('\\dist');
-
-  // 计算相对于项目根目录的路径
-  return isInBuildDir
-    ? resolve(currentFileDir, '..') // 从 dist/ 回到根目录
-    : resolve(currentFileDir, '../..'); // 从 src/server/ 回到根目录
-}
+import { findRepoRoot } from '../utils/repo-root';
 
 /**
  * AIX 组件库 MCP Server
@@ -58,17 +32,24 @@ function getMCPServerRoot(): string {
  * ```
  */
 export class McpServer {
-  private server: Server;
+  private server: SdkMcpServer;
+  /** 工具只注册一次；回调按名字查当前实例，索引刷新后自动生效 */
+  private toolsRegistered = false;
   private componentIndex: ComponentIndex | null = null;
   private toolPackageIndex: ToolPackageIndex | null = null;
   private tools: ReturnType<typeof createTools> = [];
   private resourceManager: ReturnType<typeof createResourceManager> | null = null;
 
-  private cache: ReturnType<typeof createCacheManager>;
   private monitoringManager: ReturnType<typeof createMonitoringManager>;
+  private configManager: ReturnType<typeof createConfigManager>;
   private config: ServerConfig;
   private testMode: boolean;
-  private webSocketTransport?: ReturnType<typeof createWebSocketTransport>;
+  /**
+   * workspace 根目录，null 表示当前是脱离仓库运行（如 npx 安装）
+   *
+   * 有仓库时读磁盘上的真实文件，没有时退回 data/ 里的文档快照。
+   */
+  private repoRoot: string | null = null;
 
   /**
    * 创建 AIX MCP Server 实例
@@ -77,27 +58,23 @@ export class McpServer {
    * @param testMode - 是否启用测试模式（不启动 stdio transport），默认为 false
    */
   constructor(dataDir?: string, testMode = false) {
-    // 如果未提供数据目录，则使用项目根目录下的 data 文件夹
-    if (!dataDir) {
-      dataDir = join(getMCPServerRoot(), 'data');
-    }
-
-    // 创建配置管理器
-    const configManager = createConfigManager({ dataDir });
-    this.config = configManager.getAll();
+    // 不传时交给 ConfigManager 走「环境变量 -> 默认值」，
+    // 在这里补默认值会盖掉 MCP_DATA_DIR，让环境变量永远不生效
+    this.configManager = createConfigManager(dataDir ? { dataDir } : undefined);
+    this.config = this.configManager.getAll();
     this.testMode = testMode;
 
-    // 确保路径存在且正确
-    // 在测试模式下显示路径信息
+    // verbose（含 MCP_VERBOSE 环境变量）此前只被读进配置就没有下文了。
+    // 接到日志级别上：默认 INFO，开了才出 debug——否则这个开关是个空承诺
+    cliLogger.setLevel(this.config.verbose ? LogLevel.DEBUG : LogLevel.INFO);
+
     if (testMode) {
       log.info(`数据目录: ${this.config.dataDir}`);
-      log.info(`缓存目录: ${this.config.cacheDir}`);
     }
 
-    this.cache = createCacheManager();
     this.monitoringManager = createMonitoringManager();
 
-    this.server = new Server(
+    this.server = new SdkMcpServer(
       {
         name: COMPONENT_LIBRARY_CONFIG.packageName,
         version: COMPONENT_LIBRARY_CONFIG.version,
@@ -111,140 +88,98 @@ export class McpServer {
       },
     );
 
-    this.setupHandlers();
+    this.registerPrompts();
+    this.setupResourceHandlers();
   }
 
   /**
-   * 包装请求处理器，统一处理监控和错误
+   * 注册工具
+   *
+   * 只注册一次：工具实例会随索引刷新重建，但名字和 schema 不变，
+   * 所以回调里按名字取当前实例，避免重复注册（SDK 会对同名报错）。
    */
-  private wrapHandler<T>(
-    requestType: string,
-    handler: (request: any) => Promise<T>,
-  ): (request: any) => Promise<T> {
-    return async (request: any) => {
-      const startTime = Date.now();
-      this.monitoringManager.recordRequestStart();
+  private registerTools(): void {
+    if (this.toolsRegistered) return;
+    this.toolsRegistered = true;
 
-      try {
-        const result = await handler(request);
-        this.monitoringManager.recordRequestEnd(true, startTime);
-        return result;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.monitoringManager.recordError(requestType, errorMessage);
-        this.monitoringManager.recordRequestEnd(false, startTime);
-        throw error;
-      }
-    };
-  }
-
-  /**
-   * 设置请求处理器
-   */
-  private setupHandlers(): void {
-    // 工具列表处理器
-    this.server.setRequestHandler(
-      ListToolsRequestSchema,
-      this.wrapHandler('list-tools', async () => ({
-        tools: this.tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        })),
-      })),
-    );
-
-    // 工具调用处理器
-    this.server.setRequestHandler(
-      CallToolRequestSchema,
-      this.wrapHandler('call-tool', async (request: any) => {
-        const { name, arguments: args } = request.params;
-        const toolStartTime = Date.now();
-
+    for (const { name, description, inputSchema } of this.tools) {
+      this.server.registerTool(name, { description, inputSchema }, async (args: ToolArguments) => {
+        const startTime = Date.now();
+        // 请求计数必须落在这里：只记 recordToolCall 的话，getStats 的成功率和
+        // health 的错误率分母恒为 0，永远显示 0.00%——是块假的绿灯
+        this.monitoringManager.recordRequestStart();
         const tool = this.tools.find((t) => t.name === name);
+
         if (!tool) {
-          throw new Error(`Unknown tool: ${name}`);
+          const message = `工具不可用: ${name}`;
+          this.monitoringManager.recordRequestEnd(false, startTime);
+          this.monitoringManager.recordError(name, message);
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: message }],
+          };
         }
 
         try {
-          const result = await tool.execute(args || {});
-          this.monitoringManager.recordToolCall(name, toolStartTime);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
+          const result = await tool.execute(args ?? {});
+          this.monitoringManager.recordToolCall(name, startTime);
+          this.monitoringManager.recordRequestEnd(true, startTime);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (error) {
-          this.monitoringManager.recordToolCall(name, toolStartTime);
-          throw new Error(
-            `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
-            { cause: error },
-          );
+          const message = error instanceof Error ? error.message : String(error);
+          this.monitoringManager.recordToolCall(name, startTime);
+          this.monitoringManager.recordRequestEnd(false, startTime);
+          this.monitoringManager.recordError(name, message);
+          // 用 isError 而不是抛异常：调用方能看到具体原因并自行纠正
+          return { isError: true, content: [{ type: 'text' as const, text: message }] };
         }
-      }),
-    );
+      });
+    }
+  }
 
-    // 提示词列表处理器
-    this.server.setRequestHandler(
-      ListPromptsRequestSchema,
-      this.wrapHandler('list-prompts', async () => {
-        const prompts = getAllPrompts();
-        return {
-          prompts: Object.entries(prompts).map(([key]) => ({
-            name: `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-${key}`,
-            description: this.getPromptDescription(key),
-          })),
-        };
-      }),
-    );
+  /**
+   * 注册提示词
+   */
+  private registerPrompts(): void {
+    const prompts = getAllPrompts();
 
-    // 获取提示词处理器
-    this.server.setRequestHandler(
-      GetPromptRequestSchema,
-      this.wrapHandler('get-prompt', async (request: any) => {
-        const { name } = request.params;
-        const prompts = getAllPrompts();
-        const promptKey = name.replace(
-          `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-`,
-          '',
-        ) as keyof typeof prompts;
-        const prompt = prompts[promptKey];
+    for (const [key, text] of Object.entries(prompts)) {
+      this.server.registerPrompt(
+        `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-${key}`,
+        { description: this.getPromptDescription(key) },
+        () => ({ messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] }),
+      );
+    }
+  }
 
-        if (!prompt) {
-          throw new Error(`Unknown prompt: ${name}`);
-        }
+  /**
+   * 注册资源处理器
+   *
+   * 资源是按组件动态生成的（几百条，URI 由包名 + 文件相对路径拼成），
+   * 既不是固定 URI 也不适合套 ResourceTemplate，所以这部分继续用底层
+   * 的 list/read 处理器，高阶实例通过 `.server` 暴露它。
+   */
+  private setupResourceHandlers(): void {
+    this.server.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      if (!this.resourceManager) {
+        return { resources: [] };
+      }
+      return { resources: await this.resourceManager.listResources() };
+    });
 
-        return {
-          messages: [{ role: 'user', content: { type: 'text', text: prompt } }],
-        };
-      }),
-    );
+    this.server.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      if (!this.resourceManager) {
+        throw new Error('Resource manager not initialized');
+      }
 
-    // 资源列表处理器
-    this.server.setRequestHandler(
-      ListResourcesRequestSchema,
-      this.wrapHandler('list-resources', async () => {
-        if (!this.resourceManager) {
-          return { resources: [] };
-        }
-        const resources = await this.resourceManager.listResources();
-        return { resources };
-      }),
-    );
+      const { uri } = request.params;
+      const content = await this.resourceManager.readResource(uri);
+      if (!content) {
+        throw new Error(`Resource not found: ${uri}`);
+      }
 
-    // 读取资源处理器
-    this.server.setRequestHandler(
-      ReadResourceRequestSchema,
-      this.wrapHandler('read-resource', async (request: any) => {
-        if (!this.resourceManager) {
-          throw new Error('Resource manager not initialized');
-        }
-        const { uri } = request.params;
-        const content = await this.resourceManager.readResource(uri);
-        if (!content) {
-          throw new Error(`Resource not found: ${uri}`);
-        }
-        return { contents: [content] };
-      }),
-    );
+      return { contents: [content] };
+    });
   }
 
   /**
@@ -277,43 +212,17 @@ export class McpServer {
     this.toolPackageIndex = await this.loadToolPackageIndex();
 
     try {
-      // 先尝试从缓存加载
-      const cached = await this.cache.get<ComponentIndex>('component-index');
-      if (cached) {
-        this.componentIndex = cached;
-        this.tools = createTools(
-          this.componentIndex,
-          this.config.dataDir,
-          this.toolPackageIndex ?? undefined,
-        );
-        this.resourceManager = createResourceManager(this.componentIndex);
-        if (this.testMode) {
-          log.info('✅ 从缓存加载组件索引');
-        }
-        return;
-      }
-
-      // 从文件加载
       const indexPath = join(this.config.dataDir, 'components-index.json');
 
       try {
         const content = await readFile(indexPath, 'utf8');
         this.componentIndex = JSON.parse(content) as ComponentIndex;
-
-        // 缓存索引数据
-        await this.cache.set('component-index', this.componentIndex, 24 * 60 * 60 * 1000); // 24小时
       } catch (error) {
         log.error(`无法读取组件索引文件: ${indexPath}`, error);
         throw error;
       }
 
-      // 创建工具实例
-      this.tools = createTools(
-        this.componentIndex,
-        this.config.dataDir,
-        this.toolPackageIndex ?? undefined,
-      );
-      this.resourceManager = createResourceManager(this.componentIndex);
+      this.wireUpIndex();
 
       log.info(`✅ 加载了 ${this.componentIndex.components.length} 个组件`);
     } catch (error) {
@@ -327,13 +236,50 @@ export class McpServer {
         lastUpdated: new Date().toISOString(),
         version: '1.0.0',
       };
-      this.tools = createTools(
-        this.componentIndex,
-        this.config.dataDir,
-        this.toolPackageIndex ?? undefined,
-      );
-      this.resourceManager = createResourceManager(this.componentIndex);
+      this.wireUpIndex();
     }
+  }
+
+  /**
+   * 用当前索引重建工具和资源管理器
+   *
+   * 索引来自缓存、磁盘还是空兜底，后续装配都一样，集中在这里避免三处漂移。
+   */
+  private wireUpIndex(): void {
+    if (!this.componentIndex) return;
+
+    this.repoRoot = this.resolveRepoRoot(this.componentIndex);
+
+    this.tools = createTools(
+      this.componentIndex,
+      this.config.dataDir,
+      this.toolPackageIndex ?? undefined,
+      this.repoRoot,
+    );
+    this.resourceManager = createResourceManager(
+      this.componentIndex,
+      this.config.dataDir,
+      this.repoRoot,
+    );
+
+    this.registerTools();
+  }
+
+  /**
+   * 定位 workspace 根
+   *
+   * 用第一个组件的 sourcePath 当探针，确保命中的是真的装着这套组件库的仓库，
+   * 而不是使用方自己那个恰好也有 pnpm-workspace.yaml 的目录。
+   */
+  private resolveRepoRoot(index: ComponentIndex): string | null {
+    const probe = index.components[0]?.sourcePath;
+    const root = findRepoRoot(this.config.dataDir, probe);
+
+    if (this.testMode) {
+      log.info(root ? `仓库根目录: ${root}` : '未定位到仓库，文档走 data/ 内的快照');
+    }
+
+    return root;
   }
 
   /**
@@ -354,8 +300,6 @@ export class McpServer {
   /**
    * 保存组件索引
    *
-   * 将组件索引保存到文件系统和缓存中。
-   *
    * @param index - 要保存的组件索引
    * @returns 返回一个 Promise，在保存完成后解析
    */
@@ -365,16 +309,8 @@ export class McpServer {
       await mkdir(dirname(indexPath), { recursive: true });
       await writeFile(indexPath, JSON.stringify(index, null, 2), 'utf8');
 
-      // 更新缓存
-      await this.cache.set('component-index', index, 24 * 60 * 60 * 1000);
-
       this.componentIndex = index;
-      this.tools = createTools(
-        this.componentIndex,
-        this.config.dataDir,
-        this.toolPackageIndex ?? undefined,
-      );
-      this.resourceManager = createResourceManager(this.componentIndex);
+      this.wireUpIndex();
 
       log.info('✅ 组件索引已保存');
     } catch (error) {
@@ -386,23 +322,16 @@ export class McpServer {
   /**
    * 刷新组件索引
    *
-   * 重新加载组件索引，并更新工具列表。
+   * 重新从磁盘加载索引，并更新工具列表。
    *
    * @returns 返回一个 Promise，在刷新完成后解析
    */
   async refreshComponentIndex(): Promise<void> {
-    // 清除缓存
-    await this.cache.delete('component-index');
-
-    // 重新加载
     await this.loadComponentIndex();
   }
 
   /**
    * 获取服务器统计信息
-   *
-   * 返回服务器的统计信息，包括已加载的组件数量、可用工具数量、
-   * 缓存统计和最后更新时间。
    *
    * @returns 服务器统计信息对象
    */
@@ -410,26 +339,9 @@ export class McpServer {
     return {
       componentsLoaded: this.componentIndex?.components.length || 0,
       toolsAvailable: this.tools.length,
-      cacheStats: this.cache.getStats(),
       monitoringStats: this.monitoringManager.getMetricsSummary(),
       lastUpdated: this.componentIndex?.lastUpdated || null,
     };
-  }
-
-  /**
-   * 启动 WebSocket 服务器
-   */
-  async startWebSocket(port = DEFAULT_WS_PORT, host = DEFAULT_WS_HOST): Promise<void> {
-    await this.loadComponentIndex();
-
-    // 创建 WebSocket Transport
-    this.webSocketTransport = createWebSocketTransport({ port, host });
-
-    // server.connect() 内部会按正确顺序：注册 onmessage 等回调 → 调用 transport.start()
-    // 不要额外调用 transport.start()，否则会导致端口重复绑定
-    await this.server.connect(this.webSocketTransport);
-
-    log.info(`🚀 AIX MCP WebSocket 服务器已启动 ws://${host}:${port}`);
   }
 
   /**
@@ -442,7 +354,15 @@ export class McpServer {
    */
   async start(): Promise<void> {
     if (this.testMode) {
-      log.info(TEXT_TEMPLATES.cliWelcome());
+      log.info(`🚀 启动 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server...`);
+    }
+
+    // 校验配置：错误直接失败，警告只提示（数据缺失时服务仍以空数据启动）
+    const validation = await this.configManager.validate();
+    validation.warnings.forEach((w) => log.warn(`⚠️ ${w}`));
+    if (!validation.isValid) {
+      validation.errors.forEach((e) => log.error(`❌ ${e}`));
+      throw new Error(`配置校验失败: ${validation.errors.join('; ')}`);
     }
 
     // 加载组件索引
@@ -458,7 +378,7 @@ export class McpServer {
     }
 
     if (this.testMode) {
-      log.info(TEXT_TEMPLATES.cliSuccess());
+      log.info(`✅ ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server 已启动`);
     }
   }
 
@@ -471,20 +391,14 @@ export class McpServer {
    */
   async stop(): Promise<void> {
     if (this.testMode) {
-      log.info(TEXT_TEMPLATES.cliStop());
+      log.info(`🛑 停止 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server...`);
     }
 
     try {
-      // 关闭 WebSocket Transport
-      if (this.webSocketTransport) {
-        await this.webSocketTransport.close();
-        this.webSocketTransport = undefined;
-      }
-
       // 关闭服务器
       await this.server.close();
       if (this.testMode) {
-        log.info(TEXT_TEMPLATES.cliStopped());
+        log.info(`✅ ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server 已停止`);
       }
     } catch (error) {
       log.error('停止服务器时出错:', error);

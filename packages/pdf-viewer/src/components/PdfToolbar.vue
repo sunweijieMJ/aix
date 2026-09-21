@@ -1,6 +1,7 @@
 <template>
   <div class="aix-pdf-toolbar">
     <div class="aix-pdf-toolbar__left">
+      <!-- @slot 左侧区域，默认渲染翻页控件与页码输入 -->
       <slot name="left">
         <button
           class="aix-pdf-toolbar__btn"
@@ -35,6 +36,7 @@
     </div>
 
     <div class="aix-pdf-toolbar__center">
+      <!-- @slot 中间区域，默认渲染缩放控件 -->
       <slot name="center">
         <button
           class="aix-pdf-toolbar__btn"
@@ -57,6 +59,7 @@
     </div>
 
     <div class="aix-pdf-toolbar__right">
+      <!-- @slot 右侧区域，默认渲染适应页面按钮 -->
       <slot name="right">
         <button class="aix-pdf-toolbar__btn" :title="t.fitPage" @click="emit('fit-page')">
           <Fullscreen width="16" height="16" />
@@ -67,6 +70,7 @@
 </template>
 
 <script setup lang="ts">
+/** PDF 工具栏：翻页、跳页、缩放与适应页面，三个区域都可用插槽替换。 */
 import { useLocale } from '@aix/hooks';
 import { Add, ArrowLeft, ArrowRight, Fullscreen, Minus } from '@aix/icons';
 import { locale } from '../locale';
@@ -74,19 +78,30 @@ import { locale } from '../locale';
 const { t } = useLocale({ name: 'pdf-viewer', messages: locale });
 
 const props = defineProps<{
+  /** 当前页码（从 1 开始） */
   currentPage: number;
+  /** 总页数 */
   totalPages: number;
+  /** 当前缩放比例，1 为 100% */
   scale: number;
+  /** 最小缩放比例 */
   minScale: number;
+  /** 最大缩放比例 */
   maxScale: number;
 }>();
 
 const emit = defineEmits<{
+  /** 上一页 */
   (e: 'prev'): void;
+  /** 下一页 */
   (e: 'next'): void;
+  /** 跳转到指定页 */
   (e: 'goto', page: number): void;
+  /** 放大 */
   (e: 'zoom-in'): void;
+  /** 缩小 */
   (e: 'zoom-out'): void;
+  /** 适应页面 */
   (e: 'fit-page'): void;
 }>();
 

@@ -8,6 +8,7 @@
     aria-haspopup="menu"
     v-on="referenceListeners"
   >
+    <!-- @slot 触发元素 -->
     <slot name="reference" />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
@@ -25,6 +26,7 @@
           :aria-labelledby="triggerId"
           @keydown="onMenuKeyDown"
         >
+          <!-- @slot 自定义下拉菜单内容（使用 DropdownItem） -->
           <slot name="dropdown">
             <DropdownItem
               v-for="item in options"
@@ -42,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+/** 下拉菜单：options 数据驱动与 DropdownItem 插槽自定义二选一。 */
 import { useId, useZIndex } from '@aix/hooks';
 import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';

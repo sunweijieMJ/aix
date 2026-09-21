@@ -11,9 +11,10 @@ import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 import type { ReactI18nLibraryType } from '../src/strategies/react/libraries';
 import { HooksUtils } from '../src/strategies/react/hooks-utils';
 import { ReactAdapter } from '../src/adapters/ReactAdapter';
+import type { ITextExtractor } from '../src/adapters/FrameworkAdapter';
 import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { LoggerUtils } from '../src/utils/logger';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { parseSourceFile } from '../src/utils/ast-core';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 import type { ExtractedString } from '../src/utils/types';
@@ -346,7 +347,7 @@ describe('ReactComponentInjector：t 非解构首位时不重复注入 hook（�
  * 确保抽取到 CommonASTUtils 后行为完全不变。
  */
 const findNode = (code: string, text: string): ts.Node => {
-  const sf = CommonASTUtils.parseSourceFile(code, 'probe.tsx');
+  const sf = parseSourceFile(code, 'probe.tsx');
   let found: ts.Node | undefined;
   const visit = (n: ts.Node): void => {
     if (
@@ -853,7 +854,6 @@ describe('GenerateProcessor 覆盖率 — react-intl 调用点计入分子（审
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -899,12 +899,88 @@ export function Done() {
 });
 
 // ---------------------------------------------------------------------------
+// 场景 11：同名非 i18n `t` 绑定下的覆盖率账目
+// ---------------------------------------------------------------------------
+/**
+ * 组件外层有 `import { t } from './tiny-template'` 时，提取端会整处跳过（否则替换出的
+ * 裸 t() 会解析到那个本地函数上）。两条账必须同时对：
+ *  1. 跳过的片段要进 needsManual 与覆盖率分母（否则该目录报「待人工 0 / 100%」= CI 假绿）；
+ *  2. 那个本地 `t('你好 {name}')` 不是 i18n 调用点，不能计进 alreadyI18n（覆盖率虚高）。
+ */
+describe('GenerateProcessor 覆盖率 — 同名非 i18n t 绑定', () => {
+  let rootDir: string;
+  let srcDir: string;
+  let localeDir: string;
+
+  const buildConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'react', library: 'react-i18next', tImport: '@/plugins/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { sourceDir: srcDir, localesDir: localeDir, format: 'flat', prettify: false },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gen-cov-conflict-t-'));
+    srcDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const writeFixture = (): void => {
+    fs.writeFileSync(
+      path.join(srcDir, 'tiny-template.ts'),
+      `export function t(tpl: string, vars: Record<string, string>) {
+  return Object.keys(vars).reduce((acc, k) => acc.split('{' + k + '}').join(vars[k]!), tpl);
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(srcDir, 'Conflict.tsx'),
+      `import { t } from './tiny-template';
+export function Conflict({ name }: { name: string }) {
+  const hint = t('你好 {name}', { name });
+  return <div title="外部提示">{hint}</div>;
+}
+`,
+      'utf-8',
+    );
+  };
+
+  it('跳过的片段进分母、本地 t() 不计入 alreadyI18n', async () => {
+    writeFixture();
+
+    const proc = new GenerateProcessor(buildConfig(), false, false);
+    await proc.execute(srcDir, true);
+
+    const cov = proc.getCoverage();
+    // 「外部提示」未被改写，必须计入 skipped（修复前为 0 → 待人工 0）
+    expect(cov?.skipped).toBe(1);
+    // 本地模板函数的 t('你好 {name}') 不是 i18n 调用点（修复前被计成 1）
+    expect(cov?.alreadyI18n).toBe(0);
+    expect(cov?.coverageRate).toBeLessThan(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 场景 11：JSX 混合内容插值中嵌套中文记入诊断（审计三轮 #3）
 // ---------------------------------------------------------------------------
 /**
  * 回归（三轮审计 #3）：JSX 混合内容（中文文本 + 插值表达式）路径
  * extractJsxMixedContent 对每个 `{expr}` 子节点只发 `${expr}` 占位，**不**做嵌套中文
- * 检测——而模板字面量路径会把三元/逻辑分支里的中文记入 skippedNestedChinese 供
+ * 检测——而模板字面量路径会把三元/逻辑分支里的中文记入 ExtractionDiagnostics 供
  * lint/doctor 告警。于是 `<div>状态：{ok ? '成功' : '失败'}</div>` 里的「成功/失败」
  * 既不翻译也无任何诊断，运行时静默泄漏未翻译中文。
  *
@@ -913,8 +989,9 @@ export function Done() {
  */
 describe('React JSX 混合内容插值中嵌套中文记入诊断（审计三轮 #3）', () => {
   let dir: string;
+  // 每次 extract 都新建 adapter/extractor，诊断收集器随之新建，用例之间天然隔离。
+  let lastExtractor: ITextExtractor;
   beforeEach(() => {
-    CommonASTUtils.drainSkippedNestedChinese();
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-jsx-nested-cn-'));
   });
   afterEach(() => {
@@ -925,7 +1002,8 @@ describe('React JSX 混合内容插值中嵌套中文记入诊断（审计三轮
     const file = path.join(dir, 'C.tsx');
     fs.writeFileSync(file, code);
     const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
-    return adapter.getTextExtractor().extractFromFile(file);
+    lastExtractor = adapter.getTextExtractor();
+    return lastExtractor.extractFromFile(file);
   };
 
   it('三元分支中文被记录，且未各自生成独立 key', async () => {
@@ -941,7 +1019,7 @@ export function C({ ok }: { ok: boolean }) {
     expect(strings.some((s) => s.original === '失败')).toBe(false);
 
     // 关键：两个中文分支被记入诊断集合（不再静默泄漏）
-    const drained = CommonASTUtils.drainSkippedNestedChinese();
+    const drained = lastExtractor.getDiagnostics().drainSkippedNestedChinese();
     const texts = drained.map((d) => d.text).sort();
     expect(texts).toEqual(['失败', '成功']);
     expect(drained[0]!.filePath).toBe(path.join(dir, 'C.tsx'));
@@ -955,7 +1033,7 @@ export function C({ name }: { name: string }) {
 }
 `;
     await extract(code);
-    expect(CommonASTUtils.drainSkippedNestedChinese()).toEqual([]);
+    expect(lastExtractor.getDiagnostics().drainSkippedNestedChinese()).toEqual([]);
   });
 });
 
@@ -1266,5 +1344,889 @@ describe('hookUsesTranslationVar — 直传 t 形态', () => {
     const code = `const { t } = useTranslation();\nconst fn = useCallback(t, [deps]);`;
     const out = HooksUtils.addTranslationVarToHooksDependencies(code, lib);
     expect(out).toContain('[deps, t]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 场景：提取端三处「静默丢文案 / 静默产坏代码」的审计修复
+// ---------------------------------------------------------------------------
+describe('React 提取端审计修复合集', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-extract-audit-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function run(code: string, libType: ReactI18nLibraryType = 'react-i18next') {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const extractor = new ReactTextExtractor(createReactI18nLibrary(libType), []);
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const adapter = new ReactAdapter('@/plugins/locale', libType);
+    const out = adapter.getTransformer().transform(file, strings, code);
+    return {
+      strings,
+      out,
+      warnings: extractor.drainWarnings(),
+      manualSkips: extractor.drainManualSkips(),
+    };
+  }
+
+  /**
+   * P1：命中混合内容后 visitNode 直接 return，把整棵子树（含 openingElement 的属性）
+   * 一起跳过 —— `<div title="标题文案">共 {count} 项</div>` 只提取到文本，title 既不提取
+   * 也不进诊断，静默丢失。混合内容只吃 children 区间，开标签必须单独再走一遍。
+   */
+  describe('混合内容元素的属性文案不被吞掉', () => {
+    it('文本 + 属性各提取一条', async () => {
+      const code = `import React from 'react';
+export function C({ count }: { count: number }) {
+  return <div title="标题文案">共 {count} 项</div>;
+}
+`;
+      const { strings, out } = await run(code);
+      const originals = strings.map((s) => s.original);
+      expect(originals, `提取结果：${JSON.stringify(originals)}`).toHaveLength(2);
+      expect(originals.some((o) => o.includes('共 ${count} 项'))).toBe(true);
+      expect(strings.some((s) => s.original === '标题文案' && s.context === 'jsx-attribute')).toBe(
+        true,
+      );
+      // 两处都被国际化，源码里不再残留中文
+      expect(out, `转换输出：\n${out}`).not.toContain('标题文案');
+      expect(out).toContain('<Trans');
+    });
+
+    it('嵌套变体：外层与内层元素的属性都不漏', async () => {
+      const code = `import React from 'react';
+export function C({ count }: { count: number }) {
+  return <div title="外层标题"><span title="内层标题">共 {count} 项</span></div>;
+}
+`;
+      const { strings, out } = await run(code);
+      const originals = strings.map((s) => s.original);
+      expect(originals, `提取结果：${JSON.stringify(originals)}`).toContain('外层标题');
+      expect(originals).toContain('内层标题');
+      expect(out).not.toContain('外层标题');
+      expect(out).not.toContain('内层标题');
+    });
+
+    it('回归：Fragment 混合内容无开标签属性，行为不变', async () => {
+      const code = `import React from 'react';
+export function C({ count }: { count: number }) {
+  return <>共 {count} 项</>;
+}
+`;
+      const { strings } = await run(code);
+      expect(strings).toHaveLength(1);
+      expect(strings[0]!.original).toContain('共 ${count} 项');
+    });
+  });
+
+  /**
+   * P2：static 成员求值时 this 是类构造函数、没有 props。注入端不检查 static 修饰符会注入
+   * `const { t } = this.props`（运行时 TypeError）；提取端对 static 箭头初始化器一律放行，
+   * 把中文替换成裸 t()。两端都要按「宁可漏提取」跳过。
+   */
+  describe('类组件 static 成员跳过提取', () => {
+    it('static 箭头属性 + static getter：不提取、不注入、有诊断留痕', async () => {
+      const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  static build = () => '静态箭头';
+  static get label() { return '静态取值'; }
+  render() { return <div>{Foo.label}</div>; }
+}
+`;
+      const { strings, out, manualSkips } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual([]);
+      // 原文保留，且不产出无绑定的裸 t()
+      expect(out, `转换输出：\n${out}`).toContain("'静态箭头'");
+      expect(out).toContain("'静态取值'");
+      expect(out).not.toMatch(/t\(/);
+      // 不得给 static 成员注入 this.props 解构
+      expect(out).not.toContain('const { t } = this.props;');
+      expect(manualSkips.filter((m) => m.category === 'class-property')).toHaveLength(2);
+    });
+
+    it('static 方法内的文案同样跳过', async () => {
+      const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  static describe() { return '静态方法'; }
+  render() { return <div /> ; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual([]);
+      expect(out).toContain("'静态方法'");
+    });
+
+    it('回归：同名的实例箭头属性 / 实例 getter 照常提取并注入绑定', async () => {
+      const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  build = () => '实例箭头';
+  get label() { return '实例取值'; }
+  render() { return <div>{this.label}</div>; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original).sort()).toEqual(['实例取值', '实例箭头']);
+      expect(out).toContain('const { t } = this.props;');
+    });
+  });
+
+  /**
+   * P2：组件内已有 `const { t } = useTemperature()` 这类同名非 i18n 绑定时，注入器只告警
+   * 跳过注入，但 replaceStrings 已把中文换成裸 t('key') —— 新 t() 解析到温度函数，产出
+   * 「能编译、行为错」的代码。判定前移到提取端，该组件的候选整体不进 extractedStrings。
+   */
+  describe('同名非 i18n 绑定的组件整体跳过提取', () => {
+    it('const { t } = useTemperature()：中文不被替换，有 warning 留痕', async () => {
+      const code = `import React from 'react';
+import { useTemperature } from './temp';
+export function Panel() {
+  const { t } = useTemperature();
+  return <div title="温度面板">{t(20)}</div>;
+}
+`;
+      const { strings, out, warnings } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual([]);
+      expect(out, `转换输出：\n${out}`).toContain('title="温度面板"');
+      // 绝不能出现指向温度函数的伪 i18n 调用
+      expect(out).not.toMatch(/t\(['"]k\d/);
+      expect(out).not.toContain('useTranslation');
+      expect(warnings.some((w) => w.includes('同名的非 i18n 本地绑定'))).toBe(true);
+    });
+
+    it('react-intl 同型：const intl = createIntl(...) 亦跳过', async () => {
+      const code = `import React from 'react';
+import { createIntl } from './myIntl';
+export function Panel() {
+  const intl = createIntl({ locale: 'zh' });
+  return <div title="配置面板">{intl.formatMessage({ id: 'x' })}</div>;
+}
+`;
+      const { strings, out } = await run(code, 'react-intl');
+      expect(strings.map((s) => s.original)).toEqual([]);
+      expect(out).toContain('title="配置面板"');
+      expect(out).not.toContain('useIntl');
+    });
+
+    it('回归：已有正规 const { t } = useTranslation() 的组件照常提取替换', async () => {
+      const code = `import React from 'react';
+import { useTranslation } from 'react-i18next';
+export function Panel() {
+  const { t } = useTranslation();
+  return <div title="正常面板" />;
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['正常面板']);
+      expect(out).toContain("t('k0')");
+    });
+
+    it('回归：同名绑定只在嵌套回调里（内层遮蔽）→ 不算冲突，照常提取', async () => {
+      const code = `import React from 'react';
+export function Panel() {
+  React.useEffect(() => {
+    const t = setTimeout(() => {}, 0);
+    return () => clearTimeout(t);
+  }, []);
+  return <div title="定时面板" />;
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['定时面板']);
+      expect(out).toContain('useTranslation');
+    });
+  });
+});
+
+/**
+ * script 模板串的定位/复核不再依赖「重建文本逐字等于源码」：
+ * 结构化比对（nodeMatchesExtractedOriginal）对插值空白差异与 cooked 字面段免疫，
+ * 且「original 是否源码形式」以提取端 isTemplateString 旗标为准、不再看首尾字符。
+ * 修复前：三种输入均导致整文件转换中止（无法定位/无法验证）。
+ */
+describe('React script 模板串结构化比对', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-template-match-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const run = async (code: string): Promise<{ strings: ExtractedString[]; injected: string }> => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const injected = adapter.getTransformer().transform(file, strings, code);
+    return { strings, injected };
+  };
+
+  it('插值带空格 `${ count }` 不再整文件中止', async () => {
+    const code = `export function C({ count }: { count: number }) {
+  const msg = \`共 \${ count } 项\`;
+  return <div>{msg}</div>;
+}
+`;
+    const { injected } = await run(code);
+    expect(injected).toContain("t('k0'");
+    expect(injected).not.toContain('共 ${');
+  });
+
+  it('字面段含 `\\\\` 转义的模板串正常替换', async () => {
+    const code = `export function C({ dir }: { dir: string }) {
+  const p = \`路径C:\\\\to\\\\\${dir}中文\`;
+  return <div>{p}</div>;
+}
+`;
+    const { injected } = await run(code);
+    expect(injected).toContain("t('k0'");
+    expect(injected).not.toContain('中文');
+  });
+
+  it('内容整体被反引号包裹的普通字符串不被误判为模板源码形式', async () => {
+    const code = `export function C() {
+  const s = '\`提交\`';
+  return <div>{s}</div>;
+}
+`;
+    const { injected } = await run(code);
+    expect(injected).toContain("t('k0')");
+    expect(injected).not.toContain('提交');
+  });
+});
+
+/** 用 transpileModule 的语法诊断判定产物是否仍可解析（比字符串断言更接近真实编译器）。 */
+function syntaxDiagnostics(code: string, fileName: string): readonly ts.Diagnostic[] {
+  return (
+    ts.transpileModule(code, {
+      fileName,
+      reportDiagnostics: true,
+      compilerOptions: {
+        target: ts.ScriptTarget.Latest,
+        jsx: ts.JsxEmit.Preserve,
+      },
+    }).diagnostics ?? []
+  );
+}
+
+// ---------------------------------------------------------------------------
+// IComponentInjector.inject 的 filePath 决定 ScriptKind：纯 .ts 不按 TSX 解析
+// ---------------------------------------------------------------------------
+describe('ReactComponentInjector.inject — filePath 决定 ScriptKind', () => {
+  const injector = new ReactAdapter('@/i18n', 'react-i18next', {}).getComponentInjector();
+  // 纯 .ts 里的老式类型断言 + 一个 PascalCase 的 hook 组件。按 TSX 解析时 `<string>` 会被
+  // 当成 JSX 元素开标签、吞掉其后的代码，Panel 根本不会被识别为组件。
+  const code = [
+    'const cast = <string>value;',
+    'export function Panel() {',
+    '  const [n] = useState(0);',
+    "  return t('a.b') + n;",
+    '}',
+  ].join('\n');
+
+  it('.ts 按 TS 解析：<T>expr 是断言，组件被正常注入 hook', () => {
+    expect(injector.inject(code, '/proj/src/util.ts')).toContain('useTranslation()');
+  });
+
+  it('同一份代码按 .tsx 解析则识别不出组件', () => {
+    expect(injector.inject(code, '/proj/src/util.tsx')).not.toContain('useTranslation()');
+  });
+
+  it('缺省 filePath 退回 TSX，历史行为不变', () => {
+    const jsx = ['export function Panel() {', "  return <div>{t('a.b')}</div>;", '}'].join('\n');
+    expect(injector.inject(jsx)).toContain('useTranslation()');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hooks 依赖数组补 t：插入点落在末元素末尾，注释 / 尾随逗号都不破坏语法
+// ---------------------------------------------------------------------------
+describe('hooks 依赖数组注入不破坏语法', () => {
+  const library = createReactI18nLibrary('react-i18next');
+
+  it('末元素带行注释：插入点落在元素末尾，产物仍可解析', () => {
+    const code = `const C = () => {
+  const { t } = useTranslation();
+  const cb = useCallback(() => t('k0'), [dep // 依赖说明
+  ]);
+  return cb;
+};
+`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, library, 'C.tsx');
+
+    expect(out).toContain('[dep, t');
+    expect(out).toContain('// 依赖说明');
+    expect(syntaxDiagnostics(out, 'C.tsx')).toHaveLength(0);
+  });
+
+  it('末元素带块注释 / 已有尾随逗号：均不产生非法产物', () => {
+    const withBlockComment = `const C = () => {
+  const { t } = useTranslation();
+  useEffect(() => { t('k0'); }, [dep /* 说明 */]);
+};
+`;
+    const withTrailingComma = `const C = () => {
+  const { t } = useTranslation();
+  useMemo(() => t('k0'), [dep, ]);
+};
+`;
+    const a = HooksUtils.addTranslationVarToHooksDependencies(withBlockComment, library, 'C.tsx');
+    const b = HooksUtils.addTranslationVarToHooksDependencies(withTrailingComma, library, 'C.tsx');
+
+    expect(syntaxDiagnostics(a, 'C.tsx')).toHaveLength(0);
+    expect(syntaxDiagnostics(b, 'C.tsx')).toHaveLength(0);
+    expect(a).toContain('[dep, t /* 说明 */]');
+    expect(b).toContain('[dep, t, ]');
+  });
+
+  it('反向：空数组 / 普通数组 / 单参 hook 的既有语义不变', () => {
+    const code = `const C = () => {
+  const { t } = useTranslation();
+  const a = useCallback(() => t('k0'), []);
+  const b = useMemo(() => t('k1'), [dep]);
+  useEffect(() => { t('k2'); });
+  return [a, b];
+};
+`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, library, 'C.tsx');
+
+    expect(out).toContain(`useCallback(() => t('k0'), [t])`);
+    expect(out).toContain(`useMemo(() => t('k1'), [dep, t])`);
+    // 单参 hook 不得凭空补依赖数组（补了会把「每次渲染」改成「仅 t 变化时」）
+    expect(out).toContain(`useEffect(() => { t('k2'); });`);
+    expect(syntaxDiagnostics(out, 'C.tsx')).toHaveLength(0);
+  });
+
+  it('filePath 透传：.ts 文件按 TS 解析，<T>expr 断言不被当成 JSX', () => {
+    const code = `const C = () => {
+  const { t } = useTranslation();
+  const v = <string>raw;
+  const cb = useCallback(() => t('k0') + v, [v]);
+  return cb;
+};
+`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, library, 'C.ts');
+
+    expect(out).toContain('<string>raw');
+    expect(out).toContain('[v, t]');
+    expect(syntaxDiagnostics(out, 'C.ts')).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 类组件注入 HOC 时，构造器首个形参不叫 props 也要与类泛型同步加宽
+// ---------------------------------------------------------------------------
+describe('构造器 props 形参类型加宽', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r3-p2-react-ctor-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** 提取 + 转换的最小端到端。 */
+  async function run(
+    source: string,
+    libraryType: ReactI18nLibraryType = 'react-i18next',
+    fileName = 'App.tsx',
+  ) {
+    const file = path.join(dir, fileName);
+    fs.writeFileSync(file, source);
+    const adapter = new ReactAdapter('@/plugins/locale', libraryType);
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const transformed = adapter.getTransformer().transform(file, strings, source);
+    return { file, strings, transformed };
+  }
+
+  const classSource = (param: string) => `import React from 'react';
+interface Props { x: number }
+export class Panel extends React.Component<Props> {
+  constructor(${param}) {
+    super(${param.startsWith('{') ? '{} as Props' : param.split(':')[0]!.trim()});
+  }
+  render() {
+    return <div title="面板标题">x</div>;
+  }
+}
+`;
+
+  it('形参名非 props：类型与类泛型同步加宽，super 实参类型不失配', async () => {
+    const { transformed } = await run(classSource('myProps: Props'), 'react-i18next', 'P.tsx');
+    expect(transformed).toContain('React.Component<Props & WithTranslation>');
+    expect(transformed).toContain('myProps: Props & WithTranslation');
+  });
+
+  it('反向：形参名恰为 props 的既有行为不变', async () => {
+    const { transformed } = await run(classSource('props: Props'), 'react-i18next', 'P.tsx');
+    expect(transformed).toContain('props: Props & WithTranslation');
+  });
+
+  it('反向：解构形参不加宽（无标识符可传给 super，维持原样）', async () => {
+    const { transformed } = await run(classSource('{ x }: Props'), 'react-i18next', 'P.tsx');
+    expect(transformed).toContain('React.Component<Props & WithTranslation>');
+    expect(transformed).toContain('{ x }: Props)');
+    expect(transformed).not.toContain('{ x }: Props & WithTranslation');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 场景：提取 / 注入两端的作用域与形态守卫（第四轮审计）
+// ---------------------------------------------------------------------------
+describe('React 提取与注入的作用域 / 形态守卫', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-scope-guard-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function run(code: string, libType: ReactI18nLibraryType = 'react-i18next') {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/plugins/locale', libType);
+    const extractor = adapter.getTextExtractor() as ReactTextExtractor;
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+    return { strings, out, warnings: extractor.drainWarnings() };
+  }
+
+  describe('默认导出类组件：HOC 包裹后原类名仍在模块内', () => {
+    it('产出 const 原名 = HOC(内部名) + export default 原名', async () => {
+      const code = `import React from 'react';
+export default class Panel extends React.Component {
+  render() { return <div title="标题">{Panel.displayName}</div>; }
+}
+`;
+      const { out } = await run(code);
+      expect(out).toContain('const Panel = withTranslation()(PanelWithOutIntl);');
+      expect(out).toContain('export default Panel;');
+      // 默认导出唯一，且不遗留孤立 default 关键字
+      expect(count(out, /export\s+default/g)).toBe(1);
+      expect(out).not.toMatch(/default\s+class/);
+    });
+  });
+
+  describe('JSX 属性字符串的 HTML 实体解码', () => {
+    it('属性值解码进 processedMessage，original 保留源码原文', async () => {
+      const code = `import React from 'react';
+export const Panel = () => <div title="点击&amp;确认" />;
+`;
+      const { strings, out } = await run(code);
+      expect(strings[0]!.original).toBe('点击&amp;确认');
+      expect(strings[0]!.processedMessage).toBe('点击&确认');
+      // original 仍是源码形式，替换照常命中
+      expect(out).toContain(`title={t('k0')}`);
+    });
+
+    it('未识别实体：整段跳过提取并告警', async () => {
+      const code = `import React from 'react';
+export const Panel = () => <div title="提示&ensp;文案" />;
+`;
+      const { strings, warnings } = await run(code);
+      expect(strings).toHaveLength(0);
+      expect(warnings.join('\n')).toContain('&ensp;');
+    });
+  });
+
+  describe('非 PascalCase 类组件不判 class', () => {
+    it('小写类名 → componentType=other，走模块级 import { t }', async () => {
+      const code = `import React from 'react';
+export class panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings[0]!.componentType).toBe('other');
+      expect(out).toContain(`import { t } from '@/plugins/locale'`);
+      expect(out).not.toContain('withTranslation');
+    });
+
+    it('反向：PascalCase 类组件仍走 HOC 注入', async () => {
+      const code = `import React from 'react';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings[0]!.componentType).toBe('class');
+      expect(out).toContain('withTranslation()(PanelWithOutIntl)');
+    });
+  });
+
+  describe('混合内容含 JSX 注释时不整段合并', () => {
+    it('注释保留、文本退回逐段提取并告警', async () => {
+      const code = `import React from 'react';
+export const Panel = ({ n }: { n: number }) => (
+  <p>
+    共 {n} 项
+    {/* 这里以后要加单位 */}
+  </p>
+);
+`;
+      const { strings, out, warnings } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['共', '项']);
+      expect(out).toContain('{/* 这里以后要加单位 */}');
+      expect(warnings.join('\n')).toContain('混合内容含 JSX 注释');
+    });
+
+    it('反向：空表达式容器 {} 不阻断合并', async () => {
+      const code = `import React from 'react';
+export const Panel = ({ n }: { n: number }) => (
+  <p>共 {n} 项{}</p>
+);
+`;
+      const { strings } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['`共 ${n} 项`']);
+    });
+  });
+
+  describe('被当普通函数调用的渲染助手不注入 hook', () => {
+    it('Tip() 形态：不注入 useTranslation，文案改走模块级 t 并告警', async () => {
+      const code = `import React from 'react';
+const Tip = () => <span title="提示" />;
+export const Panel = () => <div>{Tip()}</div>;
+`;
+      const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+      const { strings, out } = await run(code);
+      expect(strings[0]!.componentType).toBe('other');
+      expect(out).not.toContain('useTranslation');
+      expect(out).toContain(`import { t } from '@/plugins/locale'`);
+      expect(warn.mock.calls.some((c) => String(c[0]).includes('违反 Hooks 规则'))).toBe(true);
+      warn.mockRestore();
+    });
+
+    it('JSX 与普通调用混用（dense ? Cell(r) : <Cell/>）同样跳过注入', async () => {
+      const code = `import React from 'react';
+const Cell = (r: number) => <td title="单元格">{r}</td>;
+export const Table = ({ dense, rows }: { dense: boolean; rows: number[] }) => (
+  <tbody>{rows.map((r) => (dense ? Cell(r) : <Cell />))}</tbody>
+);
+`;
+      const { out } = await run(code);
+      expect(out).not.toContain('useTranslation');
+      expect(out).toContain(`import { t } from '@/plugins/locale'`);
+    });
+
+    it('反向：只作 JSX 使用的渲染助手照常注入 hook', async () => {
+      const code = `import React from 'react';
+const Tip = () => <span title="提示" />;
+export const Panel = () => <div><Tip /></div>;
+`;
+      const { out } = await run(code);
+      expect(out).toContain('const { t } = useTranslation();');
+    });
+  });
+
+  describe('HOC Props 类型以 import type 单独注入', () => {
+    it('react-i18next：WithTranslation 不进值导入', async () => {
+      const code = `import React from 'react';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { out } = await run(code);
+      expect(out).toContain(`import type { WithTranslation } from 'react-i18next';`);
+      expect(out).not.toMatch(/import \{[^}]*WithTranslation[^}]*\} from 'react-i18next'/);
+    });
+
+    it('react-intl：WrappedComponentProps 不进值导入', async () => {
+      const code = `import React from 'react';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { out } = await run(code, 'react-intl');
+      expect(out).toContain(`import type { WrappedComponentProps } from 'react-intl';`);
+      expect(out).not.toMatch(/import \{[^}]*WrappedComponentProps[^}]*\} from 'react-intl'/);
+    });
+
+    it('已有同名 type 导入时不重复注入', async () => {
+      const code = `import React from 'react';
+import type { WithTranslation } from 'react-i18next';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { out } = await run(code);
+      expect(count(out, /import type \{ WithTranslation \}/g)).toBe(1);
+    });
+  });
+
+  describe('多行纯 JsxText 的 locale 值不含源码换行缩进', () => {
+    it('换行 + 缩进压成单空格进 processedMessage，original 保留原文', async () => {
+      const code = `import React from 'react';
+export const Panel = () => (
+  <p>
+    多行文本
+    第二行
+  </p>
+);
+`;
+      const { strings } = await run(code);
+      expect(strings[0]!.original).toContain('\n');
+      expect(strings[0]!.processedMessage).toBe('多行文本 第二行');
+    });
+
+    it('反向：单行文本不产生多余的 processedMessage', async () => {
+      const code = `import React from 'react';
+export const Panel = () => <p>单行文本</p>;
+`;
+      const { strings } = await run(code);
+      expect(strings[0]!.processedMessage).toBeUndefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 场景：注入名 / 引用点绑定的作用域守卫（react-gen 审计 R1~R10）
+// ---------------------------------------------------------------------------
+describe('React 生成侧作用域守卫（审计 R1~R10）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-gen-audit-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function run(
+    code: string,
+    options: { file?: string; lib?: ReactI18nLibraryType } = {},
+  ): Promise<{ strings: ExtractedString[]; out: string; warnings: string[] }> {
+    const file = path.join(dir, options.file ?? 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/plugins/locale', options.lib ?? 'react-i18next');
+    const extractor = adapter.getTextExtractor() as ReactTextExtractor;
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+    return { strings, out, warnings: extractor.drainWarnings() };
+  }
+
+  it('R1: 模块顶层 const t 与注入的裸 t 同名 → 模块级文案整体跳过并记人工项', async () => {
+    const code = `const t = (s: string) => s;\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings, out, warnings } = await run(code, { file: 'C.ts' });
+    expect(strings).toHaveLength(0);
+    expect(out).toBe(code);
+    expect(warnings.join('\n')).toContain('同名的非 i18n 本地绑定');
+  });
+
+  it('R1: 模块顶层 import { t } 来自他库 → 不再注入第二条同名 import（TS2300）', async () => {
+    const code = `import { t } from 'tiny-template';\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings, out } = await run(code, { file: 'C.ts' });
+    expect(strings).toHaveLength(0);
+    expect(out).not.toContain(`from '@/plugins/locale'`);
+  });
+
+  it('R1 反向：tImport 的 t 是 i18n 来源，模块级文案照常提取', async () => {
+    const code = `import { t } from '@/plugins/locale';\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings, out } = await run(code, { file: 'C.ts' });
+    expect(strings).toHaveLength(1);
+    expect(out).toContain(`title: t('k0')`);
+  });
+
+  it('R1/R6: react-intl 模块顶层已有他处 import { intl } → 跳过提取', async () => {
+    const code = `import { intl } from '@/i18n';\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings } = await run(code, { file: 'C.ts', lib: 'react-intl' });
+    expect(strings).toHaveLength(0);
+  });
+
+  it('R2: 回调形参 t 遮蔽替换点 → 跳过该候选', async () => {
+    const code = `import React from 'react';
+export function App({ tabs }: { tabs: { id: string }[] }) {
+  return <ul>{tabs.map((t) => <li key={t.id} title="标签">{t.id}</li>)}</ul>;
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(out).not.toContain('useTranslation');
+  });
+
+  it('R2: 文案在内层块内、块内有 const t → 跳过；块外文案照常提取并注入', async () => {
+    const inner = `import React from 'react';
+export function App({ x }: { x: boolean }) {
+  if (x) {
+    const t = 5;
+    return <div title="标题" data-t={t} />;
+  }
+  return null;
+}
+`;
+    expect((await run(inner)).strings).toHaveLength(0);
+
+    const outer = `import React from 'react';
+export function App({ x }: { x: boolean }) {
+  if (x) {
+    const t = 5;
+    console.log(t);
+  }
+  return <div title="标题" />;
+}
+`;
+    const { strings, out } = await run(outer);
+    expect(strings).toHaveLength(1);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+
+  it('R2: 业务自己的解构形参 { t } 不是 i18n 绑定 → 跳过提取', async () => {
+    const code = `import React from 'react';
+type Tab = { id: string };
+export function Row({ t }: { t: Tab }) {
+  return <td title="标题">{t.id}</td>;
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(out).toBe(code);
+  });
+
+  it('R2 反向：HOC 形参（WithTranslation 类型 / 被 HOC 包裹）仍算 i18n 绑定，照常提取不注入 hook', async () => {
+    const typed = `import React from 'react';
+import type { WithTranslation } from 'react-i18next';
+export const Foo = ({ t }: WithTranslation & { a: number }) => <div title="标题" />;
+`;
+    const typedRun = await run(typed);
+    expect(typedRun.strings).toHaveLength(1);
+    expect(typedRun.out).toContain(`title={t('k0')}`);
+    expect(typedRun.out).not.toContain('useTranslation()');
+
+    const wrapped = `import React from 'react';
+import { withTranslation } from 'react-i18next';
+const Foo = ({ t }) => <div title="标题" />;
+export default withTranslation()(Foo);
+`;
+    const wrappedRun = await run(wrapped);
+    expect(wrappedRun.strings).toHaveLength(1);
+    expect(wrappedRun.out).not.toContain('useTranslation()');
+  });
+
+  it('R3: 类方法自身已绑定同名 t → 该方法内文案跳过，其它方法照常注入解构', async () => {
+    const code = `import React from 'react';
+export class Foo extends React.Component<{}> {
+  a() { const t = 1; return '甲' + t; }
+  render() { return <div title="乙" />; }
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings.map((s) => s.original)).toEqual(['乙']);
+    expect(count(out, /const \{ t \} = this\.props;/g)).toBe(1);
+    expect(out).toContain('a() { const t = 1;');
+  });
+
+  it('R4: .jsx 类组件不写类型实参与 import type', async () => {
+    const code = `import React from 'react';
+export default class Foo extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+    const { out } = await run(code, { file: 'C.jsx' });
+    expect(out).not.toContain('import type');
+    expect(out).not.toContain('React.Component<');
+    expect(out).toContain('withTranslation()(FooWithOutIntl)');
+  });
+
+  it('R5: 模块顶层自封装的 useTranslation → 全部候选跳过，不注入第二条同名导入', async () => {
+    const code = `import React from 'react';
+import { useTranslation } from '@/hooks/useTranslation';
+export function A() {
+  const { t } = useTranslation();
+  return <div title="标题">{t('x')}</div>;
+}
+export function B() {
+  return <div title="按钮" />;
+}
+`;
+    const { strings, out, warnings } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(count(out, /import \{ useTranslation \}/g)).toBe(1);
+    expect(warnings.join('\n')).toContain("待注入的 'useTranslation'");
+  });
+
+  it('R5: 模块顶层自有 Trans 组件 → jsx-text 候选跳过', async () => {
+    const code = `import React from 'react';
+import { Trans } from '@/components/Trans';
+export function A() {
+  return <div><Trans id="x" />你好</div>;
+}
+`;
+    const { strings, warnings } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(warnings.join('\n')).toContain("待注入的 'Trans'");
+  });
+
+  it('R5 反向：来自 i18n 库自身的同名导入不算冲突（增量重跑照常）', async () => {
+    const code = `import React from 'react';
+import { useTranslation, Trans } from 'react-i18next';
+export function A() {
+  const { t } = useTranslation();
+  return <div title="标题">{t('x')}<Trans i18nKey="y" />你好</div>;
+}
+`;
+    const { strings } = await run(code);
+    expect(strings.map((s) => s.original)).toEqual(['标题', '你好']);
+  });
+
+  it('R6: 已有 const intl = getIntl()（无分号）不再重复插入声明', async () => {
+    const code = `import { getIntl } from '@/plugins/locale'\nconst intl = getIntl()\nexport const cols = [{ title: '名称' }];\n`;
+    const { out } = await run(code, { file: 'C.ts', lib: 'react-intl' });
+    expect(count(out, /const intl = getIntl\(\)/g)).toBe(1);
+  });
+
+  it('R8: 函数体首行指令仍是首个语句，hook 插在其后', async () => {
+    const code = `import React from 'react';
+export function App() {
+  'use no memo';
+  return <div title="标题" />;
+}
+`;
+    const { out } = await run(code);
+    expect(out.indexOf(`'use no memo'`)).toBeLessThan(
+      out.indexOf('const { t } = useTranslation()'),
+    );
+  });
+
+  it('R9: PascalCase 组件按引用传给 map → 降级模块级 t，不注入 hook', async () => {
+    const code = `import React from 'react';
+const Row = (r: { id: string }) => <tr title="行">{r.id}</tr>;
+export function Table({ rows }: { rows: { id: string }[] }) {
+  return <table>{rows.map(Row)}</table>;
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings[0]!.componentType).toBe('other');
+    expect(out).not.toContain('useTranslation');
+    expect(out).toContain(`import { t } from '@/plugins/locale'`);
+  });
+
+  it('R9 反向：memo(Foo) 按引用包裹不是普通调用，照常注入 hook', async () => {
+    const code = `import React, { memo } from 'react';
+const Foo = () => <div title="标题" />;
+export default memo(Foo);
+`;
+    const { out } = await run(code);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+
+  it('R10: 混合内容含展开子节点 → 放弃合并、保留 {...items} 并告警', async () => {
+    const code = `import React from 'react';
+export function A({ items }: { items: string[] }) {
+  return <p>共有 {...items} 项</p>;
+}
+`;
+    const { strings, out, warnings } = await run(code);
+    expect(strings.map((s) => s.original)).toEqual(['共有', '项']);
+    expect(out).toContain('{...items}');
+    expect(warnings.join('\n')).toContain('展开子节点');
   });
 });

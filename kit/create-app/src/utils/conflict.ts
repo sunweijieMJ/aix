@@ -3,8 +3,24 @@ import path from 'node:path';
 import { select, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import type { GeneratedFile } from '../override/types';
+import { CreateAppError } from './errors';
 
 export type ConflictStrategy = 'skip' | 'overwrite' | 'cancel';
+
+/**
+ * 非 TTY 下即将弹冲突问答时直接失败（问答读不到输入，取消分支会被当成用户取消）
+ *
+ * 拦截点必须在问答现场而不是命令入口的预判：「输出目录存在」不等于「会撞冲突」，
+ * 入口预判会误杀全参数、无冲突的 CI 运行。
+ */
+function assertPromptable(what: string): void {
+  if (process.stdin.isTTY) return;
+  throw new CreateAppError(
+    'E_NON_INTERACTIVE',
+    `当前不是交互式终端（stdin 非 TTY），但${what}需要交互确认`,
+    '请加 -y（跳过已有文件）或 --force（覆盖已有文件）后重试',
+  );
+}
 
 /**
  * 检测项目代码重名
@@ -36,6 +52,7 @@ export async function checkProjectConflict(
     return true;
   }
 
+  assertPromptable(`项目 "${project}" 的定制目录已存在，`);
   const result = await select({
     message: `项目 "${project}" 的定制目录已存在，如何处理？`,
     options: [
@@ -89,6 +106,7 @@ export async function resolveConflicts(
     return safe;
   }
 
+  assertPromptable(`处理 ${conflicts.length} 个已有文件`);
   const strategy = await select({
     message: '如何处理已有文件？',
     options: [
@@ -123,66 +141,5 @@ export async function resolveConflicts(
   return resolved;
 }
 
-/**
- * 将文件写入磁盘
- */
-export function writeFiles(files: GeneratedFile[], outputDir: string): void {
-  for (const file of files) {
-    const fullPath = path.join(outputDir, file.path);
-    const dir = path.dirname(fullPath);
-
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    fs.writeFileSync(fullPath, file.content, 'utf-8');
-  }
-}
-
-/**
- * 打印文件树（带目录层级缩进和 tree 符号）
- */
-export function printFileTree(files: GeneratedFile[], outputDir: string): void {
-  console.log(pc.green('\n✅ 已生成以下文件：\n'));
-
-  // 构建目录树
-  const tree = buildTree(files.map((f) => f.path));
-  printNode(tree, outputDir, '', true);
-}
-
-interface TreeNode {
-  [key: string]: TreeNode;
-}
-
-function buildTree(paths: string[]): TreeNode {
-  const root: TreeNode = {};
-  for (const p of paths) {
-    const parts = p.split('/');
-    let node = root;
-    for (const part of parts) {
-      node[part] ??= {};
-      node = node[part];
-    }
-  }
-  return root;
-}
-
-function printNode(node: TreeNode, name: string, prefix: string, isRoot: boolean): void {
-  if (isRoot) {
-    console.log(`  ${name}/`);
-  }
-
-  const entries = Object.entries(node).sort(([a], [b]) => a.localeCompare(b));
-  for (let i = 0; i < entries.length; i++) {
-    const [key, children] = entries[i]!;
-    const isLast = i === entries.length - 1;
-    const connector = isLast ? '└── ' : '├── ';
-    const childPrefix = isLast ? '    ' : '│   ';
-    const hasChildren = Object.keys(children).length > 0;
-
-    console.log(`  ${prefix}${connector}${key}${hasChildren ? '/' : ''}`);
-    if (hasChildren) {
-      printNode(children, key, prefix + childPrefix, false);
-    }
-  }
-}
+// 写盘与文件树打印统一在 utils/fs.ts（GeneratedFile 是 FileEntry 的结构子集，
+// 历史上这里的第二份实现既没有错误码包装、也和 fs.ts 的树渲染各自漂移）

@@ -147,6 +147,7 @@ export interface ConversationsEmits {
 </script>
 
 <script setup lang="ts">
+/** 会话列表：分组、搜索、新建，以及单条会话的重命名与删除。 */
 import { useNamespace, useControllable } from '@aix/hooks';
 import { Add, Edit, Delete, IconSearch as Search } from '@aix/icons';
 import { ref, computed, nextTick, watch } from 'vue';

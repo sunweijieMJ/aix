@@ -1,10 +1,13 @@
 {
   "name": "@kit/create-app",
-  "version": "0.1.1",
+  "version": "0.2.3",
   "description": "前端项目脚手架工具（含 Override 定制化管理）",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -27,6 +30,8 @@
   ],
   "scripts": {
     "dev": "tsx src/cli.ts",
+    "verify-combos": "tsx scripts/verify-combos.ts",
+    "check-template-sync": "tsx scripts/check-template-sync.ts",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
@@ -34,25 +39,20 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@clack/prompts": "^1.7.0",
-    "commander": "^15.0.0",
-    "eta": "^4.6.0",
-    "fs-extra": "^11.4.0",
-    "giget": "^3.3.1",
-    "jiti": "^2.7.0",
+    "@clack/prompts": "^1.8.0",
+    "commander": "catalog:",
+    "eta": "catalog:",
+    "jiti": "catalog:",
     "picocolors": "^1.1.1",
     "semver": "^7.8.5",
-    "validate-npm-package-name": "^8.0.0",
-    "zod": "^4.4.3"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "@types/fs-extra": "^11.0.4",
     "@types/node": "catalog:",
     "@types/semver": "^7.8.0",
-    "@types/validate-npm-package-name": "^4.0.2",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",

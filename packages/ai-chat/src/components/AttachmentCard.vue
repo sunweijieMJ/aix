@@ -94,17 +94,21 @@ export type AttachmentCardItem = AttachmentItem &
   Partial<Pick<PendingAttachment, 'status' | 'percent' | 'error'>>;
 
 export interface AttachmentCardProps {
+  /** 附件条目（含上传状态与缩略图信息） */
   item: AttachmentCardItem;
   /** 是否显示删除按钮（输入区预览 true / 气泡回显 false），默认 false */
   removable?: boolean;
 }
 export interface AttachmentCardEmits {
+  /** 点击删除按钮 */
   (e: 'remove'): void;
+  /** 上传失败态点击重试 */
   (e: 'retry'): void;
 }
 </script>
 
 <script setup lang="ts">
+/** 待发送附件的单张卡片：缩略图 / 文件名 / 上传进度，失败可重试，可移除。 */
 import { useNamespace } from '@aix/hooks';
 import { Refresh, Close } from '@aix/icons';
 import { computed, ref, watch } from 'vue';

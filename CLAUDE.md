@@ -1,4 +1,4 @@
-# CLAUDE.md - AI 开发助手快速指南
+# AI 开发助手快速指南
 
 ## Git 提交规则
 - **提交格式**: `type: subject` 或 `type(scope): subject`
@@ -79,18 +79,31 @@ aix/
 
 ## 组件包结构规范
 
+**新建包一律用 `pnpm gen <kebab-name>`**（`scripts/gen/`，含 21 个 `.eta` 模板，其中一个生成 `docs/components/<name>.md`），不要手写脚手架文件。
+`--dry-run` 可先预览。生成结果：
+
 ```
 packages/<name>/
 ├── src/
-│   ├── index.vue        # 组件主文件
-│   ├── index.ts         # 导出入口
-│   └── types.ts         # 类型定义
-├── __test__/            # 测试文件
-├── stories/             # Storybook Stories
-├── rollup.config.js     # 构建配置
+│   ├── <Pascal>.vue      # 组件主文件（如 DatePicker.vue）
+│   ├── index.ts          # 导出入口：具名导出 + default install 插件
+│   ├── types.ts          # Props/Emits 接口（带 @default JSDoc，供 vue-docgen 抽取）
+│   ├── use<Pascal>.ts    # 组件逻辑 composable
+│   ├── index.scss        # 组件样式
+│   └── locale/           # 多语言（`pnpm gen --i18n`）
+├── __test__/             # 测试文件
+├── stories/              # Storybook Stories
 ├── package.json
-└── tsconfig.json
+├── tsconfig.json         # noEmit 检查配置，须 include stories/ 与 __test__/
+├── tsconfig.build.json   # 声明产出，只 include src/
+├── rollup.config.js
+├── vitest.config.ts      # 必需，根 vitest projects 靠它发现包，缺失则测试被静默跳过
+├── eslint.config.ts
+└── stylelint.config.ts
 ```
+
+> 主组件文件名是 **`<Pascal>.vue`**，不是 `index.vue`。早期的 `code-editor` / `pdf-viewer` /
+> `subtitle` / `video` 用的是 `index.vue`，属历史遗留，新包不要跟随。
 
 ---
 
@@ -101,18 +114,20 @@ packages/<name>/
 | 禁止操作 | 说明 |
 |---------|------|
 | 修改 `es/`、`lib/`、`dist/` | 构建产物，自动生成 |
-| 硬编码颜色值 | 必须使用 `@aix/theme` 的 CSS Variables |
+| 硬编码颜色值 | 必须使用 `@aix/theme` 的 CSS Variables。Stylelint **只拦承载颜色属性上的裸 hex**（`rgb()` / `hsl()` / 命名色有意不拦，仓库大量用 `rgb(0 0 0 / .6)` 做蒙层）——没报错不等于写对了 |
 | 组件间直接引用源码 | 必须通过 `workspace:^` 依赖引用 |
 | 跳过类型定义 | Props/Emits 必须有完整 TypeScript 类型 |
 | 使用标签选择器 | 组件样式必须使用 `.aix-` 前缀的 class |
 | 在组件中使用 `scoped` | 组件库使用 BEM + 命名空间隔离，不用 scoped |
+| 手写 `aix-xxx` class 字符串 | 用 `useNamespace`：`ns.b()` / `ns.e()` / `ns.m()`。**注意这是零强制力的软约定**：Stylelint 的 `selector-class-pattern` 只校验 `aix-` 前缀，不管 class 是怎么来的。目前仅 `ai-chat`(31) / `flow-graph`(2) / `button`(1) 落地；`popper` / `rich-text-editor` / `pdf-viewer` / `video` 等仍在模板里手写字符串，属待收敛的历史状态——**新代码一律走 `useNamespace`，不要参照这些包** |
+| 组件内硬编码用户可见文案 | 走 `useLocale` + `src/locale/`（`pnpm gen --i18n` 可直接生成）|
 
 ### 必须遵守
 
 | 规范 | 说明 |
 |------|------|
-| Props/Emits 类型定义 | 在 `types.ts` 中定义完整的 TypeScript 接口 |
-| 样式命名空间 | 所有 class 使用 `.aix-<component>` 前缀 |
+| Props/Emits 类型定义 | **对外暴露的组件**：接口写在 `src/types.ts` 并从 `index.ts` 导出（带 `@default` JSDoc，`vue-docgen` 靠它生成 API 文档）。**包内部子组件**（`src/components/*.vue`）可就地声明，不必进 `types.ts`。两种情况都必须有完整类型，不允许裸 `defineProps` |
+| 样式命名空间 | class 一律由 `useNamespace`（`@aix/hooks`）生成，不手写 `aix-` 字符串 |
 | CSS Variables | 颜色/间距/圆角等使用 `var(--aix-*)` |
 | 导出规范 | `index.ts` 统一导出组件和类型 |
 | 测试覆盖 | 新组件必须编写单元测试 |
@@ -123,16 +138,22 @@ packages/<name>/
 ## 常用命令
 
 ```bash
+pnpm gen <kebab-name>     # 新建组件包（唯一正确姿势，--dry-run 可预览）
 pnpm dev                  # 启动所有包的 dev 模式
 pnpm build                # 全量构建
-pnpm build:filter @aix/<name>  # 单包构建
+pnpm build:filter @aix/<name>  # 单包构建（勿用 pnpm build --filter，见下）
 pnpm lint                 # ESLint 检查
 pnpm type-check           # TypeScript 类型检查
 pnpm cspell               # 拼写检查
 pnpm test                 # 单元测试
 pnpm storybook:dev        # 启动 Storybook
+pnpm lint:publish --strict # 发布形态体检（CI 用的就是 --strict）
 pnpm commit               # 交互式提交 (czg)
 ```
+
+> ⚠️ **单包构建必须用 `pnpm build:filter`**。`build` 脚本自带 `--filter=!./apps/*`，
+> 再写 `pnpm build --filter @aix/button` 会变成两个 filter 取**并集**，实测构建 7 个包而非 1 个。
+> `test` / `clean` 没有预置 filter，`pnpm test --filter @aix/button` 是正常的。
 
 ## 智能工作流
 

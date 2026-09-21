@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { IconIndexItem } from '../src/types/index';
 import {
   capitalize,
   cleanDocString,
@@ -7,6 +8,11 @@ import {
   getDisplayName,
   safeJsonParse,
 } from '../src/utils/index';
+import {
+  calculateIconSearchScore,
+  getIconMatchedFields,
+  matchesAllIconTerms,
+} from '../src/utils/search-scoring';
 
 describe('Utils', () => {
   describe('capitalize', () => {
@@ -102,5 +108,41 @@ describe('Utils', () => {
       expect(extractTags('No tags here')).toEqual([]);
       expect(extractTags('')).toEqual([]);
     });
+  });
+});
+
+describe('图标搜索评分', () => {
+  const icon: IconIndexItem = {
+    name: 'IconUserAvatar',
+    packageName: '@aix/icons',
+    description: '用户头像图标',
+    category: '图标',
+    iconCategory: 'General',
+    tags: ['icon', 'general'],
+    keywords: ['user', 'avatar', '用户', '头像'],
+  };
+
+  it('多词查询应该按词累加，而不是整串 substring 匹配', () => {
+    // 以前整串匹配，"用户 头像" / "user account" 这类很自然的查询一律 0 命中
+    const single = calculateIconSearchScore(icon, '用户');
+    expect(single).toBeGreaterThan(0);
+    expect(calculateIconSearchScore(icon, '用户 头像')).toBeGreaterThan(single);
+    expect(calculateIconSearchScore(icon, 'user account')).toBeGreaterThan(0);
+  });
+
+  it('完全无关的词仍然是 0 分', () => {
+    expect(calculateIconSearchScore(icon, '表格')).toBe(0);
+    expect(calculateIconSearchScore(icon, '')).toBe(0);
+  });
+
+  it('matchedFields 跨词合并且不重复', () => {
+    expect(getIconMatchedFields(icon, '用户 头像').sort()).toEqual(['description', 'keywords']);
+  });
+
+  it('matchesAllIconTerms 用于区分全词命中和只沾一个词', () => {
+    expect(matchesAllIconTerms(icon, '用户 头像')).toBe(true);
+    // avatar 命中、table 不命中：只沾一个词
+    expect(matchesAllIconTerms(icon, 'avatar table')).toBe(false);
+    expect(matchesAllIconTerms(icon, '')).toBe(false);
   });
 });

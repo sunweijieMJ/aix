@@ -5,7 +5,10 @@ import { InteractiveUtils } from '../utils/interactive-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
 import { assertLangsAreTargets, decodeUtf8Strict, parseCsv } from '../utils/csv-utils';
+import { extractPlaceholderNames, placeholderNamesEqual } from '../utils/placeholder-utils';
+import { resolveUsesDoubleBracePlaceholders } from '../adapters';
 import { FileProcessor } from './FileProcessor';
+import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 export interface CsvImportOptions {
   /** CSV 文件路径（必填） */
@@ -16,6 +19,11 @@ export interface CsvImportOptions {
   dryRun: boolean;
   /** 跳过 y/N 确认 */
   ci: boolean;
+  /**
+   * 是否处于交互会话（语义同 PruneOptions.interactive）。非交互且未 --ci 时写回前
+   * 直接报错退出而非弹确认——stdin 为常开管道时 @inquirer/prompts 会无限挂起。默认 true。
+   */
+  interactive?: boolean;
 }
 
 /**
@@ -40,12 +48,12 @@ export class CsvImportProcessor extends FileProcessor {
   /**
    * 严格加载字典文件：缺失/空 → {}；有内容但 JSON 损坏 → 抛错中止。
    *
-   * Why 不用 FileUtils.safeLoadJsonFile（损坏回退 {}）：损坏的 untranslated.json 会被
+   * Why 不用 safeLoadJsonFile（损坏回退 {}）：损坏的 untranslated.json 会被
    * 当成 0 条目，CSV 里本应命中的 key 全部落入 missingKeys，审核员翻好的译文被静默
    * 丢弃却退出成功。与 CsvExportProcessor 的「损坏即中止」守卫对齐。
    */
   private loadDictStrict(filePath: string, label: string): Translations {
-    return FileUtils.loadJsonDictOrThrow<Translations>(
+    return loadJsonDictOrThrow<Translations>(
       filePath,
       (p) =>
         `${label}解析失败（JSON 格式损坏）: ${p}\n` +
@@ -97,16 +105,53 @@ export class CsvImportProcessor extends FileProcessor {
     const translated = this.loadDictStrict(translatedPath, '读取 translations.json');
 
     // 应用保守合并，收集统计
-    let updated = 0;
+    //
+    // 「将更新」按 (key, lang) 去重：同一 key 在 CSV 里出现多行时，逐行覆盖的是同一格，
+    // 按行累加会把一处改动报成多处（重复 key 另有告警，不受影响）。这里记下每格首次被
+    // 触碰前的原值，循环结束后与最终值比对——同 key 后一行又把值改回去时同样不计。
+    const touchedCells = new Map<
+      string,
+      {
+        entry: Record<string, string>;
+        lang: string;
+        before: string | undefined;
+        dict: 'untranslated' | 'translated';
+      }
+    >();
     let unchanged = 0;
     let skippedEmpty = 0;
     const missingKeys: string[] = [];
-    let untranslatedDirty = false;
-    let translatedDirty = false;
+    const malformedRows: number[] = [];
+    // 参与对账的数据记录数（不含表头与空行）：全部记录都 malformed 时用于判定「整份 CSV
+    // 都读不了」，此时静默 exit 0 会让 CI 误以为回流成功。
+    let dataRows = 0;
+    const seenKeys = new Set<string>();
+    const duplicateKeys: string[] = [];
+    /** 无效译文（非空但无文字/数字）与占位符失配的单元格明细，仅告警不拦截。 */
+    const invalidCells: string[] = [];
+    const placeholderMismatchCells: string[] = [];
+    const usesDoubleBrace = resolveUsesDoubleBracePlaceholders(this.config.framework);
 
-    for (const row of rows.slice(1)) {
+    for (const [rowIdx, row] of rows.slice(1).entries()) {
+      // 空记录（文件中间的空行 / 结尾多余换行经 parseCsv 产出的 ['']）静默跳过，
+      // 不计入 malformedRows——它不构成错位风险，告警只会制造噪音。
+      if (row.length === 1 && (row[0] ?? '').trim() === '') continue;
+      dataRows++;
+      // 行宽守卫：列绑定完全依赖表头索引，parseCsv 不保证各行字段数一致。手工编辑时
+      // 误删/多打一个逗号会让后续字段整体错位——值仍非空、isValidTranslation 分不出语言，
+      // 错语言译文会被静默写进字典并随 merge 进入 locale。字段数不符的行必须整行跳过并告警。
+      if (row.length !== header.length) {
+        // 记录序号按数据记录计（不含表头，从 1 起）。不用物理行号：引号内换行会让两者漂移。
+        malformedRows.push(rowIdx + 1);
+        continue;
+      }
       const key = (row[keyIdx] ?? '').trim();
       if (key === '') continue;
+      // 同一 key 在 CSV 里出现多次：后者覆盖前者（逐行顺序应用，不改这一行为——合并策略
+      // 由翻译人员的编辑意图决定）。但必须告警一次：多半是拼接多份导出时漏了去重，
+      // 静默取最后一行会让先前那份的译文无声消失。
+      if (seenKeys.has(key)) duplicateKeys.push(key);
+      else seenKeys.add(key);
       // 路由：优先 untranslated（待翻流程主路径），否则落到 translations（审核流程）。
       // 二者 key 互斥（pick 按 hasUntranslated 二选一），不会双写。
       // 两个分支都必须走 hasOwnProperty 守卫：CSV 的 key 来自外部（翻译人员回传），若直接
@@ -134,11 +179,61 @@ export class CsvImportProcessor extends FileProcessor {
           unchanged++;
           continue;
         }
+        // 与 translate/merge 同一套把关：人工路径同样会把 `---` 这类无效值、或被误译的
+        // 占位符写进字典并随 merge 流向 locale。这里只告警不拦截（回流的编辑意图由人负责），
+        // 无效值最终由 merge 写 locale 前拒收。
+        if (!FileUtils.isValidTranslation(value)) {
+          invalidCells.push(`${key} [${col.name}]: ${value}`);
+        } else {
+          const sourceValue = entry[sourceLocale];
+          if (typeof sourceValue === 'string' && sourceValue) {
+            const expected = extractPlaceholderNames(sourceValue, usesDoubleBrace);
+            const actual = extractPlaceholderNames(value, usesDoubleBrace);
+            if (!placeholderNamesEqual(expected, actual)) {
+              placeholderMismatchCells.push(
+                `${key} [${col.name}]: 期望 {${[...expected].join('}, {')}}，实际 {${[...actual].join('}, {')}}`,
+              );
+            }
+          }
+        }
+        // 用 \u0000 拼接：CSV 的 key / 语言列名都来自外部，普通可见字符都可能出现在
+        // key 里，NUL 是唯一不会与之碰撞的分隔符。
+        const cellId = `${key}\u0000${col.name}`;
+        if (!touchedCells.has(cellId)) {
+          touchedCells.set(cellId, {
+            entry,
+            lang: col.name,
+            before: entry[col.name],
+            dict: inUntranslated ? 'untranslated' : 'translated',
+          });
+        }
         entry[col.name] = value;
-        updated++;
-        if (inUntranslated) untranslatedDirty = true;
-        else translatedDirty = true;
       }
+    }
+
+    const changedCells = [...touchedCells.values()].filter(
+      (cell) => cell.entry[cell.lang] !== cell.before,
+    );
+    const updated = changedCells.length;
+    const untranslatedDirty = changedCells.some((cell) => cell.dict === 'untranslated');
+    const translatedDirty = changedCells.some((cell) => cell.dict === 'translated');
+
+    // 全部数据记录都字段数不符 = 整份 CSV 无一行可用（最常见成因：分隔符不是逗号、
+    // 或用 Excel 另存时改了方言）。此时既没有 updated 也没有 missingKeys，后续流程会
+    // 打一条「没有可写回的非空译文」后以 0 退出，CI 误判为回流成功，故必须硬失败。
+    if (dataRows > 0 && malformedRows.length === dataRows) {
+      throw new Error(
+        `[i18n-tools] CSV 全部 ${dataRows} 条数据记录的字段数都与表头（${header.length} 列）不符，` +
+          '无一行可用。请确认文件分隔符为逗号、且未被二次编辑破坏列结构。',
+      );
+    }
+
+    if (duplicateKeys.length > 0) {
+      const sample = [...new Set(duplicateKeys)].slice(0, 5).join(', ');
+      LoggerUtils.warn(
+        `CSV 中有 ${duplicateKeys.length} 条重复 key（同 key 多行，后者覆盖前者）：${sample}` +
+          (new Set(duplicateKeys).size > 5 ? ' …' : ''),
+      );
     }
 
     const writeTargets: string[] = [];
@@ -152,6 +247,9 @@ export class CsvImportProcessor extends FileProcessor {
       unchanged,
       skippedEmpty,
       missingKeys,
+      malformedRows,
+      invalidCells,
+      placeholderMismatchCells,
     );
 
     if (this.options.dryRun) {
@@ -167,17 +265,26 @@ export class CsvImportProcessor extends FileProcessor {
       return;
     }
     if (!this.options.ci) {
+      // 非交互会话不弹确认：与 PruneProcessor 同口径 fail-fast，防 stdin 常开管道下无限挂起。
+      if (this.options.interactive === false) {
+        throw new Error(
+          '非交互模式下 csv-import 需显式传 --ci 确认写回；' +
+            '或用 --dry-run 预览改动，或加 -i 进入交互确认。',
+        );
+      }
       const ok = await InteractiveUtils.promptForGenericConfirmation(
         `确认写回 ${writeTargets.map((p) => FileUtils.getRelativePath(p)).join(' / ')}？`,
       );
       if (!ok) {
+        this.cancelled = true;
         LoggerUtils.warn('操作已取消');
         return;
       }
     }
 
-    if (untranslatedDirty) FileUtils.writeTranslationsFile(untranslatedPath, untranslated);
-    if (translatedDirty) FileUtils.writeTranslationsFile(translatedPath, translated);
+    if (untranslatedDirty)
+      writeTranslationsFile(untranslatedPath, untranslated, this.config.io.indent);
+    if (translatedDirty) writeTranslationsFile(translatedPath, translated, this.config.io.indent);
     LoggerUtils.success(
       `✅ 已写回 ${updated} 处译文到 ${writeTargets.map((p) => FileUtils.getRelativePath(p)).join(' / ')}`,
     );
@@ -198,6 +305,9 @@ export class CsvImportProcessor extends FileProcessor {
     unchanged: number,
     skippedEmpty: number,
     missingKeys: string[],
+    malformedRows: number[] = [],
+    invalidCells: string[] = [],
+    placeholderMismatchCells: string[] = [],
   ): void {
     LoggerUtils.info('csv-import 预览：');
     LoggerUtils.info(`  ✏️  将更新   ${updated} 处译文 (${langs.join(', ')})`);
@@ -213,6 +323,34 @@ export class CsvImportProcessor extends FileProcessor {
           (missingKeys.length > 5 ? ' …' : ''),
       );
     }
-    LoggerUtils.info(`  📄 目标文件: ${targetPaths.join(' / ')}`);
+    if (malformedRows.length > 0) {
+      const sample = malformedRows.slice(0, 5).join(', ');
+      const msg =
+        `  ⚠️  已跳过字段数与表头不符的记录 ${malformedRows.length} 条（数据记录序号，不含表头：${sample}` +
+        (malformedRows.length > 5 ? ' …' : '') +
+        '）。可能原因：多/少逗号导致列整体错位，或编辑工具裁掉了行尾空列——请修正 CSV 后重新导入。';
+      LoggerUtils.warn(msg);
+      this.report.addWarning(msg.trim());
+    }
+    if (invalidCells.length > 0) {
+      const msg =
+        `  ⚠️  译文无效（非空但无文字/数字）${invalidCells.length} 处，已回流但 merge 写入语言文件时会被拒收：` +
+        invalidCells.slice(0, 5).join(' / ') +
+        (invalidCells.length > 5 ? ' …' : '');
+      LoggerUtils.warn(msg);
+      this.report.addWarning(msg.trim());
+    }
+    if (placeholderMismatchCells.length > 0) {
+      const msg =
+        `  ⚠️  占位符与源文案不一致 ${placeholderMismatchCells.length} 处（已回流，请核对）：` +
+        placeholderMismatchCells.slice(0, 5).join(' / ') +
+        (placeholderMismatchCells.length > 5 ? ' …' : '');
+      LoggerUtils.warn(msg);
+      this.report.addWarning(msg.trim());
+    }
+    // 净变更为 0 时不会写盘，打印目标文件只会被读成「这两个文件被改了」。
+    if (updated > 0) {
+      LoggerUtils.info(`  📄 目标文件: ${targetPaths.join(' / ')}`);
+    }
   }
 }

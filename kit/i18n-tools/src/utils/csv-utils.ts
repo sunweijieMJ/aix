@@ -1,8 +1,7 @@
 /**
  * 零依赖 CSV 工具：RFC 4180 序列化/解析 + UTF-8 BOM + 严格解码。
  *
- * 设计取舍见 docs/superpowers/specs/2026-06-24-i18n-csv-roundtrip-design.md：
- * 当前包刻意控制依赖，schema 为纯 string map，故不引 papaparse 等库。
+ * 设计取舍：当前包刻意控制依赖，schema 为纯 string map，故不引 papaparse 等库。
  */
 
 /** UTF-8 BOM。写出时前置，确保 Excel 双击打开中文不乱码。 */
@@ -67,6 +66,9 @@ export function parseCsv(text: string): string[][] {
   let field = '';
   let row: string[] = [];
   let inQuotes = false;
+  // 本字段是否已由闭合引号收尾：RFC4180 下其后只允许 , / CR / LF / EOF。
+  // 见下方 justClosedQuote 分支的事故说明。
+  let justClosedQuote = false;
   let i = 0;
 
   while (i < input.length) {
@@ -80,12 +82,24 @@ export function parseCsv(text: string): string[][] {
           continue;
         }
         inQuotes = false;
+        justClosedQuote = true;
         i++;
         continue;
       }
       field += ch;
       i++;
       continue;
+    }
+
+    if (justClosedQuote && ch !== ',' && ch !== '\r' && ch !== '\n') {
+      // `"a"b,c` 这类闭合引号后还有字符：静默并入会让 `b` 凭空混进译文，且引号内已被剥掉的
+      // 转义语义无法复原 —— 与字段中部裸引号、未闭合引号同属人工编辑 CSV 时的常见手误，
+      // 一律报错让用户修正，而不是产出一个看起来正常的错误值回流 translations。
+      throw new Error(
+        `[i18n-tools] CSV 格式非法：第 ${rows.length + 1} 行闭合引号 (") 之后出现多余字符。` +
+          `引号包裹的单元格必须以引号结束，其后只能是逗号或换行；` +
+          `若单元格内容确需包含引号，请把内部引号写成两个（""）。`,
+      );
     }
 
     if (ch === '"') {
@@ -105,6 +119,7 @@ export function parseCsv(text: string): string[][] {
     if (ch === ',') {
       row.push(field);
       field = '';
+      justClosedQuote = false;
       i++;
       continue;
     }
@@ -112,6 +127,7 @@ export function parseCsv(text: string): string[][] {
       if (input[i + 1] === '\n') i++;
       row.push(field);
       field = '';
+      justClosedQuote = false;
       rows.push(row);
       row = [];
       i++;
@@ -120,6 +136,7 @@ export function parseCsv(text: string): string[][] {
     if (ch === '\n') {
       row.push(field);
       field = '';
+      justClosedQuote = false;
       rows.push(row);
       row = [];
       i++;

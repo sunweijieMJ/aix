@@ -1,6 +1,8 @@
-import { CommonASTUtils, type SkippedTextLocation } from './common-ast-utils';
+import { templateLiteralContainsHtmlTags } from './ast-guards';
+import type { SkippedTextLocation } from './extraction-diagnostics';
 import { LoggerUtils } from './logger';
 import { RunReport, type ManualCategory } from './run-report';
+import { collapseWhitespace, previewText } from './text-normalize';
 import type { LocaleMap } from './types';
 
 /**
@@ -56,7 +58,7 @@ export class LocaleValueLinter {
    */
   private static readonly SUSPICIOUS_FRAGMENT_MAX_LEN = 3;
   /** 中英文常见标点；命中作为"短碎片"判定附加条件。 */
-  private static readonly PUNCT_PATTERN = /[（）()，,。.！!？?：:；;、,“”"'‘’`[\]【】《》<>%·…—]/;
+  private static readonly PUNCT_PATTERN = /[（）()，,。.！!？?：:；;、“”"'‘’`[\]【】《》<>%·…—]/;
 
   /** 跨模块复用候选的默认阈值（≥ N 个不同前缀使用同一 value）。 */
   private static readonly CROSS_MODULE_REUSE_THRESHOLD = 3;
@@ -67,14 +69,21 @@ export class LocaleValueLinter {
    * 不做任何 I/O / console，便于 doctor 命令在不同 sink（CI 文本/JSON/HTML）
    * 上复用，也便于单测断言结构。
    *
-   * 注意：未传 options.skippedComparisons 时，findHardcodedComparisons 会消费
-   * CommonASTUtils.drainSkippedComparisonOperands（doctor 独立路径即走此默认）。
-   * 调用方（如 generate）若已提前 drain 出快照，应通过 options.skippedComparisons 传入，
-   * 避免与其它消费者（coverage 统计）争抢这份「消费即清空」的全局状态。
+   * 提取阶段的两类跳过项（skippedComparisons / skippedNestedChinese）一律由调用方
+   * 显式传入快照，本方法不去任何全局状态取数。
+   *
+   * Why: analyze 绝不能自己去 ExtractionDiagnostics 取数——drain 是消耗性的，就地 drain
+   * 会变成「谁先调 analyze 谁拿到」，覆盖率统计的 skipped 会被 lint 抢空而恒为 0。数据须由
+   * 调用方 drain 一次、按需分发给多个消费者。未传即视为「本次没有提取阶段数据」
+   * （如只 lint 一份现成 locale 文件），这两类检查返回空。
    */
   static analyze(
     localeMap: LocaleMap,
-    options?: { separator?: string; skippedComparisons?: SkippedTextLocation[] },
+    options?: {
+      separator?: string;
+      skippedComparisons?: SkippedTextLocation[];
+      skippedNestedChinese?: SkippedTextLocation[];
+    },
   ): LinterFinding[] {
     const findings: LinterFinding[] = [];
 
@@ -93,7 +102,7 @@ export class LocaleValueLinter {
       findings.push({
         category: isHtml ? 'html-tag-in-value' : 'long-value',
         title: `${key}  [${reasons.join(', ')}]`,
-        details: [`value 预览: ${this.preview(value)}`],
+        details: [`value 预览: ${previewText(value)}`],
         key,
         value,
       });
@@ -138,7 +147,9 @@ export class LocaleValueLinter {
       });
     }
 
-    for (const c of this.findNestedInterpolationChinese()) {
+    // 直接消费调用方传入的快照：嵌套中文无需与 locale map 交叉（必然是展示文案，
+    // 泄漏即问题），故不像 findHardcodedComparisons 那样需要一个筛选步骤。
+    for (const c of options?.skippedNestedChinese ?? []) {
       findings.push({
         category: 'nested-interpolation-chinese',
         title: `${c.filePath}:${c.line}:${c.column}`,
@@ -217,9 +228,8 @@ export class LocaleValueLinter {
    * i18n 化（如 `tabs = [t('...')]`），而此处仍硬编码做 === 比较，运行时切语言
    * 后必然脱钩。
    *
-   * 入参 skippedSnapshot：调用方已提前 drain 出的快照（generate 路径用，避免与 coverage
-   * 争抢全局状态）。未传时回退到 drainSkippedComparisonOperands（doctor 独立路径），drain
-   * 是消耗性操作，调用后 collector 清空，避免下次 lint 重复报警。
+   * 入参 skippedSnapshot：调用方从 extractor 的 ExtractionDiagnostics drain 出的快照。
+   * 未传即「本次运行没有提取阶段数据」，本检查整体跳过（见 analyze 的 Why）。
    */
   private static findHardcodedComparisons(
     localeMap: LocaleMap,
@@ -231,7 +241,7 @@ export class LocaleValueLinter {
     column: number;
     matchedKeys: string[];
   }> {
-    const skipped = skippedSnapshot ?? CommonASTUtils.drainSkippedComparisonOperands();
+    const skipped = skippedSnapshot ?? [];
     if (skipped.length === 0) return [];
 
     // 反向索引 value → keys。同一 value 可能对应多个 key（重复中文），全部列出辅助定位。
@@ -259,23 +269,6 @@ export class LocaleValueLinter {
   }
 
   /**
-   * 取出提取阶段记录的「被插值占位符吞掉的嵌套中文字面量」。
-   *
-   * 与 findHardcodedComparisons 不同，这里无需与 locale map 交叉：嵌套中文必然是
-   * 展示文案，作为运行时参数渲染出未翻译原文即问题，全部上报。
-   *
-   * 注意：drain 是消耗性操作，调用后 collector 清空，避免下次 lint 重复报警。
-   */
-  private static findNestedInterpolationChinese(): Array<{
-    text: string;
-    filePath: string;
-    line: number;
-    column: number;
-  }> {
-    return CommonASTUtils.drainSkippedNestedChinese();
-  }
-
-  /**
    * 把 value 规范化为「占位符位置 + 邻接空白无关」的语义形态：
    *   "节点{ni1}"        → "节点{0}"
    *   "节点 {_ni1}"      → "节点{0}"
@@ -288,11 +281,10 @@ export class LocaleValueLinter {
    */
   private static canonicalize(value: string): string {
     let i = 0;
-    return value
-      .replace(/\{[^}]+\}/g, () => `{${i++}}`)
-      .trim()
-      .replace(/\s+/g, ' ')
-      .replace(/\s*(\{\d+\})\s*/g, '$1');
+    const numbered = value.replace(/\{[^}]+\}/g, () => `{${i++}}`);
+    // 空白归一走 collapseWhitespace（与 ID 复用 / 词表查表键同源），再删占位符邻接空白：
+    // 顺序不能反，先删邻接空白会让 `节点 \n {x}` 里的换行残留成孤立空白。
+    return collapseWhitespace(numbered).replace(/\s*(\{\d+\})\s*/g, '$1');
   }
 
   private static findSemanticDuplicates(
@@ -322,9 +314,13 @@ export class LocaleValueLinter {
     for (const [key, value] of Object.entries(localeMap)) {
       if (typeof value !== 'string') continue;
       const reasons: string[] = [];
-      // 与提取期同源的 HTML 标签判据（CommonASTUtils），避免两份正则手工同步漂移：
-      // 提取放过 / lint 报警两端口径必须一致。
-      if (CommonASTUtils.templateLiteralContainsHtmlTags(value)) reasons.push('含 HTML 标签');
+      // 判据基于提取期同源的 templateLiteralContainsHtmlTags（ast-guards），再额外要求
+      // 存在闭合/自闭合标签才报：提取端宁可保守（提到 `<code>` 字样也跳过），lint 端若同样
+      // 宽松，会把实体解码产物「18. <code> / <pre> 内的中文」这类仅提及标签名的正文误报成
+      // HTML——{{ }} 渲染会转义，只有成对/自闭合的真实标记（多来自 v-html）才值得报。
+      if (templateLiteralContainsHtmlTags(value) && /<\/[a-zA-Z]|\/>/.test(value)) {
+        reasons.push('含 HTML 标签');
+      }
       if (value.length > this.LONG_VALUE_THRESHOLD) {
         reasons.push(`长度 ${value.length} > ${this.LONG_VALUE_THRESHOLD}`);
       }
@@ -377,10 +373,5 @@ export class LocaleValueLinter {
     return Array.from(valueToPrefixes.entries())
       .filter(([, prefixes]) => prefixes.size >= this.CROSS_MODULE_REUSE_THRESHOLD)
       .map(([value, prefixes]) => ({ value, prefixes: Array.from(prefixes).sort() }));
-  }
-
-  private static preview(value: string): string {
-    const single = value.replace(/\s+/g, ' ').trim();
-    return single.length > 80 ? `${single.slice(0, 80)}…` : single;
   }
 }

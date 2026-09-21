@@ -9,6 +9,11 @@ import type {
 } from '../config/types';
 import { FileUtils } from './file-utils';
 import { compileMatcher, normalizePosix } from './path-matcher';
+import { CHINESE_CHAR_RANGE } from './constants';
+import { LoggerUtils } from './logger';
+
+/** 语义 ID 取词前的清洗：只保留中文、标识符字符与空白。 */
+const NON_SEMANTIC_CHAR_RE = new RegExp(`[^${CHINESE_CHAR_RANGE}\\w\\s]`, 'g');
 
 // =============================================================================
 // ID 生成
@@ -65,14 +70,14 @@ function applyCase(
  * derive 输入：文件路径、上下文。
  * 输出：前缀段数组（如 `['pages', 'flippedCourse']`）；空数组表示无前缀。
  */
-export interface PrefixStrategy {
+interface PrefixStrategy {
   derive(filePath: string, ctx: PrefixContext): string[];
 }
 
 /**
  * 路径派生策略。从 anchor 之后的目录段构造前缀，支持 skip/take/includeFile/transform。
  */
-export class PathPrefixStrategyImpl implements PrefixStrategy {
+class PathPrefixStrategyImpl implements PrefixStrategy {
   constructor(private readonly options: Extract<ResolvedPrefixStrategy, { strategy: 'path' }>) {}
 
   derive(filePath: string, ctx: PrefixContext): string[] {
@@ -95,11 +100,18 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
     const fileIndex = parts.length - 1;
     let dirParts = parts.slice(anchorIndex + 1, fileIndex);
 
-    // 文件直接在 anchor 下：用文件名（去扩展名）作为单段前缀。
-    // 与 includeFile 分支一致地应用 fileNameCase——否则顶层文件（src/MyView.vue）
-    // 与子目录文件的前缀大小写规则不一致（前者 'MyView'、后者 'my-view'）。
+    // 文件直接在 anchor 下（anchor 与文件之间没有目录段）：退化为「用文件名作单段前缀」。
+    // 这条退化路径**有意**不看 includeFile——不用文件名就只剩空前缀，src 下所有顶层文件
+    // 的 key 会挤在同一命名空间里撞车。
+    // 与 includeFile 分支一致地应用 fileNameCase 与 indexFile：
+    //  - fileNameCase：否则顶层文件（src/MyView.vue）与子目录文件的大小写规则不一致；
+    //  - indexFile='collapse-to-parent'：`src/index.vue` 的父目录就是 anchor 本身、不入前缀，
+    //    折叠后只剩空前缀，与 `components/TagInput/index.vue` 折叠掉 index 段同一口径。
     if (dirParts.length === 0) {
       const baseName = path.parse(parts[fileIndex]!).name;
+      if (baseName === 'index' && this.options.indexFile === 'collapse-to-parent') {
+        return [];
+      }
       return this.finalize([applyCase(baseName, this.options.fileNameCase)], ctx);
     }
 
@@ -130,7 +142,7 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
   /**
    * 段级清理 + transform。
    *
-   * 清理：preserveHyphens=false 时把每段中非 alnum 字符抹除（与旧 cleanDirectoryPrefix 行为一致）；
+   * 清理：preserveHyphens=false 时把每段中非 alnum 字符抹除；
    * =true 时保留连字符（仅抹掉其它非 alnum 字符），让 matchKey 与目录名直接对齐。
    *
    * transform：null 返回值会删除该段；undefined 表示未配置时跳过。
@@ -141,8 +153,14 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
 
     for (let i = 0; i < segments.length; i++) {
       // 段清理收口到 cleanSegment（与 LLM/fixed 路径共用同一定义，避免字符集漂移）
-      let seg = cleanSegment(segments[i]!, this.options.preserveHyphens);
-      if (!seg) continue;
+      const original = segments[i]!;
+      let seg = cleanSegment(original, this.options.preserveHyphens);
+      if (!seg) {
+        // 整段被抹空（纯中文 / 纯符号目录名）：不同目录会折叠到同一前缀而互相撞 key，
+        // 由 ensureUniqueId 加 `_N` 后缀收场，key 与目录的对应关系肉眼不可读。
+        warnEmptySegmentOnce(original);
+        continue;
+      }
 
       if (transform) {
         const next = transform(seg, i, ctx);
@@ -158,13 +176,16 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
 /**
  * 固定前缀策略。所有 key 共享同一前缀。
  */
-export class FixedPrefixStrategyImpl implements PrefixStrategy {
+class FixedPrefixStrategyImpl implements PrefixStrategy {
   private readonly segments: string[];
 
   constructor(options: Extract<ResolvedPrefixStrategy, { strategy: 'fixed' }>, separator: string) {
+    // 段清理与 path / LLM 路径共用 cleanSegment：固定前缀同样会进 key，含空格 / 中文 /
+    // 分隔符以外的符号时会产出无法在 locale 文件里安全寻址的 key。
+    // fixed 策略没有 preserveHyphens 选项，按最宽口径保留连字符（`my-app` 是合法前缀）。
     this.segments = options.value
       .split(separator)
-      .map((s) => s.trim())
+      .map((s) => cleanSegment(s.trim(), true))
       .filter(Boolean);
   }
 
@@ -176,7 +197,7 @@ export class FixedPrefixStrategyImpl implements PrefixStrategy {
 /**
  * 完全自定义策略。
  */
-export class CustomPrefixStrategyImpl implements PrefixStrategy {
+class CustomPrefixStrategyImpl implements PrefixStrategy {
   constructor(private readonly options: Extract<ResolvedPrefixStrategy, { strategy: 'custom' }>) {}
 
   derive(filePath: string, ctx: PrefixContext): string[] {
@@ -195,7 +216,7 @@ export class CustomPrefixStrategyImpl implements PrefixStrategy {
  * 子策略各自维护参数（anchor / take / includeFile / indexFile / preserveHyphens 等），
  * 互不影响——这是 rules 策略相对全局参数的核心价值。
  */
-export class RulesPrefixStrategyImpl implements PrefixStrategy {
+class RulesPrefixStrategyImpl implements PrefixStrategy {
   private readonly compiled: Array<{
     matcher: (filePath: string) => boolean;
     strat: PrefixStrategy;
@@ -237,10 +258,7 @@ function createNestedPrefixStrategy(
 /**
  * 工厂：按 strategy 字段分派到对应实现。
  */
-export function createPrefixStrategy(
-  prefix: ResolvedPrefixStrategy,
-  separator: string,
-): PrefixStrategy {
+function createPrefixStrategy(prefix: ResolvedPrefixStrategy, separator: string): PrefixStrategy {
   if (prefix.strategy === 'rules') return new RulesPrefixStrategyImpl(prefix, separator);
   return createNestedPrefixStrategy(prefix, separator);
 }
@@ -297,10 +315,11 @@ function sanitizeSemanticForId(semanticPart: string): string {
  *  4. 中文长串 → `t_<hash>`
  */
 function extractSemanticPart(text: string, mappings: Record<string, string>): string {
-  const cleanText = text.replace(/[^一-鿿\w\s]/g, '').trim();
+  // 中文区间拼 CHINESE_CHAR_RANGE，与提取端 containsChinese 同源（见该常量注释）。
+  const cleanText = text.replace(NON_SEMANTIC_CHAR_RE, '').trim();
 
   // 单次遍历：完全匹配立即返回（优先级最高，可短路）；同时记录首个部分匹配，
-  // 遍历结束仍无完全匹配时再用它。语义与原「先全量找完全、再全量找部分」一致。
+  // 遍历结束仍无完全匹配时再用它。
   let partialMatch: string | undefined;
   for (const [zh, en] of Object.entries(mappings)) {
     if (cleanText === zh) return en;
@@ -318,11 +337,27 @@ function extractSemanticPart(text: string, mappings: Record<string, string>): st
 /**
  * 段清理：path/LLM/fixed 各路径共用的唯一定义（PathStrategy.finalize 亦调用本函数），
  * 收口字符集规则避免漂移。preserveHyphens=true 时保留连字符，否则一并抹除。
+ *
+ * 下划线始终保留（与 sanitizeSemanticId 同口径）：抹掉它会让 `fileNameCase: 'snake'`
+ * 的产物（`user_profile`）退化成 `userprofile`，与 kebab + preserveHyphens=false 完全同形，
+ * 配置项静默失效；snake_case 目录名同理。
  */
 function cleanSegment(segment: string, preserveHyphens: boolean): string {
   return preserveHyphens
-    ? segment.replace(/[^a-zA-Z0-9-]/g, '')
-    : segment.replace(/[^a-zA-Z0-9]/g, '');
+    ? segment.replace(/[^a-zA-Z0-9_-]/g, '')
+    : segment.replace(/[^a-zA-Z0-9_]/g, '');
+}
+
+/** 已告警过的空段，避免同一目录在整轮 generate 里反复刷屏。 */
+const warnedEmptySegments = new Set<string>();
+
+function warnEmptySegmentOnce(segment: string): void {
+  if (warnedEmptySegments.has(segment)) return;
+  warnedEmptySegments.add(segment);
+  LoggerUtils.warn(
+    `⚠️  路径段 '${segment}' 清理后为空（key 只允许 a-z A-Z 0-9 _ -），已从前缀中略去：` +
+      `同一层的其它同类目录会折算到相同前缀，key 需靠去重后缀区分。建议改用 ASCII 目录名或配置 keys.prefix.transform。`,
+  );
 }
 
 /**
@@ -370,11 +405,18 @@ export class IdGenerator {
   }
 
   /**
+   * 无 LLM 语义 ID 时的本地兜底语义段：先查 keys.fallback.mappings（完全匹配 > 部分匹配），
+   * 未命中再按文本派生。所有兜底路径（含 promoteToCommon 的固定前缀路径）共用这一份匹配语义。
+   */
+  deriveSemanticPart(text: string): string {
+    return extractSemanticPart(text, this.mappings);
+  }
+
+  /**
    * 用文件路径派生完整 ID（无 LLM 输入）：前缀 + 语义兜底 + 唯一化。
    */
   generateWithFilePath(filePath: string, text: string, existingIds: Set<string>): string {
-    const semanticPart = extractSemanticPart(text, this.mappings);
-    return this.createFullId(filePath, semanticPart, existingIds);
+    return this.createFullId(filePath, this.deriveSemanticPart(text), existingIds);
   }
 
   /**

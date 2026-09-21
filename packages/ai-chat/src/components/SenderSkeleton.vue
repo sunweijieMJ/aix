@@ -12,6 +12,7 @@
 </template>
 
 <script setup lang="ts">
+/** 输入框骨架屏：与 Sender 同结构的纯装饰占位（输入行 + 工具栏）。 */
 import { useNamespace } from '@aix/hooks';
 import Skeleton from './Skeleton.vue';
 

@@ -59,10 +59,12 @@
               "
             >
               <template v-if="$slots.content" #content="slotProps">
+                <!-- @slot 转发给每个 Bubble 的内容区，作用域补 item（完整 ChatMessage） -->
                 <slot name="content" :item="item as ChatMessage" v-bind="slotProps" />
               </template>
               <!-- 转发 footer 作用域 slot：补齐消息操作（复制/重生成等）的逃生口 -->
               <template v-if="$slots.footer" #footer>
+                <!-- @slot 气泡下方的操作条区，作用域 item 为该条消息 -->
                 <slot name="footer" :item="item as ChatMessage" />
               </template>
               <!-- header / avatar / error 单独显式转发（不走下面的通用穿透）：这三个是**消息级**
@@ -72,15 +74,18 @@
                  作用域来自各块渲染器（如 thought-chain-item-content 的 item 是 ThoughtChainItem），
                  同名不同义，届时 item 指代什么将取决于是哪个块，是更糟的歧义。 -->
               <template v-if="$slots.header" #header="sp">
+                <!-- @slot 消息级头部，作用域补 item -->
                 <slot name="header" :item="item as ChatMessage" v-bind="sp" />
               </template>
               <template v-if="$slots.avatar" #avatar="sp">
+                <!-- @slot 头像区，作用域补 item -->
                 <slot name="avatar" :item="item as ChatMessage" v-bind="sp" />
               </template>
               <!-- error 额外补一个 error 作用域：业务接管错误 UI 的第一件事必然是读原始错误，
                  而它埋在 extra.error 里（约定见 ChatMessage.extra），逐个业务自己去翻既啰嗦
                  又容易漏掉「err 可能是字符串而非 Error」这一层。 -->
               <template v-if="$slots.error" #error="sp">
+                <!-- @slot 出错态自定义 UI，作用域补 item 与 extra.error 里的原始错误 -->
                 <slot
                   name="error"
                   :item="item as ChatMessage"
@@ -91,6 +96,7 @@
               <!-- 透传块插槽：把非保留（上述几个之外）具名插槽原样转发给每个 Bubble，
                最终落到块渲染器内部 slot（如 thought-chain-item-content → item-content）。 -->
               <template v-for="name in passthroughSlotNames" :key="name" #[name]="sp">
+                <!-- @vue-expect-error 动态转发的块插槽名不可枚举，不在 defineSlots 名单内 -->
                 <slot :name="name" v-bind="sp" />
               </template>
             </Bubble>
@@ -165,6 +171,7 @@ export interface BubbleListEmits {
 </script>
 
 <script setup lang="ts">
+/** 消息列表：虚拟滚动承载气泡，并处理流式期间的自动跟随与回到底部。 */
 import { useNamespace } from '@aix/hooks';
 import { ArrowDownward } from '@aix/icons';
 import { Virtualizer } from 'virtua/vue';
@@ -181,6 +188,10 @@ import type {
   BlockActionPayload,
   BlockIntentPayload,
   BubbleTypingConfig,
+  BubbleListContentSlotScope,
+  BubbleListErrorSlotScope,
+  BubbleListItemSlotScope,
+  BubbleListRowSlotScope,
 } from '../types';
 import { contentFingerprint } from '../utils/contentFingerprint';
 import { slotHasContent } from '../utils/hasVNodeContent';
@@ -196,6 +207,21 @@ const props = withDefaults(defineProps<BubbleListProps>(), {
   typing: false,
 });
 const emit = defineEmits<BubbleListEmits>();
+
+defineSlots<{
+  /** 转发给每个 Bubble 的内容区，作用域补 item（完整 ChatMessage） */
+  content?: (props: BubbleListContentSlotScope) => unknown;
+  /** 气泡下方的操作条区，作用域 item 为该条消息 */
+  footer?: (props: { item: ChatMessage }) => unknown;
+  /** 消息级头部，作用域补 item */
+  header?: (props: BubbleListItemSlotScope) => unknown;
+  /** 头像区，作用域补 item */
+  avatar?: (props: BubbleListItemSlotScope) => unknown;
+  /** 出错态自定义 UI，作用域补 item 与 extra.error 里的原始错误 */
+  error?: (props: BubbleListErrorSlotScope) => unknown;
+  /** 气泡所在行之前、占满整行的区域（时间戳 / 日期分隔线）；产出空内容时不渲染包裹层 */
+  'row-before'?: (props: BubbleListRowSlotScope) => unknown;
+}>();
 
 // virtua/vue 的 index 未 re-export VirtualizerHandle 类型，
 // 用 InstanceType<typeof Virtualizer> 推导实例类型（含 scrollToIndex），避免引入 any

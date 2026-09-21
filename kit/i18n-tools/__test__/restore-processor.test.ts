@@ -113,6 +113,54 @@ describe('RestoreProcessor 编排层', () => {
     expect(fs.existsSync(path.join(rootDir, 'restored', 'src', 'A.vue'))).toBe(false);
   });
 
+  // 回归（审计 P2）：overwrite 模式完全不用 outputDir，却无条件 ensureDirectoryExists，
+  // 每次 `--overwrite` 都在项目根凭空留下一个空 restored/。
+  it('overwrite=true：不创建输出目录（无副作用空目录）', async () => {
+    const file = writeSource('A.vue', SRC);
+    await new RestoreProcessor(buildConfig(rootDir), false).execute([file], undefined, true);
+
+    expect(fs.readFileSync(file, 'utf-8')).toContain('你好');
+    expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
+  });
+
+  // 回归（审计 P2）：默认 outputDir 落在扫描根内，二次全量 restore 会把上次的 restored/
+  // 副本当作源文件再处理，产出 restored/restored/ 套娃。
+  it('二次全量 restore 不把上次的输出目录纳入处理集（无 restored/restored 套娃）', async () => {
+    writeSource('A.vue', SRC);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute();
+    expect(fs.existsSync(path.join(rootDir, 'restored', 'src', 'A.vue'))).toBe(true);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute();
+    // 上次产出的 restored/src/A.vue 被排除在处理集之外（不再作为源文件二次还原）
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(
+      expect.stringContaining('已排除 1 个位于输出目录内的文件'),
+    );
+    expect(fs.existsSync(path.join(rootDir, 'restored', 'restored'))).toBe(false);
+  });
+
+  /**
+   * A-1：`.i18n-tools/plans/<ts>/sources/` 下是 dry-run 写出的转换后源码副本。
+   * 全量 restore 若把它当源码处理：不带 --overwrite 时产出 restored/.i18n-tools/… 垃圾副本，
+   * 带 --overwrite 时把副本就地还原成未国际化代码——随后 apply-plan 会把这份被还原的内容
+   * 当「已审过的代码」写回源文件、同时照常写 localeDelta，落成源码无 t()/locale 有 key 的
+   * 不一致态并报成功。plan 目录必须始终在扫描集之外。
+   */
+  it('A-1: 全量 restore 不扫描 .i18n-tools 下的 plan 源码副本', async () => {
+    writeSource('A.vue', SRC);
+    const planSources = path.join(rootDir, '.i18n-tools', 'plans', 'generate-x', 'sources', 'src');
+    fs.mkdirSync(planSources, { recursive: true });
+    const copy = path.join(planSources, 'A.vue');
+    fs.writeFileSync(copy, SRC, 'utf-8');
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute(undefined, undefined, true);
+
+    // 源文件照常还原，plan 副本原样不动
+    expect(fs.readFileSync(path.join(srcDir, 'A.vue'), 'utf-8')).toContain('你好');
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(SRC);
+    expect(fs.existsSync(path.join(rootDir, 'restored', '.i18n-tools'))).toBe(false);
+  });
+
   it('空 localeMap → 早退，不抛错也不产出', async () => {
     const file = writeSource('A.vue', SRC);
     // 语言文件为空对象
@@ -122,6 +170,42 @@ describe('RestoreProcessor 编排层', () => {
       new RestoreProcessor(buildConfig(rootDir), false).execute([file]),
     ).resolves.toBeUndefined();
     expect(fs.readFileSync(file, 'utf-8')).toBe(SRC); // 原文件未动
+    expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
+  });
+
+  // 回归（restore 安全网）：restore 此前是唯一没有 dry-run 的破坏性模式。
+  // dry-run 必须在内存里跑完转换、逐文件报告，且零写盘（连输出目录都不建）。
+  it('dryRun：零写盘（不建 restored/、不动源文件），但报告还原计数', async () => {
+    const file = writeSource('A.vue', SRC);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute([file], undefined, false, {
+      dryRun: true,
+    });
+
+    // 源文件与输出目录都没被碰过
+    expect(fs.readFileSync(file, 'utf-8')).toBe(SRC);
+    expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
+
+    // 逐文件预览点名了「将还原几处」与「将清理的声明行」
+    expect(LoggerUtils.info).toHaveBeenCalledWith(
+      expect.stringMatching(/将还原: .*A\.vue（1 处调用，清理 1 行 import\/hook 声明）/),
+    );
+    expect(LoggerUtils.info).toHaveBeenCalledWith(
+      expect.stringContaining("import { t } from '@/locale'"),
+    );
+    // 汇总同样是「将」的口径
+    expect(LoggerUtils.info).toHaveBeenCalledWith(expect.stringContaining('将还原调用点: 1 处'));
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('未写入任何文件'));
+  });
+
+  it('dryRun：无需修改的文件不计入预览计数', async () => {
+    const file = writeSource('Plain.vue', `<template>\n  <div>hello</div>\n</template>\n`);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute([file], undefined, false, {
+      dryRun: true,
+    });
+
+    expect(LoggerUtils.info).toHaveBeenCalledWith(expect.stringContaining('将还原调用点: 0 处'));
     expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
   });
 

@@ -146,3 +146,117 @@ describe('ReactComponentInjector.inject：React.memo/forwardRef 命名空间形�
     expect(out).toContain('const { t } = useTranslation();');
   });
 });
+
+/**
+ * react-gen 审计 R7：类型名比对此前用 `getText().includes(propsType)`，
+ * 名字含 hocPropsType 子串的业务类型（PanelWithTranslationToggleProps）被误判为已注入。
+ */
+describe('ReactASTUtils.typeReferencesName — 按类型引用名精确比对', () => {
+  const typeOf = (code: string): ts.TypeNode => {
+    let found: ts.TypeNode | undefined;
+    const visit = (n: ts.Node): void => {
+      if (found) return;
+      if (ts.isTypeAliasDeclaration(n)) {
+        found = n.type;
+        return;
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(parseTsx(code));
+    if (!found) throw new Error('未找到类型节点');
+    return found;
+  };
+
+  it('同名类型引用 → true；交叉类型成员命中 → true', () => {
+    expect(
+      ReactASTUtils.typeReferencesName(typeOf(`type A = WithTranslation;`), 'WithTranslation'),
+    ).toBe(true);
+    expect(
+      ReactASTUtils.typeReferencesName(
+        typeOf(`type A = Props & WithTranslation;`),
+        'WithTranslation',
+      ),
+    ).toBe(true);
+  });
+
+  it('名字含子串的其它类型 → false', () => {
+    expect(
+      ReactASTUtils.typeReferencesName(
+        typeOf(`type A = PanelWithTranslationToggleProps;`),
+        'WithTranslation',
+      ),
+    ).toBe(false);
+  });
+
+  it('泛型实参里的同名类型不算外层引用 → false', () => {
+    expect(
+      ReactASTUtils.typeReferencesName(
+        typeOf(`type A = Props<WithTranslation>;`),
+        'WithTranslation',
+      ),
+    ).toBe(false);
+  });
+});
+
+/**
+ * react-gen 审计 R9：PascalCase 组件按引用传给 map/forEach 等迭代方法时会被逐项当普通函数
+ * 调用，注入 hook 即违反 Hooks 规则；而 memo/observer 等 HOC 的按引用包裹不是普通调用。
+ */
+describe('ReactASTUtils.plainlyCalledNames — 迭代回调实参位', () => {
+  it('rows.map(Row) 计入普通调用名', () => {
+    const names = ReactASTUtils.plainlyCalledNames(parseTsx(`const x = rows.map(Row);`));
+    expect(names.has('Row')).toBe(true);
+  });
+
+  it('memo(Foo) / observer(Foo) 不计入（HOC 按引用包裹仍返回组件）', () => {
+    const names = ReactASTUtils.plainlyCalledNames(
+      parseTsx(`const A = memo(Foo);\nconst B = observer(Bar);`),
+    );
+    expect(names.has('Foo')).toBe(false);
+    expect(names.has('Bar')).toBe(false);
+  });
+
+  it('小写回调（rows.map(render)）不计入组件名集合', () => {
+    const names = ReactASTUtils.plainlyCalledNames(parseTsx(`const x = rows.map(render);`));
+    expect(names.has('render')).toBe(false);
+  });
+
+  it('回归保护：Tip() 直接调用仍计入', () => {
+    const names = ReactASTUtils.plainlyCalledNames(parseTsx(`const x = <div>{Tip()}</div>;`));
+    expect(names.has('Tip')).toBe(true);
+  });
+});
+
+/**
+ * react-gen 审计 R5/A3：「向作用域注入某个名字是否安全」的统一判定。
+ */
+describe('ReactASTUtils.canBindName — 模块顶层注入名可用性', () => {
+  const sf = (code: string): ts.SourceFile => parseTsx(code);
+
+  it('同名具名导入来自非 i18n 模块 → 不可注入', () => {
+    expect(
+      ReactASTUtils.canBindName(
+        sf(`import { useTranslation } from '@/hooks/useTranslation';`),
+        'useTranslation',
+        { i18nModules: ['react-i18next', '@/plugins/locale'] },
+      ),
+    ).toBe(false);
+  });
+
+  it('同名具名导入来自 i18n 库 → 可注入（工具自身上一轮产物）', () => {
+    expect(
+      ReactASTUtils.canBindName(
+        sf(`import { useTranslation } from 'react-i18next';`),
+        'useTranslation',
+        { i18nModules: ['react-i18next', '@/plugins/locale'] },
+      ),
+    ).toBe(true);
+  });
+
+  it('kind=type：本地同名 interface / type 也算占用', () => {
+    const code = `interface WithTranslation { t: (k: string) => string }`;
+    expect(ReactASTUtils.canBindName(sf(code), 'WithTranslation', { kind: 'type' })).toBe(false);
+    // 值口径不看类型声明（类型与值不同命名空间）
+    expect(ReactASTUtils.canBindName(sf(code), 'WithTranslation')).toBe(true);
+  });
+});

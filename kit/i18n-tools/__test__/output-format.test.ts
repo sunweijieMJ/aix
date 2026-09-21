@@ -43,9 +43,7 @@ describe('io.format=nested 写入', () => {
     const config = makeConfig();
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
-    LanguageFileManager.writeLocaleFile(
-      config,
-      false,
+    new LanguageFileManager(config, false).writeLocaleFile(
       { 'order.title': '订单', 'order.list.empty': '空', 'common.confirm': '确认' },
       'zh-CN',
     );
@@ -64,9 +62,7 @@ describe('io.format=nested 写入', () => {
     const config = makeConfig({ io: { format: 'flat', localesDir: 'locale' } });
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
-    LanguageFileManager.writeLocaleFile(
-      config,
-      false,
+    new LanguageFileManager(config, false).writeLocaleFile(
       { 'order.title': '订单', 'order.list.empty': '空' },
       'zh-CN',
     );
@@ -89,9 +85,7 @@ describe('io.format=nested 写入', () => {
     });
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
-    LanguageFileManager.writeLocaleFile(
-      config,
-      false,
+    new LanguageFileManager(config, false).writeLocaleFile(
       { 'order.title': '订单', 'order.list.empty': '空', 'misc.foo': '其它' },
       'zh-CN',
       { 'order.title': 'order', 'order.list.empty': 'order', 'misc.foo': 'common' },
@@ -112,15 +106,15 @@ describe('io.format=nested 写入', () => {
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
     const original = { 'order.title': '订单', 'order.list.empty': '空' };
-    LanguageFileManager.writeLocaleFile(config, false, original, 'zh-CN');
+    new LanguageFileManager(config, false).writeLocaleFile(original, 'zh-CN');
 
-    const messages = LanguageFileManager.getMessages(config, false);
+    const messages = new LanguageFileManager(config, false).getMessages();
     expect(messages['zh-CN']).toEqual(original);
 
     // 改一个值再写回，验证读—改—写循环
     const zh = messages['zh-CN'] as Record<string, string>;
     zh['order.title'] = '订单 v2';
-    LanguageFileManager.writeLocaleFile(config, false, zh, 'zh-CN');
+    new LanguageFileManager(config, false).writeLocaleFile(zh, 'zh-CN');
 
     const file = path.join(config.io.localesDir, 'zh-CN.json');
     expect(JSON.parse(fs.readFileSync(file, 'utf-8'))).toEqual({
@@ -136,9 +130,7 @@ describe('io.format=nested 写入', () => {
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
     expect(() =>
-      LanguageFileManager.writeLocaleFile(
-        config,
-        false,
+      new LanguageFileManager(config, false).writeLocaleFile(
         { 'a.b': '叶子', 'a.b.c': '子树' },
         'zh-CN',
       ),
@@ -151,9 +143,7 @@ describe('io.format=nested 写入', () => {
     // 'a.b-c'（'-'=0x2D < '.'=0x2E）排序后落在 'a.b' 与 'a.b.c' 之间，
     // 旧的「仅比相邻对」逻辑会漏掉 'a.b'(叶) 与 'a.b.c'(子树) 的冲突 → 静默丢数据
     expect(() =>
-      LanguageFileManager.writeLocaleFile(
-        config,
-        false,
+      new LanguageFileManager(config, false).writeLocaleFile(
         { 'a.b': '叶子', 'a.b-c': '兄弟', 'a.b.c': '子树' },
         'zh-CN',
       ),
@@ -165,9 +155,7 @@ describe('io.format=nested 写入', () => {
     fs.mkdirSync(config.io.localesDir, { recursive: true });
 
     expect(() =>
-      LanguageFileManager.writeLocaleFile(
-        config,
-        false,
+      new LanguageFileManager(config, false).writeLocaleFile(
         { 'a.b': '叶子', 'a.b.c': '子树' },
         'zh-CN',
       ),

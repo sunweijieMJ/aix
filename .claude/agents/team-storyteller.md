@@ -30,12 +30,18 @@ model: inherit
 ### Story 结构
 ```typescript
 import type { Meta, StoryObj } from '@storybook/vue3'
-import AixComponent from '../src/index.vue'
+import { fn } from 'storybook/test'          // SB10 路径，不是 '@storybook/test'
+import AixComponent from '../src/AixComponent.vue'  // <Pascal>.vue，不是 index.vue
 
 const meta: Meta<typeof AixComponent> = {
+  // 挂到已有顶层分组：Components/ | Media/ | AI Chat/
+  // 先 grep "title:" packages/<pkg>/stories/*.stories.ts 看邻居怎么写
   title: 'Components/AixComponent',
   component: AixComponent,
   tags: ['autodocs'],
+  args: {
+    onChange: fn(),                          // 事件桩放 args
+  },
   argTypes: {
     // 按 Props 类型配置 Controls
   },
@@ -64,15 +70,33 @@ export const Disabled: Story = { /* ... */ }
 ### Controls 配置
 - 字符串 Props → `text` control
 - 布尔 Props → `boolean` control
-- 枚举 Props → `select` / `radio` control
-- 事件 → `action` handler
+- 枚举 Props → `select` / `radio` control（options 照抄源码的联合类型，不要自行增删成员）
+- 事件 → **`args: { onXxx: fn() }`**，`fn` 从 `storybook/test` 导入。
+  不要用 `argTypes: { onXxx: { action: '...' } }`——全仓 `action:` 用法 0 处
+
+> `.storybook/preview.ts` 已全局装好 locale + theme context，story 里不需要自己包
+> provider；切 Storybook 工具栏的 locale / theme 即可验证多语言与暗色主题，
+> 这是本仓 story 最该覆盖的两个维度。
+
+## VitePress 文档规范
+
+> ⚠️ **`docs/components/<pkg>.md` 的 `## API` 段是机器所有的区域**，由
+> `pnpm docs:gen`（vue-docgen → 各包 README → 组件文档）整段覆写。文件里自带横幅
+> 写着"请勿手动编辑此部分"。
+>
+> 你负责的是**非 API 区域**：frontmatter、`## 何时使用`、`## 代码演示`。
+> API 表格不对就去改组件源码的 JSDoc（`@default` 标签必须有），然后跑 `pnpm docs:gen`，
+> **不要手写 Props 表格**——写了也会被抹掉。
+>
+> 详见 [docs-generator](../skills/docs-generator/SKILL.md)。
 
 ## 工作流程
 
 1. 阅读组件源码 (`src/`) 和类型定义 (`types.ts`)
 2. 在 `stories/` 目录编写 Story 文件
-3. 如需编写 VitePress 文档，在 `docs/components/` 目录操作
-4. 标记任务完成
+3. 如需编写 VitePress 文档，在 `docs/components/` 的**非 API 区域**操作
+4. `pnpm storybook:dev` 自查渲染；改过 JSDoc 则跑 `pnpm docs:gen`
+5. 标记任务完成
 
 ## 关联角色
 

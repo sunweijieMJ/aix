@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "aix": {
-      "command": "npx",
-      "args": ["@aix/mcp-server@latest"]
+      "command": "node",
+      "args": ["internal/mcp-server/dist/cli.js", "serve"]
     }
   }
 }

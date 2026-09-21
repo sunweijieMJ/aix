@@ -10,6 +10,7 @@
     </template>
     <div v-else class="aix-skeleton__block" :style="blockStyle" />
   </div>
+  <!-- @slot loading 为 false 时渲染的真实内容 -->
   <slot v-else />
 </template>
 
@@ -19,7 +20,10 @@ export interface SkeletonProps {
   loading?: boolean;
   /** 行模式：渲染 N 行文本占位（末行短行）；与 height/aspectRatio 互斥，优先生效 */
   rows?: number;
-  /** 块模式高度（如 '120px'），默认 96px */
+  /**
+   * 块模式高度（如 '120px'）
+   * @default '96px'
+   */
   height?: string;
   /** 块模式宽高比（如 '2 / 1'），设置后优先于 height */
   aspectRatio?: string;
@@ -27,6 +31,7 @@ export interface SkeletonProps {
 </script>
 
 <script setup lang="ts">
+/** 骨架屏占位：按 rows 出多行条，或按 aspectRatio 出一个占位块。 */
 import { computed } from 'vue';
 
 const props = withDefaults(defineProps<SkeletonProps>(), {

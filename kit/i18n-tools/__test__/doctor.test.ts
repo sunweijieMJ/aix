@@ -467,4 +467,425 @@ describe('DoctorProcessor missing-target-key', () => {
 
     expect(all()).not.toContain('[missing-target-key]');
   });
+
+  it('target 有该 key、源 locale 已无 → 报 stale-target-key（warning，只报不删）', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('order.submit') }}</template>`);
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'order.submit': '提交订单' }),
+    );
+    // legacy.removed 只在 target 里：源侧已删/改名，译文成了残留
+    fs.writeFileSync(
+      path.join(localeDir, 'en-US.json'),
+      JSON.stringify({ 'order.submit': 'Submit', 'legacy.removed': 'Gone' }),
+    );
+
+    await new DoctorProcessor(
+      buildConfig(rootDir, sourceDir, localeDir),
+      false,
+      undefined,
+      {},
+    ).execute();
+
+    expect(all()).toContain('[stale-target-key]');
+    expect(all()).toContain('legacy.removed');
+    // 只报不删：target 文件保持原样
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'en-US.json'), 'utf-8'))).toHaveProperty(
+      'legacy.removed',
+    );
+  });
+
+  it('target 的 key 源侧都有 → 不报 stale-target-key', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('order.submit') }}</template>`);
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'order.submit': '提交订单' }),
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'en-US.json'),
+      JSON.stringify({ 'order.submit': 'Submit' }),
+    );
+
+    await new DoctorProcessor(
+      buildConfig(rootDir, sourceDir, localeDir),
+      false,
+      undefined,
+      {},
+    ).execute();
+
+    expect(all()).not.toContain('[stale-target-key]');
+  });
+});
+
+/**
+ * 回归：配置了 io.customDir 的双目录项目，missing-key 对账系统性假阳。
+ *
+ * langFiles 由 (config, isCustom) 一次绑定、只读单侧目录，而 collectUsedKeys 扫的是
+ * 全部源码的 t() 引用——天然横跨两个目录。于是「只落在另一侧目录」的 key 全部被报成
+ * missing-key（error 级 → doctor --ci 必红）。修复：missing-key 改用 base + custom 并集对账。
+ */
+describe('DoctorProcessor 双目录（customDir）对账', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let baseDir: string;
+  let customDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+  let successSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-dual-'));
+    sourceDir = path.join(rootDir, 'src');
+    baseDir = path.join(rootDir, 'locale');
+    customDir = path.join(rootDir, 'locale-custom');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(baseDir, { recursive: true });
+    fs.mkdirSync(customDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    successSpy = vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const dualConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', tImport: '@/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: baseDir, customDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+  const writeJson = (dir: string, locale: string, data: Record<string, unknown>): void =>
+    fs.writeFileSync(path.join(dir, `${locale}.json`), JSON.stringify(data));
+  const all = (): string => infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+
+  const writeMixedProject = (): void => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Mixed.vue'),
+      `<template><div>{{ t('base.key') }}{{ t('custom.key') }}</div></template>`,
+    );
+    writeJson(baseDir, 'zh-CN', { 'base.key': '基础' });
+    writeJson(baseDir, 'en-US', { 'base.key': 'Base' });
+    writeJson(customDir, 'zh-CN', { 'custom.key': '定制' });
+    writeJson(customDir, 'en-US', { 'custom.key': 'Custom' });
+  };
+
+  it('主目录体检：仅存在于定制目录的 key 不报 missing-key', async () => {
+    writeMixedProject();
+    await new DoctorProcessor(dualConfig(), false, undefined, { ci: true }).execute();
+    expect(all()).not.toContain('[missing-key]');
+  });
+
+  it('定制目录体检（--custom）：仅存在于主目录的 key 不报 missing-key', async () => {
+    writeMixedProject();
+    await new DoctorProcessor(dualConfig(), true, undefined, { ci: true }).execute();
+    expect(all()).not.toContain('[missing-key]');
+  });
+
+  it('两侧都没有的 key 仍报 missing-key（不因合并而漏报）', async () => {
+    writeMixedProject();
+    fs.writeFileSync(
+      path.join(sourceDir, 'Missing.vue'),
+      `<template>{{ t('nowhere.key') }}</template>`,
+    );
+    const proc = new DoctorProcessor(dualConfig(), false, undefined, { ci: true });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+    expect(all()).toContain('[missing-key]');
+    expect(all()).toContain('nowhere.key');
+  });
+
+  it('orphan 按当前侧迭代：本侧真孤儿照报，另一侧的 key 不被误判为本侧孤儿', async () => {
+    writeMixedProject();
+    writeJson(baseDir, 'zh-CN', { 'base.key': '基础', 'base.orphan': '没人用' });
+    await new DoctorProcessor(dualConfig(), false, undefined, {}).execute();
+    expect(all()).toContain('[orphan-key]');
+    expect(all()).toContain('base.orphan');
+    // custom.key 只存在于定制目录，主目录体检无从清理，不应出现在孤儿清单里
+    expect(all()).not.toContain('custom.key (源码无 t()/$t() 引用)');
+  });
+
+  it('另一侧目录 JSON 损坏 → 报 corrupt-locale 并跳过对账（不刷假 missing-key）', async () => {
+    writeMixedProject();
+    fs.writeFileSync(path.join(customDir, 'zh-CN.json'), '{ 坏掉的 JSON');
+    const proc = new DoctorProcessor(dualConfig(), false, undefined, { ci: true });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+    expect(all()).toContain('[corrupt-locale]');
+    expect(all()).not.toContain('[missing-key]');
+  });
+
+  it('未配置 customDir 时行为不变（单目录项目不受影响）', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'Solo.vue'), `<template>{{ t('base.key') }}</template>`);
+    writeJson(baseDir, 'zh-CN', { 'base.key': '基础' });
+    writeJson(baseDir, 'en-US', { 'base.key': 'Base' });
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, baseDir)).execute();
+    expect(successSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n')).toContain(
+      'Doctor 检查通过',
+    );
+  });
+});
+
+/**
+ * 回归（四轮审计 A1）：doctor 的 missing-key / orphan-key 对账要与 restore 同一 namespace
+ * 口径——i18next 系（supportsNamespace）里 `ns:key` 是运行时约定、locale 存裸 key，
+ * 源码侧与 locale 侧都过同一归一，否则同一条文案会被同时报成 missing-key 与 orphan-key。
+ */
+describe('DoctorProcessor — namespace 归一（四轮审计 A1）', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-ns-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const runDoctor = async (library: 'vue-i18n' | 'vue-i18next'): Promise<string> => {
+    const config = resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', library, tImport: '@/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+    await new DoctorProcessor(config, false, undefined, { ci: false }).execute();
+    return infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+  };
+
+  it('vue-i18next：源码 ns:key、locale 裸 key → 既不报 missing-key 也不报 orphan-key', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ greeting: '你好' }));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ greeting: 'Hi' }));
+
+    const output = await runDoctor('vue-i18next');
+
+    expect(output).not.toMatch(/missing-key/);
+    expect(output).not.toMatch(/orphan-key/);
+  });
+
+  it('vue-i18n：冒号属于 key 自身，仍按字面对账（未定义即 missing-key）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'app:greeting': '你好' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ 'app:greeting': 'Hi' }));
+
+    const output = await runDoctor('vue-i18n');
+
+    expect(output).not.toMatch(/missing-key/);
+    expect(output).not.toMatch(/orphan-key/);
+  });
+});
+
+/**
+ * 回归：missing-key 是 error 级、直接决定 --ci 的红绿，故不能把「根本不是 i18n key」的
+ * 首参也算进去。两道过滤：
+ *  1. 文件顶层把 `t` 绑定到非 i18n 来源（本地模板函数）→ 该文件的裸 t() 引用不参与对账；
+ *  2. 首参形态不像 key（含空格 / 中文 / 花括号）→ 降为 info，仍列出但不卡 CI。
+ * 真 key 形态的缺失照旧 error，不得被这两道过滤放宽。
+ */
+describe('DoctorProcessor missing-key — 非 i18n 同名 t() 不误报', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  const buildReactConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'react', library: 'react-i18next', tImport: '@/plugins/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-conflict-t-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const writeLocales = (data: Record<string, string>): void => {
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify(data));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify(data));
+  };
+
+  it('本地模板函数 t() 不报 missing-key，--ci 不卡', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Local.tsx'),
+      `import { t } from './tiny-template';
+export function Local({ name }: { name: string }) {
+  return <div>{t('你好 {name}', { name })}</div>;
+}
+`,
+    );
+    writeLocales({});
+    await new DoctorProcessor(buildReactConfig(), false, undefined, { ci: true }).execute();
+    const all = infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(all).not.toContain('你好 {name}');
+  });
+
+  it('tImport 的 t() 但首参不像 key（含中文）→ 降为 info，--ci 不卡', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Natural.tsx'),
+      `import { t } from '@/plugins/locale';
+export function Natural() {
+  return <div>{t('自然语言 文案')}</div>;
+}
+`,
+    );
+    writeLocales({});
+    await new DoctorProcessor(buildReactConfig(), false, undefined, { ci: true }).execute();
+    const all = infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    // 仍然列出来供人核对，只是不再是 error
+    expect(all).toContain('自然语言 文案');
+  });
+
+  it('真 key 形态缺失仍是 error，--ci 卡住', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Real.tsx'),
+      `import { t } from '@/plugins/locale';
+export function Real() {
+  return <div>{t('views.real.title')}</div>;
+}
+`,
+    );
+    writeLocales({});
+    const proc = new DoctorProcessor(buildReactConfig(), false, undefined, { ci: true });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+  });
+});
+
+// =============================================================================
+// B5 / B6：目标值无效、以及非中文源语种的对账口径
+// =============================================================================
+describe('DoctorProcessor — 目标值无效与非中文源语种', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-invalid-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const all = (): string => infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+  const writeLocaleFile = (locale: string, data: Record<string, string>): void =>
+    fs.writeFileSync(path.join(localeDir, `${locale}.json`), JSON.stringify(data));
+
+  it('B5: target 值为空串/纯空白/纯标点 → 报 invalid-target-value（warning，--ci 不卡）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'P.vue'),
+      `<template>{{ t('a.empty') }}{{ t('a.blank') }}{{ t('a.punct') }}</template>`,
+    );
+    writeLocaleFile('zh-CN', { 'a.empty': '标题', 'a.blank': '副标题', 'a.punct': '说明' });
+    writeLocaleFile('en-US', { 'a.empty': '', 'a.blank': '   ', 'a.punct': '...' });
+
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      ci: true,
+    });
+    // warning 级：不阻断 CI
+    await expect(proc.execute()).resolves.toBeUndefined();
+    expect(all()).toContain('[invalid-target-value]');
+    expect(all()).toContain('a.empty');
+    expect(all()).toContain('a.blank');
+    expect(all()).toContain('a.punct');
+  });
+
+  it('B5: target 值有效 → 不报 invalid-target-value', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('a.ok') }}</template>`);
+    writeLocaleFile('zh-CN', { 'a.ok': '标题' });
+    writeLocaleFile('en-US', { 'a.ok': 'Title' });
+
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir)).execute();
+    expect(all()).not.toContain('[invalid-target-value]');
+  });
+
+  it('B6: 源语种非中文时 missing-target-key / untranslated 照常对账', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'P.vue'),
+      `<template>{{ t('a.missing') }}{{ t('a.same') }}</template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'en.json'),
+      JSON.stringify({ 'a.missing': 'Submit', 'a.same': 'Cancel' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'fr.json'), JSON.stringify({ 'a.same': 'Cancel' }));
+
+    const config = resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', tImport: '@/locale' },
+      locales: { source: 'en', targets: ['fr'] },
+      io: { localesDir: localeDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+    await new DoctorProcessor(config).execute();
+
+    expect(all()).toContain('[missing-target-key]');
+    expect(all()).toContain('a.missing');
+    expect(all()).toContain('[untranslated]');
+    expect(all()).toContain('a.same');
+  });
+
+  it('B6: 源语种为中文时纯英文/符号源值仍不参与对账（行为不变）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'P.vue'),
+      `<template>{{ t('a.api') }}{{ t('a.zh') }}</template>`,
+    );
+    writeLocaleFile('zh-CN', { 'a.api': 'TCP/IP', 'a.zh': '提交' });
+    writeLocaleFile('en-US', {});
+
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir)).execute();
+    const out = all();
+    expect(out).toContain('[missing-target-key]');
+    expect(out).toContain('a.zh');
+    expect(out).not.toContain('a.api');
+  });
 });

@@ -6,13 +6,16 @@
          包裹层（__header-default）上。这样业务提供 #header 完全接管内容时，容器天然零样式，
          不必再 reset padding/border-bottom 才能让自己的布局生效。 -->
     <div v-if="hasHeader" :class="ns.e('header')">
+      <!-- @slot 顶部标题栏整体，覆盖默认的「图标 + 标题 + extra」布局 -->
       <slot name="header">
         <div :class="ns.e('header-default')">
           <span v-if="headerIcon || $slots['header-icon']" :class="ns.e('header-icon')">
+            <!-- @slot 标题栏图标，覆盖 headerIcon 图片 -->
             <slot name="header-icon"><img :src="headerIcon" alt="" /></slot>
           </span>
           <span :class="ns.e('header-title')">{{ headerTitle }}</span>
           <span v-if="$slots['header-extra']" :class="ns.e('header-extra')">
+            <!-- @slot 标题栏右侧附加区（关闭按钮等） -->
             <slot name="header-extra" />
           </span>
         </div>
@@ -30,13 +33,21 @@
         :fill-height="welcome?.fillHeight"
       >
         <!-- 透传 Welcome 的图标/标题/描述具名插槽，供业务做品牌图标与富文本标题（如局部主色着色）。 -->
-        <template v-if="$slots['welcome-icon']" #icon><slot name="welcome-icon" /></template>
-        <template v-if="$slots['welcome-title']" #title><slot name="welcome-title" /></template>
+        <template v-if="$slots['welcome-icon']" #icon>
+          <!-- @slot 欢迎页图标（透传 Welcome 的 icon 插槽） -->
+          <slot name="welcome-icon" />
+        </template>
+        <template v-if="$slots['welcome-title']" #title>
+          <!-- @slot 欢迎页标题（透传 Welcome 的 title 插槽） -->
+          <slot name="welcome-title" />
+        </template>
         <template v-if="$slots['welcome-description']" #description>
+          <!-- @slot 欢迎页描述（透传 Welcome 的 description 插槽） -->
           <slot name="welcome-description" />
         </template>
         <template v-if="prompts?.length || $slots['welcome-extra']" #extra>
           <Prompts v-if="prompts?.length" :items="prompts" @select="onPromptSelect" />
+          <!-- @slot 欢迎页附加区，渲染在快捷问题之后 -->
           <slot name="welcome-extra" />
         </template>
       </Welcome>
@@ -61,6 +72,7 @@
       >
         <!-- 透传气泡内容作用域 slot：使用方提供时覆盖默认 Markdown 渲染 -->
         <template v-if="$slots.content" #content="slotProps">
+          <!-- @slot 气泡内容区，覆盖默认渲染（透传 BubbleList 的 content 插槽） -->
           <slot name="content" v-bind="slotProps" />
         </template>
         <!-- 气泡上方的消息级头部（发送者名 / 时间戳 / 业务徽标）。
@@ -69,15 +81,18 @@
              （被 AICHAT_RESERVED_SLOTS 拦下、不进块插槽穿透）。
              content / footer 之所以没有前缀，是它们在 AiChat 这层本就没有第二种含义。 -->
         <template v-if="$slots['bubble-header']" #header="sp">
+          <!-- @slot 气泡内的消息级头部（发送者名 / 时间戳 / 徽标），跟随气泡对齐 -->
           <slot name="bubble-header" v-bind="sp" />
         </template>
         <!-- 行级插槽（气泡之外、占满整行）：整行居中的时间戳 / 日期分隔线等。
              与 bubble-header 的分工：那个在气泡内、跟随气泡左右对齐；这个是独立的一行。 -->
         <template v-if="$slots['row-before']" #row-before="sp">
+          <!-- @slot 气泡所在行之前的整行区域（居中时间戳 / 日期分隔线） -->
           <slot name="row-before" v-bind="sp" />
         </template>
         <!-- 出错态自定义（错误码 / 限流与鉴权分支等）；未提供时回退内置的「出错了 + 重试」条 -->
         <template v-if="$slots.error" #error="sp">
+          <!-- @slot 出错态自定义 UI，作用域含 item、error 与 retry -->
           <slot name="error" v-bind="sp" />
         </template>
         <!-- 消息操作：通过 actions prop 配置（默认 ['copy','regenerate']），
@@ -91,6 +106,7 @@
                  以及一整套「已经接好线」的动作句柄（见 BubbleFooterActions）一并给出，
                  免得业务为做版本切换去组件 ref 上反查 getBranches / switchBranch、
                  为做复制再重写一遍剪贴板降级逻辑。 -->
+            <!-- @slot 气泡下方的操作条，作用域含 item、branch、speaking 与已接线的 actions 句柄；提供后覆盖内置 BubbleActions -->
             <slot
               name="footer"
               :item="item"
@@ -126,6 +142,7 @@
         <!-- 透传块插槽：把非保留具名插槽（约定 <块类型>-<内部slot>）逐层下传，
              经 BubbleList → Bubble 最终落到块渲染器内部 slot。 -->
         <template v-for="name in blockSlotNames" :key="name" #[name]="sp">
+          <!-- @vue-expect-error 动态转发的块插槽名不可枚举，不在 defineSlots 名单内 -->
           <slot :name="name" v-bind="sp" />
         </template>
       </BubbleList>
@@ -141,6 +158,7 @@
         @select="onOutlineSelect"
       />
       <template v-if="quoteMenu.visible.value">
+        <!-- @slot 划词引用菜单，作用域含 items / invoke / close / mode / selection / trigger；默认渲染内置 QuoteMenu -->
         <slot
           name="quote-menu"
           :items="quoteMenu.items.value"
@@ -177,6 +195,7 @@
          所以那条路走不通。本容器 position:relative，业务在其中做绝对定位即可，
          不必再借 Sender 的盒子（也就不用去改它的 overflow）。 -->
     <div v-if="$slots['sender-before']" :class="ns.e('sender-before')">
+      <!-- @slot 消息区与输入框之间的自由区（横幅 / 提示），不在 Sender 盒内 -->
       <slot name="sender-before" />
     </div>
     <Sender
@@ -229,24 +248,30 @@
             {{ t.quoteChipsCollapse }}
           </button>
         </div>
+        <!-- @slot Sender 顶部扩展区，与内置引用 chips 追加共存（透传 Sender 的 header 插槽） -->
         <slot name="sender-header" v-bind="scope" />
       </template>
       <template v-if="$slots.toolbar" #toolbar="scope">
+        <!-- @slot Sender 工具栏（透传 Sender 的 toolbar 插槽） -->
         <slot name="toolbar" v-bind="scope" />
       </template>
       <template v-if="$slots.prefix" #prefix="scope">
+        <!-- @slot 输入框前缀区（透传 Sender 的 prefix 插槽） -->
         <slot name="prefix" v-bind="scope" />
       </template>
       <!-- Sender 底部扩展区（工具栏之下、仍在输入框盒内）：字数统计、快捷键提示等 -->
       <template v-if="$slots['sender-footer']" #footer="scope">
+        <!-- @slot Sender 底部扩展区，工具栏之下（透传 Sender 的 footer 插槽） -->
         <slot name="sender-footer" v-bind="scope" />
       </template>
       <!-- 自定义附件面板 UI：原样转发给 Sender（作用域见 SenderAttachmentsSlotScope） -->
       <template v-if="$slots['attachments-panel']" #attachments-panel="scope">
+        <!-- @slot 自定义附件面板 UI（透传 Sender 的同名插槽） -->
         <slot name="attachments-panel" v-bind="scope" />
       </template>
       <!-- 只换内置面板里的上传占位区（比整块接管轻得多）；与上一个插槽互斥使用 -->
       <template v-if="$slots['attachments-placeholder']" #attachments-placeholder="scope">
+        <!-- @slot 只替换内置附件面板的上传占位区（透传 Sender 的同名插槽） -->
         <slot name="attachments-placeholder" v-bind="scope" />
       </template>
     </Sender>
@@ -254,6 +279,7 @@
          不叫 #footer——那个名字在本层已被气泡底部操作条占用。写在 </AiChat> 之外亦可，
          但那样就脱离了组件的 flex 布局，得由业务自己补 flex-shrink 之类。 -->
     <div v-if="$slots.bottom" :class="ns.e('bottom')">
+      <!-- @slot 整个组件最底部（Sender 之下）的常驻区，如免责声明 -->
       <slot name="bottom" />
     </div>
   </div>
@@ -288,7 +314,10 @@ export interface AiChatProps {
    * 仅当新旧后端的**流格式也不同**时才需要连同 parseChunk 一起换，那种场景才必须重建实例。
    */
   request: UseChatOptions['request'];
-  /** 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat。每次请求才读取，运行时可改 */
+  /**
+   * 流分帧模式（'sse' / 'line'）；透传给 useChat。每次请求才读取，运行时可改
+   * @default 'sse'
+   */
   streamMode?: 'sse' | 'line';
   /**
    * 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传
@@ -307,6 +336,7 @@ export interface AiChatProps {
    * 真实 BubbleList；用于业务从远端异步恢复会话历史时的过渡态（如接入 useConversations
    * 异步 storage.load，配合其 isLoading 传入本 prop）。默认 false（不生效时行为不变：
    * messages 为空显示 Welcome，否则显示 BubbleList）。透传给 BubbleList 的 loading prop。
+   * @default false
    */
   historyLoading?: boolean;
   /**
@@ -371,14 +401,18 @@ export interface AiChatProps {
   };
   /** 输入框占位提示，缺省取 locale.senderPlaceholder */
   placeholder?: string;
-  /** 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter'；透传给 Sender */
+  /**
+   * 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之；透传给 Sender
+   * @default 'enter'
+   */
   submitType?: 'enter' | 'shiftEnter';
   /**
-   * 消息操作条配置，默认 ['copy','regenerate']。
+   * 消息操作条配置。
    * 数组形态：仅对 role==='ai' && status==='success' 的消息渲染；
    * 函数形态：对每条消息调用，返回 items 则渲染、null/[] 不渲染（可按状态/角色细控）。
    * 设为 [] 关闭默认操作条；#footer slot 提供时优先（覆盖机制不变）。
    * 函数形态应为纯函数（同输入同输出）；返回值随消息 status 响应式更新。
+   * @default ['copy', 'regenerate']
    */
   actions?: ActionsItems | ((message: ChatMessage) => ActionsItems | null);
   /**
@@ -400,18 +434,25 @@ export interface AiChatProps {
    * 返回空串等同未提供（回退 i18n 文案）。仅对 `status === 'error'` 的消息调用。
    */
   errorText?: (message: ChatMessage) => string;
-  /** 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。运行时可改 */
+  /**
+   * 请求失败自动重试次数（不含首次）；透传给 useChat。abort 不触发重试。运行时可改
+   * @default 0
+   */
   retryTimes?: number;
-  /** 两次重试间隔（ms），默认 1000；透传给 useChat。运行时可改 */
+  /**
+   * 两次重试间隔（ms）；透传给 useChat。运行时可改
+   * @default 1000
+   */
   retryInterval?: number;
   /**
-   * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。
-   * 默认见 useChat 的 continuePrompt 说明。运行时可改
+   * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。运行时可改
+   * @default '请从刚才中断的地方继续往下写，不要重复已经写过的内容。'
    */
   continuePrompt?: string;
   /**
-   * 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。
+   * 流静默超时（ms），0 为关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。
    * 每次 attempt 起表时取值，运行时可改
+   * @default 0
    */
   streamTimeout?: number;
   /**
@@ -420,8 +461,9 @@ export interface AiChatProps {
    */
   markdownRenderers?: MarkdownRenderers;
   /**
-   * 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），
-   * 默认 false；注入到气泡内 MarkdownRenderer。运行时可改（切换时引擎按新模式重载）
+   * 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin）；
+   * 注入到气泡内 MarkdownRenderer。运行时可改（切换时引擎按新模式重载）
+   * @default false
    */
   allowHtml?: boolean;
   /**
@@ -485,11 +527,15 @@ export interface AiChatProps {
   quote?: QuoteConfig | boolean;
   /** 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置 */
   triggers?: TriggerConfig[];
-  /** 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender；不传则用 Sender 默认值 ['attach','voice'] */
+  /**
+   * 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender
+   * @default ['attach', 'voice']
+   */
   toolbarItems?: SenderToolbarItems;
   /**
-   * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，直通 Sender，默认 true。
+   * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，直通 Sender。
    * 见 `SenderProps.autoSpacer` 说明。
+   * @default true
    */
   autoSpacer?: boolean;
   /**
@@ -501,16 +547,18 @@ export interface AiChatProps {
    */
   senderIcons?: SenderIcons;
   /**
-   * 输入框外观形态，直通 Sender 的 `variant`，默认 `'card'`。
+   * 输入框外观形态，直通 Sender 的 `variant`。
    * 侧边栏 / 移动端 / 全屏页这类贴边通栏形态传 `'plain'`，配合
    * `--aix-ai-chat-sender-margin: 0` 与 `--aix-sender-*` 尺寸旋钮即可，无需覆写 `.aix-sender`。
    * 命名前缀同 `senderIcons`（这一层还有别的 variant 概念，裸叫 variant 会读成组件整体形态）。
+   * @default 'card'
    */
   senderVariant?: SenderVariant;
   /**
-   * 深度思考（reasoning 块）折叠面板的外观形态，默认 `'card'`；
+   * 深度思考（reasoning 块）折叠面板的外观形态；
    * `'capsule'` 为 hug 宽度胶囊头 + 独立正文块（多数 AI 产品的当下形态），`'plain'` 无容器视觉。
    * 经 provideAiChatConfig 注入（ReasoningBlock 由注册表实例化、接不到 prop）；运行时可改
+   * @default 'card'
    */
   reasoningVariant?: ThinkingVariant;
   /**
@@ -543,6 +591,36 @@ export interface BubbleFooterActions {
   startEdit: (id: string) => void;
   /** 切换内置语音播报（再点同条停、点别条切）；未开启 speech 时为空操作 */
   speak: (message: ChatMessage) => void;
+}
+
+/** `#footer` 插槽的作用域：消息、分支元信息、朗读态与已接线的动作句柄 */
+export interface AiChatFooterSlotScope {
+  /** 本条消息 */
+  item: ChatMessage;
+  /** 分支元信息（当前序号 / 兄弟总数）；无多版本或非末子气泡时为 undefined */
+  branch?: BranchMeta;
+  /** 分支切换是否应禁用（请求进行中） */
+  branchDisabled: boolean;
+  /** 本条消息是否正在语音播报 */
+  speaking: boolean;
+  /** 已接线的动作句柄集合，见 BubbleFooterActions */
+  actions: BubbleFooterActions;
+}
+
+/** `#quote-menu` 插槽的作用域：菜单项、调用与关闭句柄，以及当前选区 / 长按触发信息 */
+export interface AiChatQuoteMenuSlotScope {
+  /** 解析后的菜单动作列表 */
+  items: ResolvedQuoteAction[];
+  /** 按 key 执行某个动作 */
+  invoke: (key: string) => void;
+  /** 关闭菜单 */
+  close: () => void;
+  /** 'selecting' 有精选选区 / 'menu' 长按整条消息 */
+  mode: 'menu' | 'selecting';
+  /** 当前划词选区；长按整条消息触发时为 null */
+  selection: ActiveSelection | null;
+  /** 长按触发信息（落点坐标与整条消息锚点）；划词触发时为 null */
+  trigger: LongPressTrigger | null;
 }
 
 export interface AiChatEmits {
@@ -590,6 +668,7 @@ export interface AiChatEmits {
 </script>
 
 <script setup lang="ts">
+/** 开箱即用的对话组件：把 Welcome / BubbleList / Sender 与流式请求接线在一起。 */
 import { useNamespace, useControllable, copyText } from '@aix/hooks';
 import { computed, ref, toRaw, watch, watchEffect, useSlots, getCurrentInstance } from 'vue';
 import { ROOT_ID } from '../composables/messageTree';
@@ -609,6 +688,7 @@ import type { OutlineEntry } from '../composables/useMessageOutline';
 import { useQuoteBinding } from '../composables/useQuoteBinding';
 import { useSpeech } from '../composables/useSpeech';
 import { useSuggestions } from '../composables/useSuggestions';
+import type { ActiveSelection, LongPressTrigger } from '../composables/useTextSelection';
 import { useVisibleMessage } from '../composables/useVisibleMessage';
 import type { SSEChunk } from '../composables/useXStream';
 import type { AiChatLocale } from '../locale';
@@ -633,6 +713,12 @@ import type {
   OutlineOptions,
   ParsedChunk,
   ThinkingVariant,
+  BranchMeta,
+  ResolvedQuoteAction,
+  BubbleListContentSlotScope,
+  BubbleListErrorSlotScope,
+  BubbleListItemSlotScope,
+  BubbleListRowSlotScope,
 } from '../types';
 import { devWarn } from '../utils/devWarn';
 import { messageText, attachmentBlock, textBlock, quoteBlock } from '../utils/helpers';
@@ -647,7 +733,14 @@ import Prompts from './Prompts.vue';
 import QuoteChip from './QuoteChip.vue';
 import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
-import type { SenderIcons, SenderToolbarItems, SenderVariant } from './Sender.vue';
+import type {
+  SenderIcons,
+  SenderToolbarItems,
+  SenderVariant,
+  SenderSlotScope,
+  SenderAttachmentsSlotScope,
+  SenderAttachmentsPlaceholderSlotScope,
+} from './Sender.vue';
 import Suggestions from './Suggestions.vue';
 import Welcome from './Welcome.vue';
 
@@ -665,6 +758,52 @@ const props = withDefaults(defineProps<AiChatProps>(), {
   autoSpacer: undefined,
 });
 const emit = defineEmits<AiChatEmits>();
+
+defineSlots<{
+  /** 顶部标题栏整体，覆盖默认的「图标 + 标题 + extra」布局 */
+  header?: () => unknown;
+  /** 标题栏图标，覆盖 headerIcon 图片 */
+  'header-icon'?: () => unknown;
+  /** 标题栏右侧附加区（关闭按钮等） */
+  'header-extra'?: () => unknown;
+  /** 欢迎页图标（透传 Welcome 的 icon 插槽） */
+  'welcome-icon'?: () => unknown;
+  /** 欢迎页标题（透传 Welcome 的 title 插槽） */
+  'welcome-title'?: () => unknown;
+  /** 欢迎页描述（透传 Welcome 的 description 插槽） */
+  'welcome-description'?: () => unknown;
+  /** 欢迎页附加区，渲染在快捷问题之后 */
+  'welcome-extra'?: () => unknown;
+  /** 气泡内容区，覆盖默认渲染（透传 BubbleList 的 content 插槽） */
+  content?: (props: BubbleListContentSlotScope) => unknown;
+  /** 气泡内的消息级头部（发送者名 / 时间戳 / 徽标），跟随气泡对齐 */
+  'bubble-header'?: (props: BubbleListItemSlotScope) => unknown;
+  /** 气泡所在行之前的整行区域（居中时间戳 / 日期分隔线） */
+  'row-before'?: (props: BubbleListRowSlotScope) => unknown;
+  /** 出错态自定义 UI，作用域含 item、error 与 retry */
+  error?: (props: BubbleListErrorSlotScope) => unknown;
+  /** 气泡下方的操作条，作用域含 item、branch、speaking 与已接线的 actions 句柄；提供后覆盖内置 BubbleActions */
+  footer?: (props: AiChatFooterSlotScope) => unknown;
+  /** 划词引用菜单，作用域含 items / invoke / close / mode / selection / trigger；默认渲染内置 QuoteMenu */
+  'quote-menu'?: (props: AiChatQuoteMenuSlotScope) => unknown;
+  /** 消息区与输入框之间的自由区（横幅 / 提示），不在 Sender 盒内 */
+  'sender-before'?: () => unknown;
+  /** Sender 顶部扩展区，与内置引用 chips 追加共存（透传 Sender 的 header 插槽） */
+  'sender-header'?: (props: SenderSlotScope) => unknown;
+  /** Sender 工具栏（透传 Sender 的 toolbar 插槽） */
+  toolbar?: (props: SenderSlotScope) => unknown;
+  /** 输入框前缀区（透传 Sender 的 prefix 插槽） */
+  prefix?: (props: SenderSlotScope) => unknown;
+  /** Sender 底部扩展区，工具栏之下（透传 Sender 的 footer 插槽） */
+  'sender-footer'?: (props: SenderSlotScope) => unknown;
+  /** 自定义附件面板 UI（透传 Sender 的同名插槽） */
+  'attachments-panel'?: (props: SenderAttachmentsSlotScope) => unknown;
+  /** 只替换内置附件面板的上传占位区（透传 Sender 的同名插槽） */
+  'attachments-placeholder'?: (props: SenderAttachmentsPlaceholderSlotScope) => unknown;
+  /** 整个组件最底部（Sender 之下）的常驻区，如免责声明 */
+  bottom?: () => unknown;
+}>();
+
 const ns = useNamespace('ai-chat');
 const config = useAiChatConfig();
 const slots = useSlots();
@@ -741,10 +880,10 @@ const hasHeader = computed(
     ),
 );
 
-// 受控模式：父组件可用 v-model:messages 接管消息列表（持久化 / 外部清空 / 跨组件共享）。
 // 此处刻意保留 defineModel：messagesModel 仅作对外镜像，UI 实际渲染 useChat 的 parsedMessages（SSOT），
 // 且与 useChat 内部数组共享引用（见下方 SSOT 桥接）。Vue 3.3 下非受控时镜像写入虽被 emit-only 丢弃，
 // 但 UI 不依赖它、受控/单向场景 emit 照常触发，故对该 SSOT 场景是优雅降级，无需 useControllable。
+/** 消息列表（v-model:messages）：受控模式下由父组件接管，用于持久化 / 外部清空 / 跨组件共享 */
 const messagesModel = defineModel<ChatMessage[]>('messages', { default: () => [] });
 // 输入框文本（v-model:input）：组件内部（Sender 回填、发送清空、草稿保留）会写入本 model，
 // 属于「内部写入 + 支持非受控」场景。Vue 3.3 的 useModel 为 emit-only，非受控下本地写入会丢失，

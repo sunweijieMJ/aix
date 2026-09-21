@@ -131,14 +131,15 @@ const CASES: MatrixCase[] = [
     outNotContains: ['你好欢迎'],
   },
   {
-    // BUG:#1 — export default class 组件 HOC 注入须改产出 `export default HOC(...)`，
-    // 不得遗留孤立 `default class`（语法错误，整文件无法编译）。title 属性触发 HOC。
+    // BUG:#1 — export default class 组件 HOC 注入须产出「const 原名 = HOC(内部名) +
+    // export default 原名」（原名不能从模块内消失），且不得遗留孤立 `default class`
+    // （语法错误，整文件无法编译）。title 属性触发 HOC。
     id: 'react_export_default_class',
     framework: 'react',
     library: 'react-i18next',
     ext: 'tsx',
     input: `export default class Foo extends React.Component {\n  render() { return <div title="中文标题">x</div>; }\n}\n`,
-    outContains: [/export default withTranslation\(\)\(/],
+    outContains: [/const Foo = withTranslation\(\)\(FooWithOutIntl\);/, /export default Foo;/],
     // 关键断言：不得出现孤立的 `default class`（删 export 时遗留 default 关键字）
     outNotContains: [/default\s+class/],
   },

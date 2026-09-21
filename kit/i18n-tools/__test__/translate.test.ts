@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { TranslateProcessor } from '../src/core/TranslateProcessor';
-import { LLMClient } from '../src/utils/llm-client';
-import { Glossary } from '../src/utils/glossary';
+import { LLMClient, LLMConnectionAbortError } from '../src/utils/llm-client';
+import { Glossary, type GlossaryMap } from '../src/utils/glossary';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
@@ -66,6 +66,30 @@ describe('TranslateProcessor — 全失败应非零退出（Bug B6）', () => {
 
     const processor = new TranslateProcessor(makeConfig(), false);
     await expect(processor.execute()).rejects.toThrow(/全部|失败/);
+  });
+
+  /**
+   * 连接类故障（P3）：无外网时 batchTranslate 首批即熄火并抛 LLMConnectionAbortError，
+   * processor 必须把已完成批次落盘后再抛出——中止的是"继续发请求"，不是已翻好的内容。
+   */
+  it('LLM 连接中止 → 抛错非零退出，已完成批次仍落盘', async () => {
+    const file = writeUntranslated({
+      'a.b': { 'zh-CN': '你好', 'en-US': '' },
+      'a.c': { 'zh-CN': '世界', 'en-US': '' },
+    });
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(async () => {
+      throw new LLMConnectionAbortError('无法连接 LLM 服务（baseURL=https://llm.invalid/v1）', [
+        { 'a.b': { 'en-US': 'Hello' } },
+        undefined,
+      ]);
+    });
+
+    const processor = new TranslateProcessor(makeConfig(1), false);
+    await expect(processor.execute()).rejects.toThrow(/无法连接 LLM 服务/);
+
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    expect(data['a.b']['en-US']).toBe('Hello');
+    expect(data['a.c']['en-US']).toBe('');
   });
 
   it('全部批次成功 → 正常完成不抛错', async () => {
@@ -472,5 +496,335 @@ describe('TranslateProcessor — 无效占位译文应被重新翻译', () => {
     await new TranslateProcessor(makeConfig(), false).execute();
     expect(spy).not.toHaveBeenCalled();
     expect(readUntranslated()['a.b']!['en-US']).toBe('Confirm');
+  });
+});
+
+/**
+ * 回归（审计 P1）：mergeTranslations 此前只用 `newValue?.trim()` 判定 LLM 返回值，
+ * 「非空但无效」（纯标点/符号）的译文被写回并计成功；MergeProcessor 的 isValidTranslation
+ * 又会拒收 → warn-only 策略下该 key 永远合不进 locale，translate 统计却全绿。
+ * 修复：merge 侧与 pick/merge 同口径拒收，条目留在 untranslated.json 等待续翻。
+ */
+describe('TranslateProcessor — 拒收 LLM 返回的无效译文', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'translate-invalid-result-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  const writeUntranslated = (entries: Translations): void => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(path.join(localeDir, 'untranslated.json'), JSON.stringify(entries, null, 2));
+  };
+  const readUntranslated = (): Translations =>
+    JSON.parse(fs.readFileSync(path.join(tmpDir, 'locale', 'untranslated.json'), 'utf-8'));
+
+  /** 同一批内：合法译文照常写回，垃圾译文被丢弃 */
+  const mockBatch = (values: Record<string, string>): void => {
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          const out: Translations = {};
+          for (const k of Object.keys(b)) out[k] = { 'en-US': values[k] ?? '' };
+          return out;
+        }),
+    );
+  };
+
+  it('返回纯标点（...）→ 丢弃不写回，条目保持待翻状态；同批合法译文不受影响', async () => {
+    writeUntranslated({
+      'a.b': { 'zh-CN': '确认', 'en-US': '' },
+      'a.c': { 'zh-CN': '取消', 'en-US': '' },
+    });
+    mockBatch({ 'a.b': '...', 'a.c': 'Cancel' });
+
+    await expect(new TranslateProcessor(makeConfig(), false).execute()).resolves.toBeUndefined();
+
+    const data = readUntranslated();
+    expect(data['a.b']!['en-US']).toBe(''); // 垃圾译文未写回
+    expect(data['a.c']!['en-US']).toBe('Cancel');
+  });
+
+  it('整批返回垃圾译文 → 0 条写入，批次计失败并非零退出（不伪报成功）', async () => {
+    writeUntranslated({ 'a.b': { 'zh-CN': '确认', 'en-US': '' } });
+    mockBatch({ 'a.b': '——' });
+
+    await expect(new TranslateProcessor(makeConfig(), false).execute()).rejects.toThrow(
+      /全部|失败/,
+    );
+    expect(readUntranslated()['a.b']!['en-US']).toBe('');
+  });
+});
+
+/**
+ * 回归（apiKey 缺失体验）：静态配置缺失是「重试也不会变好」的错误，必须在进入批次循环
+ * 之前一次性抛出并点名字段，而不是让每个批次各自撞进 chatCompletion 的 lazy 校验、
+ * 刷出 N 条一模一样的失败。
+ */
+describe('TranslateProcessor — LLM 配置 pre-flight', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-preflight-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (llm: I18nToolsConfig['llm'], batchSize = 1): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { ...llm, translation: { batchSize } },
+    } satisfies I18nToolsConfig);
+
+  /** 写出多条待翻条目：足够切成多个批次，用来验证「一条错误而非 N 条」。 */
+  const writeUntranslated = (): string => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    const p = path.join(localeDir, 'untranslated.json');
+    const entries: Translations = {};
+    for (let i = 0; i < 7; i++) entries[`k.${i}`] = { 'zh-CN': `文案${i}`, 'en-US': '' };
+    fs.writeFileSync(p, JSON.stringify(entries, null, 2));
+    return p;
+  };
+
+  it('缺 apiKey → 批次循环未启动，一次性抛错并点名配置字段与环境变量', async () => {
+    const file = writeUntranslated();
+    const before = fs.readFileSync(file, 'utf-8');
+    const batchSpy = vi
+      .spyOn(LLMClient.prototype, 'batchTranslate')
+      .mockResolvedValue([] as Translations[]);
+
+    const run = new TranslateProcessor(makeConfig({ shared: { apiKey: '', model: 'm' } }), false);
+    await expect(run.execute()).rejects.toThrow(/llm\.translation\.apiKey/);
+    await expect(
+      new TranslateProcessor(makeConfig({ shared: { apiKey: '', model: 'm' } }), false).execute(),
+    ).rejects.toThrow(/环境变量/);
+
+    // 批次循环压根没启动（7 个条目 × batchSize 1 本会切成 7 批）
+    expect(batchSpy).not.toHaveBeenCalled();
+    // 无半写：待翻文件原样未动
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+  });
+
+  it('baseURL 写成非法值 → 同样在 pre-flight 拦下并点名字段', async () => {
+    writeUntranslated();
+    const batchSpy = vi
+      .spyOn(LLMClient.prototype, 'batchTranslate')
+      .mockResolvedValue([] as Translations[]);
+
+    await expect(
+      new TranslateProcessor(
+        makeConfig({ shared: { apiKey: 'x', model: 'm', baseURL: 'not-a-url' } }),
+        false,
+      ).execute(),
+    ).rejects.toThrow(/llm\.translation\.baseURL/);
+    expect(batchSpy).not.toHaveBeenCalled();
+  });
+
+  it('配置齐备且全部成功 → SUCCESS 收尾正常', async () => {
+    writeUntranslated();
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          const out: Translations = {};
+          for (const key of Object.keys(b)) out[key] = { 'en-US': 'Hello' };
+          return out;
+        }),
+    );
+
+    await expect(
+      new TranslateProcessor(makeConfig({ shared: { apiKey: 'x', model: 'm' } }), false).execute(),
+    ).resolves.toBeUndefined();
+    expect(LoggerUtils.success).toHaveBeenCalledWith(expect.stringContaining('翻译操作完成'));
+  });
+
+  // 回归：部分批次失败仍会正常返回（断点续翻），但收尾不能打 SUCCESS——
+  // 否则 grep SUCCESS 的 CI 把「翻了一半、剩下全挂」判成绿。
+  it('部分批次失败 → 不打 SUCCESS，只打失败汇总', async () => {
+    writeUntranslated();
+    let n = 0;
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b): Translations | undefined => {
+          if (n++ > 0) return undefined;
+          const out: Translations = {};
+          for (const key of Object.keys(b)) out[key] = { 'en-US': 'Hello' };
+          return out;
+        }),
+    );
+
+    await expect(
+      new TranslateProcessor(makeConfig({ shared: { apiKey: 'x', model: 'm' } }), false).execute(),
+    ).resolves.toBeUndefined();
+
+    expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('翻译操作完成'));
+    expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('翻译完成'));
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('翻译未全部完成'));
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('部分失败'));
+  });
+});
+
+/**
+ * 中间产物里形态非法（非对象）的条目在 applyGlossary / filterUntranslatedItems 里
+ * 告警跳过而非裸 TypeError，合法条目照常处理。
+ */
+describe('TranslateProcessor — 形态非法条目告警跳过', () => {
+  let tmpDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-translate-shape-'));
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  it('applyGlossary / filterUntranslatedItems 对非对象条目不抛错', () => {
+    const config = makeConfig();
+    const proc = new TranslateProcessor(config, false);
+    const internals = proc as unknown as {
+      applyGlossary: (
+        data: Translations,
+        targetLocale: string,
+        glossary: GlossaryMap | null,
+      ) => number;
+      filterUntranslatedItems: (data: Translations, targetLocale: string) => Translations;
+    };
+    const data = JSON.parse(
+      JSON.stringify({ bad: null, good: { 'zh-CN': '确认', 'en-US': '' } }),
+    ) as Translations;
+
+    const glossary: GlossaryMap = new Map([['确认', { 'en-US': 'OK' }]]);
+    const filled = internals.applyGlossary.call(proc, data, 'en-US', glossary);
+    expect(filled).toBe(1);
+    expect(data['good']!['en-US']).toBe('OK');
+
+    const remaining = internals.filterUntranslatedItems.call(proc, data, 'ja-JP');
+    expect(Object.keys(remaining)).toEqual(['good']);
+    expect(warnSpy.mock.calls.flat().join('\n')).toMatch(/值不是对象[^\n]*bad/);
+  });
+});
+
+/**
+ * B2：无效目标值（csv-import 回流的 `---`、手工编辑、merge warn-only 保留的拒收值）
+ * 被原样送进 LLM 载荷时，prompt 规则「目标已有值则原样保留」会让模型把垃圾值原样返回，
+ * mergeTranslations 再拒收 —— 该 key 每轮都失败、永不收敛。送 LLM 前必须置空。
+ */
+describe('TranslateProcessor — 送 LLM 前置空无效目标值（B2）', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'translate-blank-invalid-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  it('B2: LLM 载荷里的目标字段被置空，严格遵守「已有值保留」的模型也能翻出译文', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'a.b': { 'zh-CN': '确认', 'en-US': '---' } }),
+    );
+
+    const payloads: Translations[] = [];
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          payloads.push(JSON.parse(JSON.stringify(b)) as Translations);
+          const out: Translations = {};
+          // 模拟严格遵守 prompt 规则 3 的模型：目标已有值就原样返回，为空才翻译
+          for (const [k, item] of Object.entries(b)) {
+            out[k] = { 'en-US': item['en-US'] ? item['en-US'] : 'Confirm' };
+          }
+          return out;
+        }),
+    );
+
+    await expect(new TranslateProcessor(makeConfig(), false).execute()).resolves.toBeUndefined();
+
+    expect(payloads[0]!['a.b']!['en-US']).toBe('');
+    const written = JSON.parse(
+      fs.readFileSync(path.join(localeDir, 'untranslated.json'), 'utf-8'),
+    ) as Translations;
+    expect(written['a.b']!['en-US']).toBe('Confirm');
+  });
+
+  it('B2: 置空只作用于 LLM 载荷副本，源文案原样带过去', async () => {
+    const config = makeConfig();
+    const proc = new TranslateProcessor(config, false);
+    const internals = proc as unknown as {
+      filterUntranslatedItems: (data: Translations, targetLocale: string) => Translations;
+    };
+    const data: Translations = { 'a.b': { 'zh-CN': '确认', 'en-US': '---' } };
+    const filtered = internals.filterUntranslatedItems.call(proc, data, 'en-US');
+
+    expect(filtered['a.b']!['zh-CN']).toBe('确认');
+    expect(filtered['a.b']!['en-US']).toBe('');
+    // 原 data 不被改写（落盘走 data 本体）
+    expect(data['a.b']!['en-US']).toBe('---');
   });
 });

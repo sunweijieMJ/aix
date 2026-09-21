@@ -8,10 +8,12 @@
     <!-- avatar / header 插槽带 info 作用域：Bubble 只持有 role/status/itemKey，完整消息由
          BubbleList 在转发时补 item（气泡本身拿不到 ChatMessage，见其转发处注释）。 -->
     <div v-if="avatar || $slots.avatar" :class="ns.e('avatar')">
+      <!-- @slot 头像区，作用域 info 含 role / status / itemKey -->
       <slot name="avatar" :info="info"><img :src="avatar" alt="" /></slot>
     </div>
     <div :class="ns.e('wrapper')">
       <div v-if="$slots.header" :class="ns.e('header')">
+        <!-- @slot 气泡上方的消息级头部（发送者名 / 时间戳） -->
         <slot name="header" :info="info" />
       </div>
       <div
@@ -51,6 +53,7 @@
           </div>
         </div>
         <template v-else>
+          <!-- @slot 整条内容区，覆盖默认的内容块渲染，作用域 blocks 为内容块列表 -->
           <slot name="content" :blocks="content" :info="info">
             <component :is="renderedNode" v-if="contentRender" />
             <template v-else>
@@ -72,6 +75,7 @@
                   <!-- 透传消费方提供的「非保留」具名插槽（约定 <块类型>-<内部slot>）给块渲染器，
                        由其映射到内部组件对应 slot。v-for 仅遍历实际存在的插槽，不产生幽灵插槽。 -->
                   <template v-for="name in blockSlotNames" :key="name" #[name]="sp">
+                    <!-- @vue-expect-error 动态转发的块插槽名不可枚举，不在 defineSlots 名单内 -->
                     <slot :name="name" v-bind="sp" />
                   </template>
                 </component>
@@ -91,6 +95,7 @@
                Conversations #item、ReasoningBlock 正文）；不存在该语义的（如 Sender 附件面板）
                照常用原生 fallback 即可。 -->
           <template v-if="status === 'error'">
+            <!-- @slot 出错态的自定义 UI，作用域含 retry 重试句柄；未提供时显示内置「出错了 + 重试」条 -->
             <slot v-if="$slots.error" name="error" :info="info" :retry="() => emit('retry')" />
             <span v-else :class="ns.e('error')">
               <span :class="ns.e('error-text')">{{ errorText || t.errorMessage }}</span>
@@ -141,6 +146,7 @@ export interface BubbleEmits {
 </script>
 
 <script setup lang="ts">
+/** 单条消息气泡：按 role / status 决定朝向与配色，内容区由块渲染器装配。 */
 import { useNamespace } from '@aix/hooks';
 import {
   computed,
@@ -151,7 +157,6 @@ import {
   ref,
   h,
   type FunctionalComponent,
-  type VNode,
 } from 'vue';
 import { useAiChatLocale } from '../composables/useAiChatLocale';
 import { useIdleWhileStreaming } from '../composables/useIdleWhileStreaming';
@@ -160,6 +165,8 @@ import type {
   BlockIntent,
   BubbleProps,
   BubbleContentInfo,
+  BubbleContentSlotScope,
+  BubbleErrorSlotScope,
   BlockRenderers,
   ContentBlock,
 } from '../types';
@@ -184,6 +191,19 @@ const props = withDefaults(defineProps<BubbleProps>(), {
 });
 
 const emit = defineEmits<BubbleEmits>();
+
+defineSlots<{
+  /** 头像区，作用域 info 含 role / status / key */
+  avatar?: (props: { info: BubbleContentInfo }) => unknown;
+  /** 气泡上方的消息级头部（发送者名 / 时间戳） */
+  header?: (props: { info: BubbleContentInfo }) => unknown;
+  /** 整条内容区，覆盖默认的内容块渲染，作用域 blocks 为内容块列表 */
+  content?: (props: BubbleContentSlotScope) => unknown;
+  /** 出错态的自定义 UI，作用域含 retry 重试句柄；未提供时显示内置「出错了 + 重试」条 */
+  error?: (props: BubbleErrorSlotScope) => unknown;
+  /** 气泡下方的操作条区；产出空内容时不渲染包裹层，编辑态期间隐藏 */
+  footer?: () => unknown;
+}>();
 
 // 块渲染器上抛的两条通道，都补齐所属消息 key 后原样向上转发：
 // action 由 AiChat 落到 useChat.updateBlock，intent 只转发不改数据（分工见 BlockIntent 注释）。
@@ -301,11 +321,13 @@ const blockSlotNames = computed(() =>
  *   必须显式落在 prop 上。
  * 两条各由 __test__/AiChat.footerSlot.test.ts 的一个用例锁定。
  */
-const FooterWrap: FunctionalComponent<{ render: () => VNode[]; status?: BubbleProps['status'] }> = (
+const FooterWrap: FunctionalComponent<{ render: () => unknown; status?: BubbleProps['status'] }> = (
   p,
 ) => {
   const nodes = p.render();
-  return slotHasContent(nodes) ? h('div', { class: ns.e('footer') }, nodes) : null;
+  return Array.isArray(nodes) && slotHasContent(nodes)
+    ? h('div', { class: ns.e('footer') }, nodes)
+    : null;
 };
 // 必须显式声明 props（同 BubbleList.RowBefore）：函数式组件不声明时传入的一切都会走 attrs
 // fallthrough，render / status 会被原样写成根节点的 DOM 属性。

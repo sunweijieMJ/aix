@@ -13,9 +13,6 @@ import type { BaseI18nLibrary } from '../../base';
  * 与 React 端保持一致的命名约定。
  */
 export interface VueI18nLibrary extends BaseI18nLibrary {
-  /** 是否支持命名空间 */
-  readonly supportsNamespace: boolean;
-
   /** 当前配置的命名空间（仅 vue-i18next 有值） */
   readonly namespace: string;
 

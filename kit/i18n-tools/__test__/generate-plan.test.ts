@@ -111,6 +111,36 @@ describe('GeneratePlanWriter', () => {
     expect(() => GeneratePlanWriter.read(planPath)).toThrow(/schemaVersion=99/);
   });
 
+  /**
+   * 覆盖率快照（P1）：CI 卡点跑在 apply 这一步，而 apply 不重跑提取。dry-run 把账本
+   * 写进 plan，apply 才能回放面板并判定阈值；旧版 plan 缺该字段必须仍可读。
+   */
+  it('coverage 快照随 plan 往返无损，缺该字段的旧 plan 仍可读', () => {
+    const { plan, transformed } = makePlan({ 'src/Cov.vue': 'x' });
+    plan.coverage = {
+      metric: {
+        scannedFiles: 2,
+        totalChineseSegments: 4,
+        alreadyI18n: 1,
+        newlyGenerated: 2,
+        skipped: 1,
+        coverageRate: 0.75,
+      },
+      newKeys: 2,
+      manualByCategory: { 'html-in-template': 1 },
+    };
+    GeneratePlanWriter.write(planBaseDir, plan, transformed);
+
+    const planPath = path.join(planBaseDir, GeneratePlanWriter.PLAN_FILENAME);
+    expect(GeneratePlanWriter.read(planPath).plan.coverage).toEqual(plan.coverage);
+
+    // 旧版 plan（无 coverage）：schemaVersion 不变，读取照常成功
+    const raw = JSON.parse(fs.readFileSync(planPath, 'utf-8'));
+    delete raw.coverage;
+    fs.writeFileSync(planPath, JSON.stringify(raw));
+    expect(GeneratePlanWriter.read(planPath).plan.coverage).toBeUndefined();
+  });
+
   it('verifyFingerprint 源文件未变 → mismatched 为空', () => {
     const { plan, transformed } = makePlan({
       'src/A.vue': 'original content',
@@ -213,6 +243,49 @@ describe('GeneratePlanWriter', () => {
 
     expect(() => GeneratePlanWriter.verifyFingerprint(plan)).toThrow(/越界/);
     fs.unlinkSync(outside);
+  });
+
+  /**
+   * A-1：sourceHash 只盖源文件，盖不住 plan 自身。`sources/` 里的副本被外部改过
+   * （restore 误扫、手工编辑、同步工具截断）后，apply 会把改坏的内容当「已审过的代码」
+   * 写回源文件、同时照常写 localeDelta，落成源码与 locale 不一致却报成功。
+   */
+  describe('A-1: sources/ 完整性校验（transformedHash）', () => {
+    const writeWithHash = (): string => {
+      const { plan, transformed } = makePlan({ 'src/A.vue': '<template>hi</template>' });
+      for (const entry of plan.entries) {
+        entry.transformedHash = GeneratePlanWriter.sha256(transformed.get(entry.file)!);
+      }
+      GeneratePlanWriter.write(planBaseDir, plan, transformed);
+      return path.join(planBaseDir, GeneratePlanWriter.PLAN_FILENAME);
+    };
+
+    it('A-1: sources/ 内容被改过 → read 拒绝并点名文件', () => {
+      const planPath = writeWithHash();
+      fs.writeFileSync(
+        path.join(planBaseDir, 'sources', 'src', 'A.vue'),
+        '<template>被改坏了</template>',
+        'utf-8',
+      );
+
+      expect(() => GeneratePlanWriter.read(planPath)).toThrow(/转换后源码与写 plan 时不一致/);
+      expect(() => GeneratePlanWriter.read(planPath)).toThrow(/sources\/src\/A\.vue/);
+    });
+
+    it('A-1: sources/ 未被改过 → read 照常通过', () => {
+      const planPath = writeWithHash();
+      expect(GeneratePlanWriter.read(planPath).transformedSources.get('src/A.vue')).toContain(
+        '// transformed',
+      );
+    });
+
+    it('A-1: 缺 transformedHash 的旧 plan 仍可读（只跳过校验，不拒绝）', () => {
+      const { plan, transformed } = makePlan({ 'src/A.vue': '<template>hi</template>' });
+      GeneratePlanWriter.write(planBaseDir, plan, transformed);
+      const planPath = path.join(planBaseDir, GeneratePlanWriter.PLAN_FILENAME);
+
+      expect(GeneratePlanWriter.read(planPath).transformedSources.size).toBe(1);
+    });
   });
 
   it('toRelPosix 与 fromRelPosix 互逆（Windows 反斜杠不漏）', () => {

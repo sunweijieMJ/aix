@@ -35,18 +35,29 @@ aix/
 ├── docs/                    # VitePress 文档
 │   ├── .vitepress/         # VitePress 配置
 │   └── components/         # 组件文档
-├── internal/                # monorepo 内部基础设施
+├── apps/                    # 应用，不发布
+│   ├── client/
+│   └── server/
+├── internal/                # monorepo 内部基础设施（@kit/*，mcp-server 例外）
 │   ├── eslint-config/      # ESLint 共享配置
+│   ├── prettier-config/    # Prettier 共享配置
 │   ├── stylelint-config/   # Stylelint 共享配置
 │   ├── typescript-config/  # TypeScript 共享配置
-│   └── mcp-server/         # MCP Server
+│   ├── vitest-config/      # Vitest 共享基座（createVueConfig / createNodeConfig）
+│   └── mcp-server/         # MCP Server（有意发布为 @aix/mcp-server）
 ├── kit/                     # 独立工具包 (@kit/*)
 │   ├── ai-preset/          # AI 编码预设管理
+│   ├── create-app/         # 应用模版脚手架
+│   ├── i18n-runtime/       # 国际化运行时
 │   ├── i18n-tools/         # 国际化自动化工具
+│   ├── publish/            # 发布工具
+│   ├── sdk/                # SDK
 │   ├── sentinel/           # AI Sentinel 工作流
 │   ├── tracker/            # 前端埋点数据采集
-│   └── visual-testing/     # 视觉回归测试
-├── packages/                # 组件包（发布到 @aix/*）
+│   └── visual-testing/     # 视觉回归 + 设计还原度校验
+├── packages/                # 组件包（发布到 @aix/*，共 13 个）
+│   ├── ai-chat/            # AI 对话组件
+│   ├── audio/              # 语音 SDK
 │   ├── button/             # 按钮组件
 │   ├── code-editor/        # 代码编辑器
 │   ├── flow-graph/         # 流程图
@@ -56,9 +67,12 @@ aix/
 │   ├── popper/             # 弹层定位
 │   ├── rich-text-editor/   # 富文本编辑器
 │   ├── subtitle/           # 字幕组件
-│   ├── theme/              # 主题包（CSS 变量）
+│   ├── theme/              # 主题系统（CSS 变量）
 │   └── video/              # 视频播放器
-├── scripts/                 # 构建脚本
+├── scripts/                 # 构建/发布/生成脚本
+│   ├── gen/                # 组件包生成器（pnpm gen）
+│   ├── publish/            # 本地发布（pnpm pre）
+│   └── publish-lint/       # 发布形态体检（pnpm lint:publish）
 ├── package.json             # 根 package.json
 ├── pnpm-workspace.yaml      # pnpm workspace 配置
 ├── turbo.json               # Turborepo 配置
@@ -86,17 +100,23 @@ aix/
 ```
 packages/button/
 ├── src/
-│   ├── Button.vue          # 组件文件
-│   ├── types.ts            # 类型定义
-│   └── index.ts            # 导出文件
-├── stories/
-│   └── Button.stories.ts   # Storybook story
-├── __test__/
-│   └── Button.test.ts      # 单元测试
+│   ├── Button.vue          # 主组件（<Pascal>.vue，不是 index.vue）
+│   ├── index.ts            # 具名导出 + default install 插件
+│   ├── types.ts            # 对外 Props/Emits 接口（带 @default JSDoc）
+│   ├── locale/             # 多语言（接入 useLocale 的包才有）
+│   └── components/         # 内部子组件（多组件包才有）
+├── stories/Button.stories.ts
+├── __test__/Button.test.ts
 ├── package.json
-├── tsconfig.json
-└── rollup.config.js
+├── tsconfig.json           # noEmit 检查配置，include stories/ 与 __test__/
+├── tsconfig.build.json     # 声明产出，只 include src/
+├── rollup.config.js
+├── vitest.config.ts        # 必需，缺失则该包测试被根口径静默跳过
+├── eslint.config.ts
+└── stylelint.config.ts
 ```
+
+> 由 `pnpm gen` 生成，模板在 `scripts/gen/templates/`。不要手写。
 
 ### 🎨 特殊包
 
@@ -107,11 +127,20 @@ packages/button/
 ```
 packages/theme/
 ├── src/
-│   ├── index.css           # 主入口
-│   ├── variables.css       # CSS 变量定义
-│   └── reset.css           # 样式重置
+│   ├── vars/               # CSS 变量定义（token 的事实来源）
+│   │   ├── base-tokens.css
+│   │   ├── semantic-tokens-light.css
+│   │   ├── semantic-tokens-dark.css
+│   │   └── index.css       # 变量总入口
+│   ├── core/               # 主题运行时（createTheme 等）
+│   ├── vue/                # Vue 集成
+│   ├── cli.ts              # 主题 CLI
+│   └── theme-types.ts
 └── package.json
 ```
+
+> 查 token 是否存在一律 `grep -r "--aix-<name>" packages/theme/src/vars/`。
+> Token 名是 **camelCase**（`--aix-colorPrimary`），拼错不报错、只会静默失效。
 
 #### hooks 包
 
@@ -120,11 +149,19 @@ packages/theme/
 ```
 packages/hooks/
 ├── src/
-│   ├── useClickOutside.ts
-│   ├── useDebounce.ts
-│   └── index.ts
+│   ├── use-namespace/      # BEM class 生成，全库 35 个文件在用
+│   ├── use-locale/         # 多语言
+│   ├── use-click-outside/
+│   ├── use-controllable/
+│   ├── use-resize-observer/
+│   ├── ...                 # 每个 hook 一个 kebab-case 目录
+│   └── index.ts            # 统一出口
 └── package.json
 ```
+
+> 命名是 **kebab-case 目录**（`use-click-outside/`），不是扁平的 `useClickOutside.ts`。
+> `AixLocaleMessagesMap` 必须直接声明在 `src/index.ts`——TS 模块增强只能合并目标模块中
+> 直接声明的接口，从子模块 re-export 会导致业务侧 `declare module '@aix/hooks'` 无法合并。
 
 ### 📊 包依赖关系
 
@@ -153,7 +190,7 @@ hooks (无依赖)
 
 ### 配置文件
 
-**pnpm-workspace.yaml**:
+**pnpm-workspace.yaml**（除 workspace 成员，还承载 `catalog:` 依赖版本表）:
 
 ```yaml
 packages:
@@ -161,6 +198,10 @@ packages:
   - 'internal/*'
   - 'kit/*'
   - 'packages/*'
+
+# 依赖目录（单一版本真相来源）：子包与根用 `catalog:` 引用，版本只在此处维护
+catalog:
+  # …见「依赖版本管理」章节
 ```
 
 ### 常用命令
@@ -233,7 +274,6 @@ pnpm -r exec rm -rf coverage
   "name": "@aix/button",
   "dependencies": {
     "@aix/hooks": "workspace:^",
-    "@aix/utils": "workspace:^",
     "@aix/theme": "workspace:^"
   }
 }
@@ -247,7 +287,6 @@ pnpm -r exec rm -rf coverage
   "name": "@aix/button",
   "dependencies": {
     "@aix/hooks": "^1.0.0",
-    "@aix/utils": "^1.0.0",
     "@aix/theme": "^1.0.0"
   }
 }
@@ -264,29 +303,25 @@ pnpm -r exec rm -rf coverage
 ```json
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [".env"],
-  "pipeline": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
-    },
-    "test": {
-      "dependsOn": ["build"],
-      "outputs": ["coverage/**"]
-    },
-    "lint": {
-      "outputs": []
-    },
-    "type-check": {
-      "outputs": []
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    }
+  "globalDependencies": [
+    "**/.env.*local", "internal/typescript-config/*.json", "tsconfig.json",
+    "typings/**/*.d.ts", "pnpm-workspace.yaml", ".browserslistrc", "pnpm-lock.yaml"
+  ],
+  "remoteCache": { "signature": true },
+  "tasks": {
+    "build":      { "dependsOn": ["^build"], "outputs": ["**/dist/**", "**/lib/**", "**/es/**"], "cache": true },
+    "type-check": { "dependsOn": ["^build"], "outputs": [], "cache": true },
+    "test":       { "dependsOn": ["^build"], "outputs": [], "cache": true },
+    "lint":       { "outputs": [], "cache": true },
+    "dev":        { "cache": false, "persistent": true },
+    "clean":      { "cache": false }
   }
 }
 ```
+
+> **Turbo 2 的顶层 key 是 `tasks`，不是 `pipeline`**（`pipeline` 在 Turbo 2 已废弃）。
+> 产物目录是 `es/` + `lib/`，不是 `dist/`。每个任务都显式声明了 `inputs`（见实际文件），
+> 漏声明会导致改了某文件缓存却没失效。
 
 ### 任务依赖
 
@@ -304,10 +339,10 @@ graph TD
 
 ```json
 {
-  "pipeline": {
+  "tasks": {
     "build": {
-      "dependsOn": ["^build"],  // 先构建依赖包
-      "outputs": ["dist/**"]
+      "dependsOn": ["^build"],                          // 先构建依赖包
+      "outputs": ["**/dist/**", "**/lib/**", "**/es/**"]
     }
   }
 }
@@ -320,7 +355,7 @@ graph TD
 pnpm build
 
 # 构建指定包及其依赖
-pnpm --filter @aix/button build
+pnpm build:filter @aix/button      # 注意：不能写 pnpm build --filter，见下方警告
 
 # 并行运行测试
 pnpm test
@@ -331,9 +366,16 @@ pnpm type-check
 # Lint 检查
 pnpm lint
 
-# 清除 Turbo 缓存
-pnpm turbo clean
+# 运行各包的 clean 脚本（清构建产物，不是清 turbo 缓存）
+pnpm clean
+
+# 清 turbo 缓存
+rm -rf .turbo
 ```
+
+> ⚠️ **`pnpm build --filter @aix/x` 是错的**：`build` 脚本自带 `--filter=!./apps/*`，
+> 两个 filter 会被 turbo 取**并集**，实测构建 7 个包而非 1 个。单包构建用 `pnpm build:filter`。
+> `test` / `lint` / `clean` 没有预置 filter，`--filter` 可正常使用。
 
 ### 缓存机制
 
@@ -361,7 +403,7 @@ pnpm build --force
 
 # 配置中禁用缓存
 {
-  "pipeline": {
+  "tasks": {
     "dev": {
       "cache": false  // 开发模式不缓存
     }
@@ -378,74 +420,73 @@ pnpm build --force
 #### 1. 使用脚本创建
 
 ```bash
-# 创建新的组件包
-pnpm create:package tooltip
+# 创建新的组件包（包名必须 kebab-case，会被 validators.ts 强校验）
+pnpm gen tooltip -d "文字提示"
+pnpm gen tooltip --dry-run        # 先预览文件清单，不写盘
 
-# 生成的结构
+# 生成的结构（19 个文件，含 --i18n 时）
 packages/tooltip/
 ├── src/
-│   ├── Tooltip.vue
-│   ├── types.ts
-│   └── index.ts
-├── __test__/
-│   └── Tooltip.test.ts
-├── stories/
-│   └── Tooltip.stories.ts
+│   ├── Tooltip.vue          # 主组件（不是 index.vue）
+│   ├── index.ts             # 具名导出 + default install 插件
+│   ├── types.ts             # Props/Emits，带 @default JSDoc
+│   ├── useTooltip.ts        # composable（--no-composables 可关）
+│   ├── index.scss           # 样式（--no-scss 可关）
+│   └── locale/              # 多语言（--i18n）
+├── __test__/Tooltip.test.ts
+├── stories/Tooltip.stories.ts
 ├── package.json
-├── tsconfig.json
-├── vite.config.ts
+├── tsconfig.json            # noEmit 检查配置
+├── tsconfig.build.json      # 声明产出配置
+├── rollup.config.js
+├── vitest.config.ts         # 必需，根 vitest projects 靠它发现包
+├── eslint.config.ts
+├── stylelint.config.ts
 └── README.md
 ```
 
-#### 2. 手动创建
+> 构建用 **rollup**（`rollup.config.js`），不是 vite——包里没有 `vite.config.ts`。
+> 生成器实现见 `scripts/gen/`，模板在 `scripts/gen/templates/*.eta`，是新建包的单一事实来源。
 
-**package.json 模板**:
+#### 2. 不要手动创建
+
+`pnpm gen` 是新建包的**单一事实来源**，手写脚手架一定会和
+`scripts/gen/templates/*.eta` 漂移。这里只解释生成出来的 `package.json` 为什么长那样
+——改模板或调整已有包时别踩：
+
+| 字段 | 值 | 为什么 |
+|------|-----|--------|
+| `main` / `module` | `./lib/index.cjs` / `./es/index.js` | 双格式输出，**产物是 `es/` + `lib/`，不是 `dist/`** |
+| `types` | `./es/index.d.ts` | 由 `vue-tsc` 生成到 `es/` |
+| `sideEffects` | `["*.css","*.scss","*.sass"]` | 漏了样式会被 Tree-shaking 删掉 |
+| `exports` | 嵌套双包形式 | 扁平写法会让 CJS 消费方拿到 ESM 的 `.d.ts`（masquerading），attw 报错 |
+| `exports["./style"]` | 必须带 `types` | 否则消费方开 `noUncheckedSideEffectImports` 时解析不到 |
+| `files` | `["es","lib"]` | 只发产物 |
+| 第三方 devDeps | `"catalog:"` | 版本在 `pnpm-workspace.yaml`，不写字面量 |
+| 内部包依赖 | `"workspace:^"` | 发布时替换为 `^x.y.z` |
+| `publishConfig` | **不要加** | registry 由根 `.npmrc` 的 scoped 配置解析 |
+
+完整字段约束与三个高频踩坑（扁平 exports / `./style.css` / 通配 `./es/*`）见
+[coding-standards.md](coding-standards.md) 的「package.json 配置」；由
+`pnpm lint:publish --strict` 把关。
+
+**构建脚本用 rollup，不是 vite**（包里没有 `vite.config.ts`），且顺序有讲究：
 
 ```json
 {
-  "name": "@aix/tooltip",
-  "version": "0.0.0",
-  "description": "Tooltip component for AIX",
-  "type": "module",
-  "main": "./dist/index.cjs.js",
-  "module": "./dist/index.esm.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./style.css": "./dist/style.css"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && vue-tsc --declaration --emitDeclarationOnly --outDir dist",
-    "test": "vitest",
-    "test:coverage": "vitest --coverage"
-  },
-  "keywords": ["vue", "component", "tooltip", "aix"],
-  "license": "MIT",
-  "peerDependencies": {
-    "vue": "^3.5.31"
-  },
-  "dependencies": {
-    "@aix/hooks": "workspace:^",
-    "@aix/utils": "workspace:^",
-    "@aix/theme": "workspace:^"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-vue": "^5.0.0",
-    "vite": "^5.0.0",
-    "vitest": "^1.0.0",
-    "vue-tsc": "^1.8.0"
+    "dev": "rollup -c -w",
+    "build": "pnpm run clean && pnpm run build:types && pnpm run build:js",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es -p tsconfig.build.json",
+    "build:js": "rollup -c",
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   }
 }
 ```
+
+> ⚠️ **`build:types` 必须在 `build:js` 之前**：`build:js` 的 dts bundle 段依赖
+> `es/*.d.ts` 已存在，顺序颠倒会导致类型产物缺失。
+> 实际内容以 `scripts/gen/templates/package.json.eta` 与各包 `package.json` 为准。
 
 ### 删除包
 
@@ -454,7 +495,7 @@ packages/tooltip/
 rm -rf packages/tooltip
 
 # 2. 更新依赖它的包
-# 在其他包的 package.json 中移除 @aix/tooltip
+# 在其他包的 package.json 中移除 @aix/<old-name>
 
 # 3. 重新安装依赖
 pnpm install
@@ -467,13 +508,13 @@ pnpm build
 
 ```bash
 # 1. 更新 package.json 的 name 字段
-# packages/tooltip/package.json
+# packages/<old-name>/package.json
 {
-  "name": "@aix/popover"  // 修改包名
+  "name": "@aix/<new-name>"  // 修改包名
 }
 
 # 2. 更新所有引用该包的地方
-# 搜索并替换 "@aix/tooltip" → "@aix/popover"
+# 搜索并替换 "@aix/<old-name>" → "@aix/<new-name>"
 
 # 3. 重新安装依赖
 pnpm install
@@ -507,7 +548,6 @@ pnpm build
   },
   "dependencies": {
     "@aix/hooks": "workspace:^",  // 内部依赖
-    "@aix/utils": "workspace:^",
     "@aix/theme": "workspace:^"
   },
   "devDependencies": {
@@ -551,34 +591,68 @@ pnpm build
 }
 ```
 
-### 依赖版本管理
+### 依赖版本管理：catalog 是版本的单一真相来源
 
-#### 统一版本
+**第三方依赖的版本号只写在 `pnpm-workspace.yaml` 的 `catalog:` 里**，子包和根一律用
+`catalog:` 协议引用。这是本仓最容易被写错的一条约定——凭习惯往子包 package.json 里
+填 `"vitest": "^5.0.0"` 会绕过 catalog，造成版本分叉。
 
-**根 package.json 管理公共依赖**:
+```yaml
+# pnpm-workspace.yaml —— 版本只在这里维护
+packages:
+  - 'apps/*'
+  - 'internal/*'
+  - 'kit/*'
+  - 'packages/*'
 
-```json
-{
-  "devDependencies": {
-    "vue": "^3.5.31",
-    "vite": "^5.0.0",
-    "vitest": "^1.0.0",
-    "typescript": "^5.9.3"
-  }
-}
+catalog:
+  eslint: ^10.9.0
+  typescript: ^5.9.3
+  vitest: ^5.0.0
+  vue: ^3.5.41
+  # …完整清单见实际文件
 ```
 
-#### 版本范围
-
 ```json
+// packages/button/package.json —— 引用，不写版本号
 {
   "dependencies": {
-    "vue": "^3.5.31",      // 主版本锁定，允许次版本和补丁版本更新
-    "lodash": "~4.17.0",  // 次版本锁定，只允许补丁版本更新
-    "dayjs": "1.11.10"    // 精确版本，不允许更新
+    "@aix/hooks": "workspace:^",      // workspace 内部包
+    "@aix/theme": "workspace:^"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0"                   // peer 是对外兼容声明，故意宽于 catalog
+  },
+  "devDependencies": {
+    "@kit/vitest-config": "workspace:^",
+    "typescript": "catalog:",         // 第三方一律 catalog:
+    "vitest": "catalog:"
   }
 }
 ```
+
+#### 三种写法各管什么
+
+| 写法 | 用于 | 版本在哪 |
+|------|------|---------|
+| `catalog:` | 所有第三方依赖 | `pnpm-workspace.yaml` 的 `catalog:` |
+| `workspace:^` | monorepo 内部包（`@aix/*`、`@kit/*`） | 目标包自己的 version |
+| 字面量版本号 | **只有 peerDependencies** | 就地（对外兼容区间，通常宽于 catalog） |
+
+#### 升级依赖的正确姿势
+
+```bash
+# 1. 改 pnpm-workspace.yaml 的 catalog: 条目
+# 2. 重装让 lockfile 跟上
+pnpm install
+# 3. 全仓验证（catalog 是共享的，一处升级影响所有引用方）
+pnpm type-check && pnpm test
+```
+
+> ⚠️ **新增第三方依赖需要人工决策**（CLAUDE.md 的 Sentinel 规范把 package.json 变更划归人工）。
+> 流程是：先往 `catalog:` 加版本，再在**用它的那个包**里写 `"<pkg>": "catalog:"`。
+> 依赖声明在哪个包很重要——根 package.json 有不代表子包能 import，而且
+> `rollup.config.js` 的 external 是从**包自己的** package.json 推导的，漏声明会把依赖打进产物。
 
 ### 依赖检查
 
@@ -604,27 +678,18 @@ pnpm -r update
 
 **根配置（共享）**:
 
-```javascript
-// rollup.config.js
-export function createRollupConfig(dirname) {
-  return {
-    input: `${dirname}/src/index.ts`,
-    output: [
-      { file: `${dirname}/dist/index.esm.js`, format: 'esm' },
-      { file: `${dirname}/dist/index.cjs.js`, format: 'cjs' },
-    ],
-    external: ['vue'],
-    plugins: [vue(), typescript(), postcss()],
-  };
-}
-```
+根 `rollup.config.js` 导出 `createRollupConfig(dirname, formats)`，产出
+`es/`（ESM）与 `lib/`（CJS，含 `.d.cts`）。具体实现以该文件为准。
 
 **包配置（引用）**:
 
 ```javascript
 // packages/button/rollup.config.js
 import { createRollupConfig } from '../../rollup.config.js';
-export default createRollupConfig(import.meta.dirname);
+
+// 必须显式传 ['esm', 'cjs']：省略第二参数会默认追加 UMD，
+// 产出不发布的 dist/ 死产物
+export default createRollupConfig(import.meta.dirname, ['esm', 'cjs']);
 ```
 
 ### 并行构建
@@ -770,14 +835,12 @@ pnpm changeset pre exit
 ### Q1: 如何添加新的组件包？
 
 ```bash
-# 方法 1: 使用脚本（推荐）
-pnpm create:package tooltip
-
-# 方法 2: 手动创建
-# 1. 创建目录 packages/tooltip/
-# 2. 添加 package.json、src/、__test__/ 等
-# 3. 运行 pnpm install
+pnpm gen tooltip -d "文字提示"   # 唯一正确姿势
+pnpm install                     # 让 workspace 识别新包
 ```
+
+不要手动创建包目录——手写的 `package.json` / `tsconfig` 一定会和
+`scripts/gen/templates/` 漂移，且极易漏掉 `vitest.config.ts`（漏了测试会被静默跳过）。
 
 ### Q2: 如何解决依赖冲突？
 
@@ -826,12 +889,12 @@ pnpm list --depth Infinity | grep -E "deduped"
 
 # 示例：
 # ❌ 错误
-@aix/button depends on @aix/input
-@aix/input depends on @aix/button
+@aix/button depends on @aix/popper
+@aix/popper depends on @aix/button
 
 # ✅ 正确
 @aix/button depends on @aix/hooks
-@aix/input depends on @aix/hooks
+@aix/popper depends on @aix/hooks
 ```
 
 ### Q5: 构建缓存不更新怎么办？

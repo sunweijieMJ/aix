@@ -1,0 +1,63 @@
+<% if (it.modules.includes('api')) { -%>
+import { getCustomApiConfig } from './api';
+<% } -%>
+<% if (it.modules.includes('components')) { -%>
+import { getCustomComponents } from './components';
+<% } -%>
+<% if (it.modules.includes('directives')) { -%>
+import { getCustomDirectives } from './directives';
+<% } -%>
+<% if (it.modules.includes('layout')) { -%>
+import { getCustomLayout } from './layout';
+<% } -%>
+<% if (it.modules.includes('locale')) { -%>
+import { getCustomLocales } from './locale';
+<% } -%>
+<% if (it.modules.includes('plugins')) { -%>
+import { getCustomPlugins } from './plugins';
+<% } -%>
+<% if (it.modules.includes('router')) { -%>
+import { getCustomRoutes } from './router';
+<% } -%>
+<% if (it.modules.includes('store')) { -%>
+import { getCustomStoreModules } from './store';
+<% } -%>
+import type { OverrideConfig } from '@/plugins/override';
+
+/**
+ * <%= it.project %> - 定制配置（运行时维度 + router）
+ *
+ * 聚合该学校所有定制模块。不需要定制的模块可以删除对应目录和导入，或保留空配置。
+ * 常量覆盖不在这里：它由同目录的 constants.ts 单独默认导出，被 @/constants 在模块加载期消费。
+ * 本文件可以自由引用 @/constants（例如路由 meta.roles 用 ROLES）。
+ */
+const config: OverrideConfig = {
+  // 浏览器入口标题，显示为「入口标题-路由标题」；不配则回落 @/constants 的 DEFAULT_TITLE
+  // title: '<%= it.project %> 管理平台',
+<% if (it.modules.includes('components')) { -%>
+  components: getCustomComponents(),
+<% } -%>
+<% if (it.modules.includes('router')) { -%>
+  router: getCustomRoutes(),
+<% } -%>
+<% if (it.modules.includes('locale')) { -%>
+  locale: getCustomLocales(),
+<% } -%>
+<% if (it.modules.includes('store')) { -%>
+  store: getCustomStoreModules(),
+<% } -%>
+<% if (it.modules.includes('api')) { -%>
+  api: getCustomApiConfig(),
+<% } -%>
+<% if (it.modules.includes('layout')) { -%>
+  layout: getCustomLayout(),
+<% } -%>
+<% if (it.modules.includes('directives')) { -%>
+  directives: getCustomDirectives(),
+<% } -%>
+<% if (it.modules.includes('plugins')) { -%>
+  plugins: getCustomPlugins(),
+<% } -%>
+};
+
+export default config;

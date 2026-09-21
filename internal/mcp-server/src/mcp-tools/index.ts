@@ -14,7 +14,7 @@ import {
   ListComponentsTool,
   SearchComponentsTool,
 } from './component-tools';
-import { SearchIconsTool } from './icon-tools';
+import { GetIconSvgTool, SearchIconsTool } from './icon-tools';
 
 // 导出基类
 export { BaseTool };
@@ -32,7 +32,7 @@ export {
 };
 
 // 导出图标工具
-export { SearchIconsTool };
+export { GetIconSvgTool, SearchIconsTool };
 
 // 导出工具包工具
 import { GetPackageInfoTool, ListPackagesTool, SearchPackagesTool } from './package-tools';
@@ -40,11 +40,17 @@ export { GetPackageInfoTool, ListPackagesTool, SearchPackagesTool };
 
 /**
  * 创建所有工具实例
+ *
+ * @param componentIndex - 组件索引
+ * @param dataDir - 数据目录
+ * @param toolPackageIndex - 工具包索引，缺省则不注册工具包相关工具
+ * @param repoRoot - workspace 根；null 表示脱离仓库运行，文档类能力走 data/ 快照
  */
 export function createTools(
   componentIndex: ComponentIndex,
   dataDir: string,
   toolPackageIndex?: ToolPackageIndex,
+  repoRoot: string | null = null,
 ): BaseTool[] {
   const tools: BaseTool[] = [
     new ListComponentsTool(componentIndex),
@@ -53,9 +59,10 @@ export function createTools(
     new GetComponentExamplesTool(componentIndex),
     new SearchComponentsTool(componentIndex),
     new SearchIconsTool(dataDir),
+    new GetIconSvgTool(dataDir),
     new GetComponentDependenciesTool(componentIndex),
     new GetCategoriesAndTagsTool(componentIndex),
-    new GetComponentChangelogTool(componentIndex),
+    new GetComponentChangelogTool(componentIndex, dataDir, repoRoot),
   ];
 
   if (toolPackageIndex) {

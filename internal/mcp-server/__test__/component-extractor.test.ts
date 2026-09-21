@@ -23,8 +23,15 @@ vi.mock('../src/utils/index', async () => {
   };
 });
 
+vi.mock('../src/utils/api-source', async () => {
+  const actual =
+    await vi.importActual<typeof import('../src/utils/api-source')>('../src/utils/api-source');
+  return { ...actual, loadApiIndex: vi.fn(async () => null) };
+});
+
 // 获取 mock 函数
 const mockUtils = vi.mocked(await import('../src/utils/index'));
+const mockApiSource = vi.mocked(await import('../src/utils/api-source'));
 
 describe('ComponentExtractor', () => {
   let extractor: ComponentExtractor;
@@ -36,11 +43,120 @@ describe('ComponentExtractor', () => {
       packagesDir: '/test/packages',
       outputDir: '/test/output',
       ignorePackages: [],
-      enableCache: true,
       verbose: false,
       maxConcurrentExtraction: 5,
     };
     extractor = new ComponentExtractor(config);
+  });
+
+  describe('源码 API 优先', () => {
+    it('文档管线给出结构化 API 时，Props / Emits / Slots 以它为准，并据组件名识别子组件', async () => {
+      mockUtils.readPackageJson.mockResolvedValue({
+        name: '@aix/menu',
+        version: '1.0.0',
+        description: '菜单',
+      });
+      mockUtils.findComponentFiles.mockResolvedValue({
+        sourceFiles: [],
+        storyFiles: [],
+        readmeFiles: [],
+      });
+      mockApiSource.loadApiIndex.mockResolvedValue(
+        new Map([
+          [
+            '@aix/menu',
+            {
+              package: '@aix/menu',
+              components: [
+                {
+                  name: 'Menu',
+                  file: 'src/Menu.vue',
+                  props: [
+                    {
+                      name: 'theme',
+                      type: 'MenuTheme',
+                      resolvedType: "'gray' | 'white'",
+                      values: ['gray', 'white'],
+                      required: false,
+                      description: '配色主题',
+                    },
+                  ],
+                  events: [{ name: 'select', params: 'payload: P', description: '选中' }],
+                  slots: [],
+                },
+                {
+                  name: 'MenuItem',
+                  file: 'src/components/MenuItem.vue',
+                  props: [{ name: 'itemKey', type: 'string', required: true, description: '' }],
+                  events: [],
+                  slots: [{ name: 'default', description: '内容' }],
+                },
+              ],
+            },
+          ],
+        ]),
+      );
+
+      const component = await extractor.extractComponentFromPackage('/test/packages/menu');
+
+      expect(component?.props).toEqual([
+        {
+          name: 'theme',
+          type: "'gray' | 'white'",
+          required: false,
+          description: '配色主题',
+          defaultValue: undefined,
+          enum: ['gray', 'white'],
+          group: 'Menu',
+        },
+        {
+          name: 'itemKey',
+          type: 'string',
+          required: true,
+          description: '',
+          defaultValue: undefined,
+          enum: undefined,
+          group: 'MenuItem',
+        },
+      ]);
+      expect(component?.emits).toEqual([
+        { name: 'select', params: 'payload: P', description: '选中', group: 'Menu' },
+      ]);
+      expect(component?.slots).toEqual([
+        { name: 'default', description: '内容', scope: undefined, group: 'MenuItem' },
+      ]);
+      expect(component?.subComponents).toEqual(['Menu', 'MenuItem']);
+    });
+
+    it('同一个提取器实例只运行一次文档管线', async () => {
+      mockUtils.readPackageJson.mockResolvedValue({ name: '@aix/button', version: '1.0.0' });
+      mockUtils.findComponentFiles.mockResolvedValue({
+        sourceFiles: [],
+        storyFiles: [],
+        readmeFiles: [],
+      });
+      mockApiSource.loadApiIndex.mockResolvedValue(new Map());
+
+      await extractor.extractComponentFromPackage('/test/packages/button');
+      await extractor.extractComponentFromPackage('/test/packages/button');
+
+      expect(mockApiSource.loadApiIndex).toHaveBeenCalledTimes(1);
+    });
+
+    it('文档管线不可用时保持 README 解析结果', async () => {
+      mockUtils.readPackageJson.mockResolvedValue({ name: '@aix/button', version: '1.0.0' });
+      mockUtils.findComponentFiles.mockResolvedValue({
+        sourceFiles: [],
+        storyFiles: [],
+        readmeFiles: [],
+      });
+      mockApiSource.loadApiIndex.mockResolvedValue(null);
+
+      const component = await extractor.extractComponentFromPackage('/test/packages/button');
+
+      expect(component?.props).toEqual([]);
+      expect(component?.subComponents).toBeUndefined();
+    });
   });
 
   describe('extractAllComponents', () => {
@@ -84,6 +200,26 @@ describe('ComponentExtractor', () => {
       expect(components.length).toBe(2);
       expect(components[0]?.name).toBe('Button');
       expect(components[1]?.name).toBe('Input');
+    });
+
+    it('不应该把图标包当成普通组件（与落盘索引口径一致）', async () => {
+      // extractAndSaveAllComponents 一直会跳过 @aix/icons，
+      // 这里以前不跳，导致 getStats 的组件数比实际索引多一个
+      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/icons']);
+      mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) =>
+        pkgPath.includes('icons')
+          ? { name: '@aix/icons', version: '1.0.0' }
+          : { name: '@aix/button', version: '1.0.0', description: '按钮组件' },
+      );
+      mockUtils.findComponentFiles.mockResolvedValue({
+        sourceFiles: [],
+        storyFiles: [],
+        readmeFiles: [],
+      });
+
+      const components = await extractor.extractAllComponents();
+
+      expect(components.map((c) => c.packageName)).toEqual(['@aix/button']);
     });
 
     it('应该在没有包时返回空数组', async () => {
@@ -210,47 +346,6 @@ describe('ComponentExtractor', () => {
 
         expect(component?.category).toBe(expectedCategory);
       }
-    });
-  });
-
-  describe('extractIncrementalComponents', () => {
-    it('应该只提取自上次提取后有更新的组件', async () => {
-      const lastExtractTime = new Date(Date.now() - 3600000); // 1小时前
-
-      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/input']);
-
-      mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) => {
-        if (pkgPath.includes('button')) {
-          return {
-            name: '@aix/button',
-            version: '1.0.0',
-            description: '按钮组件',
-          };
-        }
-        return null;
-      });
-
-      mockUtils.findComponentFiles.mockResolvedValue({
-        sourceFiles: [],
-        storyFiles: [],
-        readmeFiles: [],
-      });
-
-      // Mock stat 来模拟文件修改时间
-      vi.mocked(fs.stat).mockImplementation(async (filePath: any) => {
-        if (filePath.toString().includes('button')) {
-          // button 包已更新
-          return { mtime: new Date() } as any;
-        }
-        // input 包未更新
-        return { mtime: new Date(Date.now() - 7200000) } as any;
-      });
-
-      const components = await extractor.extractIncrementalComponents(lastExtractTime);
-
-      // 只有 button 应该被提取
-      expect(components.length).toBe(1);
-      expect(components[0]?.packageName).toBe('@aix/button');
     });
   });
 

@@ -1558,7 +1558,7 @@ src/
 │   ├── github-adapter.ts     # GitHub Actions 实现
 │   └── index.ts              # 适配器工厂
 ├── cli/
-│   ├── prompts.ts            # 交互式安装向导（inquirer）
+│   ├── prompts.ts            # 交互式安装向导（@inquirer/prompts）
 │   ├── preview.ts            # 安装配置预览面板
 │   └── commands/
 │       ├── install.ts        # sentinel install
