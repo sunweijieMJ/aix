@@ -422,6 +422,10 @@ export function useSegment(options: UseSegmentOptions): UseSegmentReturn {
   function startSegmentTimer() {
     clearSegmentTimer();
 
+    // SSR 下 immediate 的 watch 会在 setup 阶段跑到这里，而 onBeforeUnmount 不会执行，
+    // 定时器留在服务端事件循环里会让渲染进程永不退出
+    if (typeof window === 'undefined') return;
+
     // 如果只有一段或没有分段，不需要定时器
     const count = segmentCount.value;
     if (count <= 1) return;
