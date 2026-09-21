@@ -10,7 +10,6 @@ const config = {
     'node_modules',
     '**/node_modules/**',
     'dist',
-    'docs',
     'coverage',
     'storybook-static',
     '.git',

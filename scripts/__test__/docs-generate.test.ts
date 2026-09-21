@@ -27,6 +27,7 @@ const exemptions: Exemptions = {
   externalPropsComponents: new Map([
     ['external/src/ExternalNode.vue', 'Props 由上游注入，业务侧不直接传。'],
   ]),
+  internalCssVars: new Map(),
 };
 
 const read = (root: string, file: string) => fs.readFile(path.join(root, file), 'utf-8');

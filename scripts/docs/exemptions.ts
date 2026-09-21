@@ -15,6 +15,12 @@ export interface Exemptions {
    * 键为 `<包目录>/<相对包根的文件路径>`，值是代替 Props 表展示的说明
    */
   externalPropsComponents: ReadonlyMap<string, string>;
+  /**
+   * 组件内部自用、不作为定制入口的 CSS 变量，键为包目录名。
+   * 这些变量或由组件在模板里内联赋值，或只是样式内部的中间量，业务覆盖没有意义，
+   * 因此不要求出现在文档页的「主题变量定制」表里
+   */
+  internalCssVars: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 export const NON_COMPONENT_PACKAGES: ReadonlySet<string> = new Set(['hooks', 'theme']);
@@ -39,11 +45,35 @@ export const COMPONENTS_WITH_EXTERNAL_PROPS: ReadonlyMap<string, string> = new M
   ],
 ]);
 
+export const INTERNAL_CSS_VARS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  [
+    'menu',
+    new Set([
+      // MenuIcon 在模板里内联赋值
+      '--aix-menu-icon-src',
+      // menu.scss 内部算出来给自己用的高度中间量
+      '--aix-menu-popup-rows',
+    ]),
+  ],
+  [
+    'ai-chat',
+    new Set([
+      // 消息大纲的声波刻度：JS 按到波峰的距离逐帧下发
+      '--aix-outline-dist',
+      '--aix-outline-wave',
+      // 刻度基准尺寸，只参与 outline 自身的 calc
+      '--aix-outline-tick-base',
+      '--aix-outline-tick-grow',
+    ]),
+  ],
+]);
+
 export const DEFAULT_EXEMPTIONS: Exemptions = {
   nonComponentPackages: NON_COMPONENT_PACKAGES,
   handwrittenApiPackages: PACKAGES_WITH_HANDWRITTEN_API,
   componentDocPending: COMPONENT_DOC_PENDING,
   externalPropsComponents: COMPONENTS_WITH_EXTERNAL_PROPS,
+  internalCssVars: INTERNAL_CSS_VARS,
 };
 
 /** 该包不产出组件 API */

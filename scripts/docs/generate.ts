@@ -10,6 +10,13 @@ import {
   replaceSection,
   stripHeading,
 } from './markdown-sections';
+import {
+  checkIconCategoryCounts,
+  checkPageLayout,
+  checkReadmeLayout,
+  collectPageLayoutInputs,
+  collectReadmeLayoutInputs,
+} from './page-layout';
 import { collectPackageApis } from './pipeline';
 import { checkSiteRegistry } from './site-registry';
 
@@ -159,7 +166,27 @@ export async function generateDocs(options: GenerateOptions = {}): Promise<Gener
   }
 
   report.failures.push(...(await checkSiteRegistry(root)));
+  report.failures.push(...(await checkPageLayouts(root, collected.packages, exemptions)));
   return report;
+}
+
+/**
+ * 骨架校验：文档页（段落齐全与顺序、条件必备段、安装说明与包依赖是否一致）、
+ * 包 README，以及 icons 那张手写的分类数量表
+ */
+async function checkPageLayouts(
+  root: string,
+  packages: Array<{ dirName: string; api: ApiPackage }>,
+  exemptions: Exemptions,
+): Promise<string[]> {
+  const apis = new Map(packages.map(({ dirName, api }) => [dirName, api]));
+  const inputs = await collectPageLayoutInputs(root, apis, exemptions);
+  const issues = inputs.flatMap((input) => checkPageLayout(input));
+  for (const readme of await collectReadmeLayoutInputs(root, exemptions)) {
+    issues.push(...checkReadmeLayout(readme));
+  }
+  issues.push(...(await checkIconCategoryCounts(root)));
+  return issues;
 }
 
 /**
