@@ -25,7 +25,12 @@ export type { FetchUploadOptions, FetchMentionOptions, UploadMessages } from './
 
 export { RichTextEditor };
 export { useEditorCore } from './composables';
-export * from './locale';
+export {
+  locale as richTextEditorLocale,
+  zhCN as richTextEditorZhCN,
+  enUS as richTextEditorEnUS,
+} from './locale';
+export type { RichTextEditorLocale } from './locale';
 
 export default {
   install(app: App) {

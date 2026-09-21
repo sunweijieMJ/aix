@@ -244,6 +244,7 @@ let isManualZoom = false;
 
 // PDF 加载器
 const pdfLoader = usePdfLoader({
+  getWorkerSrc: () => mergedConfig.value.workerSrc,
   onLoad: () => {
     emit('ready', pdfLoader.totalPages.value);
   },
@@ -284,7 +285,7 @@ const contextMenu = useContextMenu({
       : textSelection.getSelectedText(textLayerRef.value),
   getSelectedImages: () => imageLayer.getSelectedImages(),
   getCurrentPage: () => currentPage.value,
-  onMenuClick: (_item, context) => emit('contextMenu', context),
+  onMenuClick: (item, context) => emit('contextMenu', context, item),
 });
 
 // 连续滚动

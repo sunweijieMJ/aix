@@ -7,11 +7,13 @@ import { BaseTTSAdapter } from './base';
 
 export class BrowserTTS extends BaseTTSAdapter {
   private utterance: SpeechSynthesisUtterance | null = null;
-  private isSupported = false;
 
-  constructor() {
-    super();
-    this.isSupported = 'speechSynthesis' in window;
+  /**
+   * 惰性判定而非在构造函数里探测：适配器会在 setup 阶段被创建，
+   * SSR 渲染时没有 window，构造即访问会让整个页面渲染失败。
+   */
+  private get isSupported(): boolean {
+    return typeof window !== 'undefined' && 'speechSynthesis' in window;
   }
 
   async speak(text: string, options: TTSOptions = {}): Promise<void> {
@@ -99,6 +101,8 @@ export class BrowserTTS extends BaseTTSAdapter {
    * 获取可用音色列表
    */
   static getVoices(): SpeechSynthesisVoice[] {
-    return 'speechSynthesis' in window ? window.speechSynthesis.getVoices() : [];
+    return typeof window !== 'undefined' && 'speechSynthesis' in window
+      ? window.speechSynthesis.getVoices()
+      : [];
   }
 }

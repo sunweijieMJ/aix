@@ -216,7 +216,7 @@ export type { ContextWindowProps, ContextWindowEmits } from './components/Contex
 export type { MessageOutlineProps, MessageOutlineEmits } from './components/MessageOutline.vue';
 
 // useAiChatLocale / provideAiChatLocaleMessages 等运行时 API 经 './composables' 桶导出
-export { locale as aiChatLocale, zhCN, enUS } from './locale';
+export { locale as aiChatLocale, zhCN as aiChatZhCN, enUS as aiChatEnUS } from './locale';
 export type { AiChatLocale } from './locale';
 
 const components = {
