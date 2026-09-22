@@ -33,8 +33,9 @@ const tempDirs: string[] = [];
  * E_MISSING_OVERRIDE_KERNEL（缺失路径本身另有用例覆盖）。
  *
  * @param withKernel 传 false 得到一个「只有 package.json」的裸项目
+ * @param platform mobile 时基础设施多一份 identity.ts
  */
-function makeProject(withKernel = true): string {
+function makeProject(withKernel = true, platform: 'web' | 'mobile' = 'web'): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-ovr-'));
   tempDirs.push(dir);
   fs.mkdirSync(path.join(dir, 'nested'), { recursive: true });
@@ -47,15 +48,19 @@ function makeProject(withKernel = true): string {
       '// 模板 overrides 特性提供的内核（测试替身）\nexport {};\n',
     );
     fs.mkdirSync(path.join(dir, 'src/overrides'), { recursive: true });
-    for (const rel of ['index.ts', 'constants.ts', 'registry.ts', 'deployment.ts']) {
+    const infra = ['index.ts', 'constants.ts', 'registry.ts', 'deployment.ts'];
+    if (platform === 'mobile') infra.push('identity.ts');
+    for (const rel of infra) {
       fs.writeFileSync(path.join(dir, 'src/overrides', rel), `// 模板提供：${rel}\nexport {};\n`);
     }
   }
   return dir;
 }
 
+/** 平台是非交互下的必填项；用例没写 `-p` 时默认 web，写了就按用例的 */
 function runAdd(args: string[], cwd: string): { status: number | null; output: string } {
-  const r = spawnSync(process.execPath, [TSX, CLI, 'override', 'add', ...args], {
+  const withPlatform = args.includes('-p') ? args : [...args, '-p', 'web'];
+  const r = spawnSync(process.execPath, [TSX, CLI, 'override', 'add', ...withPlatform], {
     cwd,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -138,6 +143,101 @@ describe('override add - 内核 / 基础设施前置检查', () => {
       expect(r.status).not.toBe(0);
       expect(r.output).toContain(path.join('src', 'overrides', 'constants.ts'));
       expect(r.output).not.toContain('src/plugins/override/index.ts');
+    },
+    TIMEOUT,
+  );
+});
+
+describe('override add - 按平台切换骨架与前置清单', () => {
+  it(
+    '`-p` 取值不合法时报 E_INVALID_OPTION 并列出可选值',
+    () => {
+      const cwd = makeProject();
+      const r = runAdd(['sysu', '-m', 'router', '-y', '-p', 'ios'], cwd);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_INVALID_OPTION');
+      expect(r.output).toContain('未知平台: ios');
+      expect(r.output).toContain('web, mobile');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'Web 项目：路由骨架带 whiteList，常量示例是 menuList，聚合入口带 title 注释',
+    () => {
+      const cwd = makeProject(true, 'web');
+      const r = runAdd(['sysu', '-p', 'web', '-m', 'router,api,layout,locale', '-y'], cwd);
+      expect(r.status).toBe(0);
+      expect(r.output).toContain('Web 后台');
+
+      const base = path.join(cwd, 'src/overrides/sysu');
+      expect(fs.readFileSync(path.join(base, 'router/index.ts'), 'utf-8')).toContain('whiteList');
+      expect(fs.readFileSync(path.join(base, 'constants.ts'), 'utf-8')).toContain('menuList');
+      expect(fs.readFileSync(path.join(base, 'index.ts'), 'utf-8')).toContain('title:');
+      expect(fs.readFileSync(path.join(base, 'api/index.ts'), 'utf-8')).toContain('modules');
+      expect(fs.readFileSync(path.join(base, 'layout/index.ts'), 'utf-8')).toContain('menu');
+      expect(fs.readFileSync(path.join(base, 'locale/index.ts'), 'utf-8')).toContain(
+        'layout.systemTitle',
+      );
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '移动端项目选 locale 模块时报错：h5 没有 locale 维度',
+    () => {
+      const cwd = makeProject(true, 'mobile');
+      const r = runAdd(['sysu', '-p', 'mobile', '-m', 'router,locale', '-y'], cwd);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_INVALID_OPTION');
+      expect(r.output).toContain('locale');
+      expect(r.output).toContain('mobile 平台可用模块');
+      expect(fs.existsSync(path.join(cwd, 'src/overrides/sysu'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '移动端项目（-p mobile）：骨架不含 Web 专有字段，示例换成 H5 形态',
+    () => {
+      const cwd = makeProject(true, 'mobile');
+      const r = runAdd(['sysu', '-p', 'mobile', '-m', 'router,api,layout', '-y'], cwd);
+      expect(r.status).toBe(0);
+      expect(r.output).toContain('移动端 H5');
+
+      const base = path.join(cwd, 'src/overrides/sysu');
+      const router = fs.readFileSync(path.join(base, 'router/index.ts'), 'utf-8');
+      expect(router).not.toContain('whiteList');
+      expect(router).toContain('showTabbar');
+      expect(fs.readFileSync(path.join(base, 'constants.ts'), 'utf-8')).toContain('tabbarItems');
+      expect(fs.readFileSync(path.join(base, 'index.ts'), 'utf-8')).not.toContain('title:');
+      const api = fs.readFileSync(path.join(base, 'api/index.ts'), 'utf-8');
+      expect(api).toContain('interceptors');
+      expect(api).not.toContain('modules');
+      const layout = fs.readFileSync(path.join(base, 'layout/index.ts'), 'utf-8');
+      expect(layout).toContain('tabbar');
+      expect(layout).not.toContain('logoConfig');
+      expect(fs.existsSync(path.join(base, 'locale'))).toBe(false);
+      // 下一步提示按平台走：移动端要打开身份来源、单校包用 env
+      expect(r.output).toContain('identity.ts');
+      expect(r.output).toContain('VITE_BUILD_SCHOOL_CODE=sysu');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '移动端项目缺 identity.ts 时列入前置缺失；Web 项目不检查它',
+    () => {
+      const mobile = makeProject(true, 'mobile');
+      fs.rmSync(path.join(mobile, 'src/overrides/identity.ts'));
+      const r = runAdd(['sysu', '-p', 'mobile', '-m', 'router', '-y'], mobile);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_MISSING_OVERRIDE_KERNEL');
+      expect(r.output).toContain(path.join('src', 'overrides', 'identity.ts'));
+      expect(r.output).not.toContain('h5 模板没有这项能力');
+
+      const web = makeProject(true, 'web');
+      expect(runAdd(['sysu', '-p', 'web', '-m', 'router', '-y'], web).status).toBe(0);
     },
     TIMEOUT,
   );

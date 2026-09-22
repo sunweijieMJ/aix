@@ -4,10 +4,14 @@ import type { CustomRouteConfig } from '@/plugins/override';
  * <%= it.project %> - 路由覆盖
  *
  * 支持能力：
- * - overrideRoutes: 替换已有路由的组件（key 使用全路径如 '/home'）
- * - customRoutes: 新增独立路由
- * - disabledRoutes: 按路径禁用路由
+ * - overrideRoutes: 替换已有路由的组件或部分配置（key 使用全路径如 '/home'；meta 逐 key 合并，children 追加）
+ * - customRoutes: 新增独立路由（不经过权限过滤，需要限制访问时显式配 meta.roles）
+ * - disabledRoutes: 按全路径禁用路由（禁用父路由连带子路由）
+<% if (it.platform !== 'mobile') { -%>
  * - whiteList: 追加免登录白名单路径
+<% } -%>
+ *
+ * 布局容器统一写 AppLayout（import { AppLayout } from '@/layout/constants'），不要硬编码 layout 组件路径
  *
  * @example
  * ```ts
@@ -17,8 +21,12 @@ import type { CustomRouteConfig } from '@/plugins/override';
  *   },
  *   customRoutes: [{
  *     path: '/<%= it.project %>-lab',
- *     component: () => import('@/layout/index.vue'),
+ *     component: AppLayout,
+<% if (it.platform === 'mobile') { -%>
+ *     children: [{ path: '', component: () => import('../views/LabManagement.vue'), meta: { title: '实验室', showTabbar: true } }],
+<% } else { -%>
  *     children: [{ path: '', component: () => import('../views/LabManagement.vue') }],
+<% } -%>
  *   }],
  * };
  * ```
@@ -28,6 +36,8 @@ export function getCustomRoutes(): CustomRouteConfig {
     // overrideRoutes: {},
     // customRoutes: [],
     // disabledRoutes: [],
+<% if (it.platform !== 'mobile') { -%>
     // whiteList: [],
+<% } -%>
   };
 }

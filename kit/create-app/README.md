@@ -118,6 +118,7 @@ create-app my-app --template admin -d "我的项目" \
 | 选项                                  | 说明                             |
 | ------------------------------------- | -------------------------------- |
 | `-m, --modules <list>`                | 定制模块，逗号分隔               |
+| `-p, --platform <web\|mobile>`        | 目标项目平台（admin 为 web，h5 为 mobile），不传则问答选择 |
 | `-o, --output <dir>`                  | 输出目录，默认 `src/overrides`   |
 | `-y, --yes` / `--dry-run` / `--force` | 跳过确认 / 只预览 / 覆盖已有文件 |
 
@@ -132,13 +133,14 @@ create-app my-app --template admin -d "我的项目" \
 | `components` | 运行时 | 组件覆盖（预埋组件替换）         |
 | `directives` | 运行时 | 指令覆盖（新增/替换全局指令）    |
 | `layout`     | 运行时 | 布局覆盖（整体/区域替换）        |
-| `locale`     | 运行时 | 国际化覆盖（文案覆盖/新增）      |
+| `locale`     | 运行时 | 国际化覆盖（文案覆盖/新增，仅 web；h5 的租户文案走 i18n 流水线） |
 | `plugins`    | 运行时 | 插件覆盖（注册额外的 Vue 插件）  |
 | `store`      | 运行时 | 状态覆盖（Pinia action 包装）    |
 
 **前置条件**：覆盖层内核（`src/plugins/override/`）与基础设施（`<output>/index.ts`、`constants.ts`、
-`registry.ts`）由带 Override 能力的模板提供，注册表里目前只有 admin 模板的 `overrides` 特性有
-（h5 模板没有这项能力）—— 用 admin 生成项目时勾上「多租户定制体系」即可。
+`registry.ts`，h5 另有 `identity.ts`）由模板的 `overrides` 特性提供，admin 与 h5 模板都有 ——
+生成项目时勾上「多租户定制体系 / 学校定制体系」即可。`override add` 的平台由 `-p` 或问答指定，
+可选模块、骨架里的注释 / 示例与前置检查清单随平台切换。
 租户的常量覆盖渲染为单文件 `<output>/<code>/constants.ts`（由基础设施单独 glob，不得 import `@/constants`），
 其余维度聚合在 `<output>/<code>/index.ts`。
 `override add` 只生成「按租户」的那部分（聚合入口 + 各模块骨架），前置文件缺失会直接报

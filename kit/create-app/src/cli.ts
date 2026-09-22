@@ -73,6 +73,7 @@ overrideCmd
   .command('add [code]')
   .description('为新客户生成 Override 覆盖层目录和模板文件（TypeScript）')
   .option('-m, --modules <list>', '定制模块（逗号分隔，如 router,store）')
+  .option('-p, --platform <web|mobile>', '目标项目平台（admin 模板为 web，h5 模板为 mobile）')
   .option('-o, --output <dir>', '输出目录', 'src/overrides')
   .option('-y, --yes', '跳过确认提示', false)
   .option('--dry-run', '仅预览将生成的文件', false)

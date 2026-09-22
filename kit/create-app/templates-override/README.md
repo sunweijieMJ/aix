@@ -10,10 +10,17 @@
 
 模块渲染到哪里由 `src/override/types.ts` 的 `MODULE_REGISTRY[id].file` 决定，缺省为 `<id>/index.ts`。
 
+**模板按平台分支。** admin（Web 后台）与 h5（移动端）两个真源的 Override 形态不同：布局插槽
+（header / menu / main vs navbar / main / tabbar）、API 维度（`modules` vs `interceptors`）、路由字段
+（h5 无 `whiteList`）、入口标题（h5 并入常量 `appTitle`）、locale key 风格（h5 为 flat `__`）。
+`override add` 的平台由用户通过 `-p, --platform` 或问答指定，传进 eta 上下文的 `it.platform`，各模板据此切换
+注释与示例；骨架的**代码**部分两边一致（返回空配置）。h5 没有 locale 维度（`MODULE_REGISTRY.locale.platforms = ['web']`），
+移动端项目选不到它。
+
 **这里只有「按租户」的那部分。** 覆盖层内核（`src/plugins/override/`）与基础设施
-（`<output>/index.ts`、`constants.ts`、`registry.ts`、`deployment.ts`）由**模板真源**提供
-——admin 模板的 `overrides` 特性。`override add` 在生成前检查其中骨架装载依赖的那几个
-（内核 + `index.ts` / `constants.ts` / `registry.ts`），缺了直接报 `E_MISSING_OVERRIDE_KERNEL`
+（`<output>/index.ts`、`constants.ts`、`registry.ts`、`deployment.ts`，h5 另有 `identity.ts`）由**模板真源**提供
+——admin / h5 模板的 `overrides` 特性。`override add` 在生成前检查其中骨架装载依赖的那几个
+（内核 + `index.ts` / `constants.ts` / `registry.ts`，mobile 再加 `identity.ts`），缺了直接报 `E_MISSING_OVERRIDE_KERNEL`
 并说明去哪儿拿；`deployment.ts` 只被 `constants.ts` 自己 import，骨架不依赖，不在检查内。
 
 ## 为什么内核不放在这里
@@ -31,7 +38,7 @@
 不一样。而「兜底」这个场景本身是空的 —— 真正在用 override 体系的项目都是从 admin 模板带
 `overrides` 特性生成的，内核本来就有，`override add -y` 只会跳过那些文件。
 
-所以收口成单一真源：**内核只在模板真源里维护**，本包不再持有拷贝。
+所以收口成单一真源：**内核只在模板真源里维护**，本包不再持有拷贝。h5 真源的内核是按移动端形态另写的一份（同名文件、同一套 manager 接口），不与 admin 逐字节同步。
 
 ## 注意
 

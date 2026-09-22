@@ -1,5 +1,10 @@
 // Override 命令相关（P0-1）
-export { generateFiles, findMissingPrerequisites } from './override/generator';
+export {
+  generateFiles,
+  findMissingPrerequisites,
+  overrideInfraFiles,
+  availableModules,
+} from './override/generator';
 export { checkProjectConflict, resolveConflicts } from './utils/conflict';
 // writeFiles / printFileTree 收敛到 utils/fs 的单一实现（见文末统一导出）
 export { isProjectRoot } from './utils/detector';

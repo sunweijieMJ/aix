@@ -555,6 +555,7 @@ describe('override add 非 TTY 快速失败', () => {
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_NON_INTERACTIVE');
       expect(r.output).toContain('-m, --modules');
+      expect(r.output).toContain('-p, --platform');
     },
     TIMEOUT,
   );
@@ -573,7 +574,7 @@ describe('override add 非 TTY 快速失败', () => {
   it(
     '参数齐全时非 TTY 照常生成',
     () => {
-      const r = runCli(['override', 'add', 'sysu', '-m', 'router', '-y'], projDir);
+      const r = runCli(['override', 'add', 'sysu', '-p', 'web', '-m', 'router', '-y'], projDir);
       expect(r.status, r.output).toBe(0);
       expect(fs.existsSync(path.join(projDir, 'src/overrides/sysu/router/index.ts'))).toBe(true);
       // 基础设施是前置文件，本包不生成也不改写
@@ -592,7 +593,7 @@ describe('override add 非 TTY 快速失败', () => {
       fs.mkdirSync(path.join(projDir, 'src/overrides/gzdx/router'), { recursive: true });
       fs.writeFileSync(path.join(projDir, 'src/overrides/gzdx/router/index.ts'), '// 手写内容\n');
 
-      const r = runCli(['override', 'add', 'gzdx', '-m', 'router'], projDir);
+      const r = runCli(['override', 'add', 'gzdx', '-p', 'web', '-m', 'router'], projDir);
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_NON_INTERACTIVE');
       expect(r.output).toContain('-y');
@@ -604,7 +605,10 @@ describe('override add 非 TTY 快速失败', () => {
     '输出目录存在但无冲突时，全参数运行不被误拦（目录存在 ≠ 会弹问答）',
     () => {
       seedKernel(projDir, 'src/overrides-b');
-      const r = runCli(['override', 'add', 'nk', '-m', 'router', '-o', 'src/overrides-b'], projDir);
+      const r = runCli(
+        ['override', 'add', 'nk', '-p', 'web', '-m', 'router', '-o', 'src/overrides-b'],
+        projDir,
+      );
       expect(r.status, r.output).toBe(0);
       expect(fs.existsSync(path.join(projDir, 'src/overrides-b/nk/router/index.ts'))).toBe(true);
     },

@@ -3,6 +3,22 @@ import type { CustomLayoutConfig } from '@/plugins/override';
 /**
  * <%= it.project %> - Layout 覆盖
  *
+<% if (it.platform === 'mobile') { -%>
+ * 支持能力：
+ * - components: 替换布局区域（navbar / main / tabbar），替换组件需保持相同的 Props / Emits
+ * - defaultConfig: 覆盖显隐默认值（layoutVisible / headerVisible），路由 meta.layout 的优先级高于它；
+ *   nav / back / logo 由路由 meta.showTabbar 推导，不在可配置范围内
+ *
+ * 整体替换布局没有消费点（AppLayout 在模块求值期定型），需要时用路由覆盖替换布局路由的 component
+ *
+ * @example
+ * ```ts
+ * return {
+ *   components: { tabbar: () => import('../views/CustomTabbar.vue') },
+ *   defaultConfig: { headerVisible: { themeSwitch: false, avatar: false } },
+ * };
+ * ```
+<% } else { -%>
  * 支持能力：
  * - components: 替换 Layout 内部区域（header / menu / main；header 仅在路由
  *   meta.layout.layoutVisible.header 为真时渲染）
@@ -18,6 +34,7 @@ import type { CustomLayoutConfig } from '@/plugins/override';
  *   defaultConfig: { headerVisible: { themeSwitch: false } },
  * };
  * ```
+<% } -%>
  */
 export function getCustomLayout(): CustomLayoutConfig {
   return {

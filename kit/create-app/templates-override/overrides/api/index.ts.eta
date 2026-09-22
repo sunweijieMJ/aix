@@ -3,6 +3,30 @@ import type { CustomApiConfig } from '@/plugins/override';
 /**
  * <%= it.project %> - API 覆盖
  *
+<% if (it.platform === 'mobile') { -%>
+ * 支持能力：
+ * - instances: 新增 HttpClient 实例（不能替换 default / download，消费方绑定的是 defaultHttp 导出）
+ * - interceptors: 给已有实例追加请求 / 响应拦截器（如统一加租户请求头）
+ *
+ * @example
+ * ```ts
+ * return {
+ *   instances: { tenantApi: new HttpClient({ baseURL: 'https://api.example.com' }) },
+ *   interceptors: {
+ *     default: {
+ *       request: [config => { config.headers['X-School-Id'] = '1001'; return config; }],
+ *     },
+ *   },
+ * };
+ * ```
+ */
+export function getCustomApiConfig(): CustomApiConfig {
+  return {
+    // instances: {},
+    // interceptors: {},
+  };
+}
+<% } else { -%>
  * 支持能力：
  * - instances: 注册新 API 实例或替换已有实例
  * - modules: 为指定实例注册插件模块
@@ -20,3 +44,4 @@ export function getCustomApiConfig(): CustomApiConfig {
     // modules: {},
   };
 }
+<% } -%>

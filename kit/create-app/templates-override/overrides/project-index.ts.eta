@@ -32,8 +32,10 @@ import type { OverrideConfig } from '@/plugins/override';
  * 本文件可以自由引用 @/constants（例如路由 meta.roles 用 ROLES）。
  */
 const config: OverrideConfig = {
+<% if (it.platform !== 'mobile') { -%>
   // 浏览器入口标题，显示为「入口标题-路由标题」；不配则回落 @/constants 的 DEFAULT_TITLE
   // title: '<%= it.project %> 管理平台',
+<% } -%>
 <% if (it.modules.includes('components')) { -%>
   components: getCustomComponents(),
 <% } -%>

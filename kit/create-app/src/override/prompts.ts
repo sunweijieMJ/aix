@@ -1,11 +1,13 @@
-import { text, multiselect } from '@clack/prompts';
+import { text, multiselect, select } from '@clack/prompts';
 import pc from 'picocolors';
+import type { Platform } from '../types';
 import { CreateAppError } from '../utils/errors';
 import { validateOverrideCode } from '../utils/validate';
+import { availableModules } from './generator';
 import {
-  ALL_MODULES,
   MODULE_DESCRIPTIONS,
   MODULE_DIMENSION,
+  PLATFORM_OPTIONS,
   REQUIRED_MODULES,
   type GenerateOptions,
   type ModuleId,
@@ -23,6 +25,7 @@ export async function runPrompts(
 ): Promise<GenerateOptions | null> {
   let project = partial.project;
   let modules = partial.modules;
+  let platform = partial.platform;
 
   // truthy 判断：空串按「缺失」处理，落进下面的问答（与 add.ts 同一套约定）
   if (project) {
@@ -45,11 +48,24 @@ export async function runPrompts(
     project = result;
   }
 
-  // 2. 模块选择
+  // 2. 目标平台：两个模板真源的 Override 形态不同，可选模块与骨架示例都按它走
+  if (!platform) {
+    const result = await select<Platform>({
+      message: '目标项目的平台',
+      options: PLATFORM_OPTIONS,
+    });
+    if (typeof result === 'symbol') {
+      console.log(pc.yellow('\n已取消'));
+      return null;
+    }
+    platform = result;
+  }
+
+  // 3. 模块选择
   if (!modules) {
     const result = await multiselect({
       message: '选择需要定制的模块 (空格选择，回车确认)',
-      options: ALL_MODULES.map((id) => {
+      options: availableModules(platform).map((id) => {
         const isRequired = REQUIRED_MODULES.includes(id);
         const dim = MODULE_DIMENSION[id];
         const dimLabel = dim !== '—' ? ` [${dim}]` : '';
@@ -79,7 +95,7 @@ export async function runPrompts(
     modules = selected;
   }
 
-  return buildOptions({ ...partial, project, modules });
+  return buildOptions({ ...partial, project, modules, platform });
 }
 
 function buildOptions(raw: Partial<GenerateOptions>): GenerateOptions {
@@ -94,6 +110,7 @@ function buildOptions(raw: Partial<GenerateOptions>): GenerateOptions {
   return {
     project: raw.project!,
     modules: modules as ModuleId[],
+    platform: raw.platform!,
     output: raw.output ?? 'src/overrides',
     yes: raw.yes ?? false,
     dryRun: raw.dryRun ?? false,

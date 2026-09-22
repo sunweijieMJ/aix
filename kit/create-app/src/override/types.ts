@@ -1,3 +1,5 @@
+import type { Platform } from '../types';
+
 /** 模块所属维度；`—` 表示既不参与静态合并也不参与运行时装配（views 只是个目录） */
 export type ModuleDimension = '静态' | '运行时' | '—';
 
@@ -18,7 +20,15 @@ export interface ModuleDef {
    * `./*\/constants.ts` glob 加载它，与租户 `index.ts` 分属两条加载链。
    */
   file?: string;
+  /** 只在这些平台可选；缺省为全部平台 */
+  platforms?: Platform[];
 }
+
+/** `--platform` 的取值与展示文案 */
+export const PLATFORM_OPTIONS: { value: Platform; label: string; hint: string }[] = [
+  { value: 'web', label: 'Web 后台', hint: 'admin 模板（Element Plus）' },
+  { value: 'mobile', label: '移动端 H5', hint: 'h5 模板（Vant）' },
+];
 
 /**
  * 可定制模块注册表 —— 模块元数据的唯一真源
@@ -50,7 +60,13 @@ const MODULES = {
   components: { description: '组件覆盖（预埋组件替换）', dimension: '运行时', hasDir: true },
   directives: { description: '指令覆盖（新增/替换全局指令）', dimension: '运行时', hasDir: true },
   layout: { description: '布局覆盖（整体/区域替换）', dimension: '运行时', hasDir: true },
-  locale: { description: '国际化覆盖（文案覆盖/新增）', dimension: '运行时', hasDir: true },
+  // h5 没有 locale 维度：租户文案随租户页面进入 i18n 流水线，不做运行时覆盖
+  locale: {
+    description: '国际化覆盖（文案覆盖/新增，仅 Web）',
+    dimension: '运行时',
+    hasDir: true,
+    platforms: ['web'],
+  },
   plugins: { description: '插件覆盖（注册额外的 Vue 插件）', dimension: '运行时', hasDir: true },
   store: { description: '状态覆盖（Pinia action 包装）', dimension: '运行时', hasDir: true },
 } satisfies Record<string, ModuleDef>;
@@ -96,6 +112,8 @@ export interface GenerateOptions {
   project: string;
   /** 选中的模块列表 */
   modules: ModuleId[];
+  /** 目标项目的平台，决定可选模块、骨架里的注释 / 示例与前置检查清单（`--platform` 或问答） */
+  platform: Platform;
   /** 输出根目录（默认 src/overrides） */
   output: string;
   /** 跳过确认提示 */
@@ -120,4 +138,6 @@ export interface TemplateContext {
   project: string;
   /** 选中的模块列表 */
   modules: ModuleId[];
+  /** 目标项目的平台 */
+  platform: Platform;
 }

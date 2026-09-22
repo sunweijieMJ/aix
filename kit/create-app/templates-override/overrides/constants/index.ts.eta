@@ -6,13 +6,19 @@ import type { ConstantsOverride } from '@/plugins/override/override-constants';
  * 由 @/constants 在模块加载期同步消费，因此本文件不得 import @/constants、@/overrides
  * 或内核 barrel @/plugins/override（会形成循环依赖，常量读到 undefined；eslint 的
  * constantsChain 规则会拦截）。需要引用角色等常量时直接写字面量。
- * 未提供的字段使用标准产品默认值；对象类字段（roles、proxyUri 等）逐 key 合并。
+ * 未提供的字段使用标准产品默认值；对象类字段（roles、proxyUri 等）逐 key 合并，数组整体替换。
  *
  * @example
  * ```ts
  * const constants: ConstantsOverride = {
+<% if (it.platform === 'mobile') { -%>
+ *   appTitle: '<%= it.project %> 移动端',           // 应用标题（导航栏 / document.title 兜底文案）
+ *   tabbarItems: [...],                // 替换底部标签栏
+ *   roles: { ASSISTANT: 'assistant' }, // 新增角色（类型层需 as RoleType 断言）
+<% } else { -%>
  *   menuList: [...],           // 替换菜单列表
  *   roles: { ASSISTANT: '5' }, // 新增角色
+<% } -%>
  *   defaultLocale: 'en-US',    // 修改默认语言
  * };
  * ```

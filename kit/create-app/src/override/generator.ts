@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Eta } from 'eta';
+import type { Platform } from '../types';
 import { findPackageRoot } from '../utils/pkg-root';
 import { MODULE_REGISTRY } from './types';
-import type { GeneratedFile, GenerateOptions, TemplateContext } from './types';
+import type { GeneratedFile, GenerateOptions, ModuleId, TemplateContext } from './types';
 
 /**
  * templates-override/ 的父目录 = 本包根目录
@@ -15,7 +16,7 @@ import type { GeneratedFile, GenerateOptions, TemplateContext } from './types';
 const PKG_ROOT = findPackageRoot(import.meta.url);
 
 /**
- * 覆盖层内核：必须由**模板真源**提供（admin 模板的 `overrides` 特性），本包不再自带拷贝
+ * 覆盖层内核：必须由**模板真源**提供（admin / h5 模板的 `overrides` 特性），本包不再自带拷贝
  *
  * 曾经这里有一份内核与基础设施的 eta 拷贝，用于给「还没有内核的项目」兜底。它带来的是
  * 一份必然漂移的第二真源：真源为紧耦合优化（直接 import `@/api/core/request`、
@@ -31,9 +32,22 @@ export const OVERRIDE_KERNEL_FILE = 'src/plugins/override/index.ts';
  *
  * - `index.ts`：glob 租户 `index.ts`（运行时维度 + router），并导出装配函数 `setupOverrides()`
  * - `constants.ts`：glob 租户 `constants.ts`（常量维度，`@/constants` 在模块加载期消费）
- * - `registry.ts`：Cookie → 学校代码
+ * - `registry.ts`：租户识别（admin 读 Cookie；h5 读 env 与落盘身份）
+ * - `identity.ts`（仅 h5）：Bridge / 接口身份来源链 + 启动后的 `refreshTenant()`
  */
 export const OVERRIDE_INFRA_FILES = ['index.ts', 'constants.ts', 'registry.ts'];
+
+/** 该平台可选的模块 */
+export function availableModules(platform: Platform): ModuleId[] {
+  return (Object.keys(MODULE_REGISTRY) as ModuleId[]).filter(
+    (id) => !MODULE_REGISTRY[id].platforms || MODULE_REGISTRY[id].platforms.includes(platform),
+  );
+}
+
+/** 按平台给出基础设施清单 */
+export function overrideInfraFiles(platform: Platform): string[] {
+  return platform === 'mobile' ? [...OVERRIDE_INFRA_FILES, 'identity.ts'] : OVERRIDE_INFRA_FILES;
+}
 
 /**
  * 检查生成骨架所需的前置文件，返回缺失的相对路径（相对 cwd）
@@ -41,10 +55,14 @@ export const OVERRIDE_INFRA_FILES = ['index.ts', 'constants.ts', 'registry.ts'];
  * 骨架的类型来自 `@/plugins/override`，装载依赖基础设施的两条 glob——
  * 前置条件不满足就生成，等于产出一堆装不上的死文件。
  */
-export function findMissingPrerequisites(cwd: string, outputDir: string): string[] {
+export function findMissingPrerequisites(
+  cwd: string,
+  outputDir: string,
+  platform: Platform = 'web',
+): string[] {
   const missing: string[] = [];
   if (!fs.existsSync(path.join(cwd, OVERRIDE_KERNEL_FILE))) missing.push(OVERRIDE_KERNEL_FILE);
-  for (const rel of OVERRIDE_INFRA_FILES) {
+  for (const rel of overrideInfraFiles(platform)) {
     const full = path.join(outputDir, rel);
     if (!fs.existsSync(full)) missing.push(path.relative(cwd, full));
   }
@@ -92,7 +110,7 @@ export function findOrphanModuleDirs(outputDir: string, project: string): string
  * 由模板的 `overrides` 特性提供 —— 见 OVERRIDE_KERNEL_FILE 的注释。
  */
 export function generateFiles(options: GenerateOptions): GeneratedFile[] {
-  const { project, modules } = options;
+  const { project, modules, platform } = options;
 
   // 模板目录：<包根>/templates-override/overrides/（只发 TypeScript）
   const templatesDir = path.resolve(PKG_ROOT, 'templates-override', 'overrides');
@@ -103,7 +121,7 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
     autoTrim: false,
   });
 
-  const context: TemplateContext = { project, modules };
+  const context: TemplateContext = { project, modules, platform };
   const files: GeneratedFile[] = [];
 
   // ── 项目聚合入口（根据选中模块动态 import） ──
