@@ -6,7 +6,7 @@
   "license": "MIT",
   "packageManager": "pnpm@11.23.0",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "turbo dev --concurrency=20",
@@ -23,7 +23,7 @@
     "test:coverage": "vitest run --project '!storybook' --coverage",
     "type-check": "turbo type-check && pnpm type-check:root",
     "type-check:root": "tsc --noEmit",
-    "commit": "cross-env NODE_OPTIONS=\"--experimental-transform-types --disable-warning=ExperimentalWarning\" czg",
+    "commit": "czg",
     "cspell": "cspell",
     "format": "prettier . --write",
     "lint:md": "markdownlint-cli2 '**/*.{md}'",
